@@ -246,12 +246,18 @@ inline void bond_dHdk(const Vec3d* apos, const BondDef& b, int natoms, double* d
 ///   u = (r_i - r_j)/|r_i - r_j|,  v = (r_k - r_j)/|r_k - r_j|
 ///   cos θ = u · v = ct,  sin θ = s
 ///
-/// ∂(cos θ)/∂r_i = (v - ct*u) / |a|     [derivative of u·v w.r.t. r_i]
-/// ∂θ/∂r_i = -1/s * ∂(cos θ)/∂r_i = (ct*u - v) / (|a| * s)
+/// RELATION to ∂(cos θ)/∂r:
+///   By chain rule: ∂(cos θ)/∂r_α = -sin θ * ∂θ/∂r_α = -s * b_α
+///   So: b_α = -∂(cos θ)/∂r_α / sin θ
+///
+///   ∂(cos θ)/∂r_i = (v - ct*u) / |a|     [derivative of u·v w.r.t. r_i]
+///   ∂θ/∂r_i = -1/s * ∂(cos θ)/∂r_i = (ct*u - v) / (|a| * s)
 ///
 /// So: b_i = (ct*u - v) / (a*s),  b_k = (ct*v - u) / (c*s),  b_j = -(b_i + b_k)
 ///
 /// Note: ∂(cos θ)/∂r_α = -sin θ * b_α  (used in the sin²θ factor)
+/// This Wilson vector is used by the UFF Fourier angle form (f is a function of θ).
+/// The cosine angle form uses angle_grad_cos_direct instead (f is a function of cos θ).
 inline void angle_wilson_cos(const Vec3d* apos, const AngleDef& ang,
                              Vec3d& bi, Vec3d& bj, Vec3d& bk,
                              double& cos_theta, double& sin_theta) {
@@ -337,7 +343,21 @@ inline void angle_coord_hessian_cos(const Vec3d* apos, const AngleDef& ang, Mat3
 }
 
 /// Direct gradient of c = cos θ with respect to Cartesian positions.
-/// This is the natural coordinate for the cosine angle energy and avoids the artificial 1/sinθ singularity in ∂θ/∂r.
+///
+/// WHY cos θ INSTEAD OF θ?
+/// The angle energy E = ½ kθ (cos θ - cos θ0)² / (1-cos²θ0) is naturally a
+/// function of c = cos θ = u·v, NOT of θ = arccos(u·v).  Using c directly:
+///   - Avoids the 1/sin θ singularity in ∂θ/∂r (which diverges at θ → 0, π)
+///   - ∂c/∂r is always finite and well-conditioned (it's just a dot product derivative)
+///   - The sensitivity A = (g⊗g + (c-c0)·C_cos) / s0² is smooth everywhere
+///
+/// DERIVATION of ∂(cos θ)/∂r:
+///   c = u·v,  u = a/|a|,  v = c/|c|,  a = r_i - r_j,  c = r_k - r_j
+///   ∂u/∂r_i = (I - u⊗u)/|a|  (derivative of unit vector: transverse projector / length)
+///   ∂v/∂r_i = 0  (v depends only on r_j, r_k)
+///   ∂c/∂r_i = ∂(u·v)/∂r_i = (∂u/∂r_i)·v = (v - (u·v)u)/|a| = (v - c*u)/|a|
+///   By symmetry (i↔k, u↔v): ∂c/∂r_k = (u - c*v)/|c|
+///   Translational invariance: ∂c/∂r_j = -(∂c/∂r_i + ∂c/∂r_k)
 inline void angle_grad_cos_direct(const Vec3d* apos, const AngleDef& ang, Vec3d& gi, Vec3d& gj, Vec3d& gk, double& c) {
     Vec3d u; u.set_sub(apos[ang.i], apos[ang.j]);
     Vec3d v; v.set_sub(apos[ang.k], apos[ang.j]);
@@ -394,8 +414,23 @@ inline void angle_dHdk_cos(const Vec3d* apos, const AngleDef& ang, int natoms, d
 
 struct UFFAngleParams { double C0, C1, C2; };
 
-/// Compute UFF Fourier coefficients from equilibrium angle
-/// Normalized so F'(θ0)=0, F''(θ0)=1
+/// Compute UFF Fourier coefficients from equilibrium angle.
+///
+/// The UFF angle energy is a Fourier series in θ:
+///   E = K * f(θ),  f(θ) = C0 + C1*cos(θ) + C2*cos(2θ)
+///
+/// NORMALIZATION: We require f'(θ0) = 0 (equilibrium) and f''(θ0) = 1 (K is the curvature).
+///
+/// Derivation:
+///   f'(θ)  = -C1*sin(θ) - 2*C2*sin(2θ) = -C1*s - 4*C2*s*c
+///   f''(θ) = -C1*cos(θ) - 4*C2*cos(2θ) = -C1*c - 4*C2*(2c²-1)
+///
+/// At θ = θ0 (c = c0, s = s0):
+///   f'(θ0) = -s0*(C1 + 4*C2*c0) = 0  →  C1 = -4*C2*c0
+///   f''(θ0) = -C1*c0 - 4*C2*(2*c0²-1) = 4*C2*c0² - 4*C2*(2*c0²-1) = 4*C2*(1-c0²) = 4*C2*s0² = 1
+///   →  C2 = 1/(4*s0²)
+///   C0 = -C1*c0 - C2*(2*c0²-1) = 4*C2*c0² - C2*(2*c0²-1) = C2*(2*c0²+1)
+///   (C0 ensures f(θ0) = 0 so that E = 0 at equilibrium)
 inline UFFAngleParams uff_angle_coeffs(double theta0) {
     double c0 = cos(theta0), s0 = sin(theta0);
     double C2 = 1.0 / (4.0 * s0 * s0);
@@ -416,7 +451,16 @@ inline UFFAngleParams uff_angle_coeffs(double theta0) {
 /// At equilibrium: f'(θ0)=0, f''(θ0)=1 → A = b⊗b^T
 ///
 /// NOTE: Prestress term f'*C_θ is currently skipped (TODO).
-/// C_θ = ∂²θ/∂r² = -(C_cos + cos θ * b⊗b^T) / sin θ  (from C_cos = -sin θ*C_θ - cos θ*b⊗b^T)
+///
+/// RELATION between C_θ and C_cos:
+///   c = cos θ, so ∂c/∂r = -sin θ * ∂θ/∂r = -s * b  (chain rule)
+///   Differentiating again:
+///     C_cos = ∂²c/∂r² = ∂(-s*b)/∂r = -c*(b⊗b^T)*s - s*C_θ
+///   (using ∂s/∂r = ∂(sin θ)/∂r = cos θ * ∂θ/∂r = c*b, and ∂b/∂r = C_θ)
+///   Solving for C_θ:
+///     C_θ = -(C_cos + c * b⊗b^T) / s
+///   This diverges at θ → 0, π (s → 0), which is why the cosine form is preferred
+///   for the actual sensitivity computation.
 inline void angle_dHdk_uff(const Vec3d* apos, const AngleDef& ang, const UFFAngleParams& par,
                             int natoms, double* dHdk_flat) {
     Vec3d bi, bj, bk; double c, s;
@@ -713,6 +757,18 @@ public:
     }
 
     // === Method 1: Linear least-squares (normal equations) ===
+    //
+    // DERIVATION of normal equations:
+    //   Loss: L(k) = ||Σ_f k_f A_f - H_ref||²_W = Σ_α w_α² (Σ_f k_f A_f[α] - H_ref[α])²
+    //   ∂L/∂k_p = 2 Σ_α w_α² A_p[α] (Σ_f k_f A_f[α] - H_ref[α])
+    //            = 2 (Σ_f G_pf k_f - y_p) = 0
+    //   → G k = y  (normal equations)
+    //   where G_pf = <A_p, A_f>_W = Σ_α w_α² A_p[α] A_f[α]
+    //         y_p  = <A_p, H_ref>_W = Σ_α w_α² A_p[α] H_ref[α]
+    //
+    //   The normal equations square the condition number (κ(G) = κ(A)²),
+    //   so for ill-conditioned systems the direct stacked solve in Python
+    //   (solve_regularized_lsq) is preferred.
 
     /// Build sensitivity matrices A_f = dH/dk_f for each free parameter
     /// Returns vector of (n_free_params) matrices, each (3N x 3N) flattened row-major
@@ -767,6 +823,23 @@ public:
     }
 
     // === Method 2: Gradient descent (variational derivatives only) ===
+    //
+    // DERIVATION of gradient:
+    //   L(k) = ||H_model(k) - H_ref||²_W = Σ_α w_α² (H_model[α] - H_ref[α])²
+    //   H_model = Σ_t k_{p(t)} A_t  (sum over terms, p(t) = param index of term t)
+    //   ∂H_model[α]/∂k_p = Σ_{t→p} A_t[α]  (sum over terms mapped to param p)
+    //   ∂L/∂k_p = 2 Σ_α w_α² (H_model[α] - H_ref[α]) * Σ_{t→p} A_t[α]
+    //           = 2 Σ_{t→p} <A_t, ΔH>_W
+    //   where ΔH = H_model - H_ref and <A, B>_W = Σ_α w_α² A[α] B[α].
+    //
+    //   KEY EFFICIENCY: Each term A_t only touches 4 (bond) or 9 (angle) 3×3 blocks,
+    //   so <A_t, ΔH>_W can be computed without building the full 3N×3N A_t matrix.
+    //   This makes gradient descent O(n_terms * 9) per iteration vs O(n_params * (3N)²)
+    //   for the full sensitivity matrix approach.
+    //
+    //   Momentum update: v = μ*v - lr*grad; k += v
+    //   This is heavy-ball gradient descent with momentum coefficient μ.
+    //   Converges faster than plain GD for ill-conditioned G (different eigenvalues).
 
     /// Compute gradient of loss L = ||H_model - H_ref||^2_W w.r.t. free parameters
     /// Uses per-term sensitivity (no full 3N×3N matrices needed for gradient)

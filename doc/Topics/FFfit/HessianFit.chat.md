@@ -2533,3 +2533,103 @@ The second objective is better aligned with your reduced-model philosophy.
 3. **Choose `d` per dihedral** (or per type) to set the nearest `1, 2, or 3-fold` minimum to the actual `phi` (e.g. `d = -sign(cos(n*phi))`). This removes the worst-case negative signs, but the `f' C` term remains.
 
 Which way do you want to go? I can do (2) or (3) quickly.
+
+---
+
+# 12. Implemented hybrid Hessian fit (2026-07)
+
+The reusable implementation is now in `pyBall/FFfit.py`, with the PySCF driver in `tests/tSiNCs/test_FFfit.py`.
+
+The fitted linear residual contains three independently normalized parts:
+
+1. **All vibrational modes.** Rigid translations and rotations are removed by SVD. For every remaining reference mode, the fit targets the Rayleigh quotient `v_s^T D(k) v_s = lambda_s`; off-diagonal elements `v_s^T D(k) v_t` are penalized separately to limit mode mixing. No modes are selected or discarded. The default `frequency` weighting uses `1/max(|lambda_s|, lambda_floor)`, which is the first-order weighting appropriate to squared frequency errors.
+2. **Graph-local Hessian.** Only mass-weighted Cartesian atom blocks within a configurable bond-graph distance are fitted. This prevents absent long-range matrix elements from dominating the reduced local model.
+3. **Internal-coordinate Hessian.** The Wilson matrix contains bond-length and angle derivatives. Bond displacements are scaled as `delta_r/r0` and angles in radians, giving dimensionless valence coordinates. Redundancy is handled by truncated SVD and the least-norm valence force matrix is `F = C^{+T} D C^+`, where `C = B M^{-1/2}`.
+
+Each component is divided by its reference norm before its user weight is applied. Multiple systems are weighted equally by default. Parameter priors are scaled by physical reference magnitudes, and non-negative stiffness bounds are the default.
+
+The solve is performed on the directly stacked residual matrix using column scaling and `scipy.optimize.lsq_linear`; normal equations are not formed, so the condition number is not squared. Diagnostics report rank, singular values, condition number, Wilson rank, and objective size. Unobservable parameters, non-finite data, singular internal coordinates, and failed bounded solves raise explicit errors.
+
+Validation currently includes:
+
+- exact recovery of a representable synthetic bond/angle Hessian to machine precision;
+- rigid-motion annihilation by the Wilson matrix;
+- symmetry and rank checks of the internal-coordinate projection;
+- bounded regularized fitting for an intentionally incomplete model;
+- end-to-end PySCF tests for `SiH4` and `Si_R3p8`;
+- signed and `log10|H|` `imshow` comparisons of DFT, force-field, and residual Hessians.
+
+Important limitation: the mode objective is linearized in the fixed DFT eigenvectors. Final model frequencies and eigenvectors must still be obtained by diagonalizing the fitted model Hessian. Also, non-negative torsional amplitudes do not guarantee a PSD model when the exact prestress part of a dihedral sensitivity is indefinite; the PSD pure-curvature torsion strategy remains separate future work.
+
+## Local expansion point versus transferable equilibrium geometry
+
+The driver now treats equilibrium coordinates and stiffness transferability as separate choices:
+
+- `--equilibrium local` is the Hessian-fitting default. Every bond, angle, and 1-4 spring is expanded at its actual relaxed DFT coordinate, so its prestress is zero. Chemically equivalent terms still share one fitted stiffness.
+- `--equilibrium type-average` replaces the individual coordinates by one mean bond length or mean angle cosine per type. This tests a transferable energy minimum, but introduces prestress whenever a structure differs from that minimum.
+
+This distinction is intentional. A local Hessian model can reproduce vibration curvature around the DFT geometry even if a later transferable simulation model has imperfect equilibrium geometry. Transferable `r0` and `theta0` should therefore be fitted and validated as a separate geometry/force problem before stiffness fitting is repeated around that energy model.
+
+`--plot-distributions` writes histograms and CSV statistics for relaxed 1-2 lengths, 1-3 angles, graph-distance-3 endpoint distances, and corrected signed torsions. `--compare-models` fits bond+angle, bond+angle+1-4, bond+angle+UFF torsion, and the combined model with identical hybrid objectives and per-parameter regularization, then writes a one-to-one frequency table and five-curve spectrum overlay.
+
+
+---
+
+# USER
+
+OK, this is very good! I like it. Now think about physics. What is super strange that the bonds in the center of Si are not stiff. That may be because of some long-range acustic modes. but isnit this artifact? I mean I would expect that in reality all Si-Si bonds should have similar stiffnessso why the tranform of Wilson bond/angle coordinates makese them effectively so soft? is that because we try to express soft accusting modes in limited basis? But I can imagine that perhaps even with hard bonds we can construct soft acustic modes. Cannow we aply some regularization that all Si-Si bonds should have similar stiffness when ocmputing the Wilson  transform?
+
+do not code just discuss
+
+---
+
+# GLM 5.2
+
+This is a great physics question. Let me break it down.
+
+## The core issue: acoustic modes ≠ soft bonds
+
+Your intuition is exactly right. **You can have perfectly stiff bonds and still get soft acoustic modes.** Acoustic modes arise from *collective* motion — atoms move nearly in unison, so bonds barely stretch. The low frequency comes from the *geometry* of the network (many bonds acting in concert), not from any individual bond being soft.
+
+## Why the Wilson projection makes central bonds appear soft
+
+The Wilson GF method computes:
+
+$$F = C^{+T} D \, C^{+}, \quad C = B \, M^{-1/2}$$
+
+where $C^+$ is the pseudoinverse. The problem is that $C^+$ maps **all** Cartesian Hessian eigenvectors (including acoustic modes) back into bond/angle space. For a pure translation, $B \cdot \vec{t} = 0$ (bonds don't stretch), so translations are in the null space of $B$ and get projected out. But acoustic modes in a finite nanocrystal are **not** pure translations — they're approximate translations that get distorted at surfaces. So $B$ sees small but nonzero bond changes from these modes.
+
+The pseudoinverse then faces an ill-conditioned problem: the overlap matrix $C^T C$ (the G matrix) is nearly singular because in a tetrahedral network, bonds and angles are highly coupled — many near-linear dependencies exist. The pseudoinverse handles this by **distributing the low-frequency acoustic contribution across available coordinates**, and the distribution is non-unique. Central bonds, being in a more symmetric/bulk-like environment, end up absorbing more of this soft acoustic character.
+
+## Why center vs. surface differs
+
+- **Surface atoms**: less symmetric environment, fewer neighbors, more constrained → the projection can't "hide" softness in collective modes as easily → bonds appear stiffer (closer to true local stiffness)
+- **Central atoms**: highly symmetric, fully coordinated, participate strongly in acoustic modes → the projection attributes the soft collective motion to their bonds → artificially soft
+
+## Is this an artifact? Yes.
+
+The true local Si-Si bond stiffness should be roughly the same everywhere (~same chemistry). The apparent softness of central bonds is a **projection artifact** from trying to express soft acoustic modes in a limited basis of local coordinates. The Wilson GF method gives you the *effective* stiffness that each bond would need to reproduce the full Hessian, but this conflates:
+1. **Genuine local bond stretching** (what you want)
+2. **Collective acoustic motion** (what you don't want attributed to individual bonds)
+
+## Regularization approaches
+
+Several options, in order of sophistication:
+
+1. **Tikhonov regularization on $C^+$**: Replace $C^+ = (C^T C)^{-1} C^T$ with $C^+_\lambda = (C^T C + \lambda I)^{-1} C^T$. This damps the amplification of small singular values (which correspond to the near-linear dependencies / acoustic modes). The result is a more uniform stiffness distribution. The parameter λ controls the tradeoff between fitting the Hessian exactly and having physically reasonable stiffnesses.
+
+2. **SVD truncation**: Drop the smallest singular values of $C$ entirely. These correspond to the most collective (acoustic-like) internal coordinate combinations. By not fitting those modes, you avoid attributing their softness to individual bonds.
+
+3. **Family-constrained projection**: Impose the physical constraint that all Si-Si bonds share a single stiffness $k_{\text{Si-Si}}$, all Si-H bonds share $k_{\text{Si-H}}$, etc. This drastically reduces the number of free parameters and eliminates the ill-conditioning. You solve a constrained least-squares: find family-level stiffnesses that best reproduce the Hessian. This is the most physically motivated approach — it encodes the prior that "same chemistry = same stiffness."
+
+4. **Two-step decomposition**: First, separate the Hessian into acoustic and optical subspaces (e.g., by projecting out the 3 translation + 3 rotation modes explicitly, plus low-frequency eigenvectors below some threshold). Then project only the optical part onto bond/angle coordinates. This cleanly separates "collective motion" from "local stretching."
+
+## My recommendation
+
+**Option 3 (family-constrained)** is the most physically sound for your use case. You're fitting a force field where Si-Si bonds will have a *single* parameter anyway. So instead of extracting per-bond stiffnesses and then averaging, directly fit one $k_{\text{Si-Si}}$ per family. This:
+- Eliminates the ill-conditioning (far fewer parameters)
+- Gives you the actual force field parameter you need
+- Avoids the acoustic mode artifact entirely
+- Is equivalent to a regularized Wilson projection where the regularization enforces chemical uniformity
+
+The per-bond stiffnesses you're currently computing are still useful for *diagnostics* (they show you where the simple model breaks down), but the **force field parameters** should come from the family-constrained fit.

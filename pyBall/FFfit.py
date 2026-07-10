@@ -3,6 +3,37 @@
 Wraps FFfit_lib.cpp → FFfit.h class for fitting bond/angle stiffness parameters
 to reference Hessians via linear least-squares or gradient descent.
 
+THEORY OVERVIEW
+===============
+
+Given a force field E(r) = Σ_t k_t * f_t(q_t(r)), the Cartesian Hessian is:
+
+    H_αβ = ∂²E/∂r_α ∂r_β = Σ_t k_t * A_t
+
+where A_t = ∂²f_t/∂r_α ∂r_β is the SENSITIVITY MATRIX, linear in k_t at fixed
+geometry.  By the chain rule:
+
+    A_t = f''(q) * b⊗b^T + f'(q) * C
+
+where b = ∂q/∂r is the WILSON VECTOR and C = ∂²q/∂r² is the COORDINATE HESSIAN.
+The first term (rank-one) dominates at equilibrium; the second (prestress) is
+nonzero when geometry ≠ equilibrium.
+
+This module provides three complementary fitting objectives combined into a
+single linear least-squares problem (the "hybrid" fit):
+
+1. MODE objective: targets Rayleigh quotients v_s^T D(k) v_s = λ_s for each
+   reference vibrational mode, where D = M^{-1/2} H M^{-1/2}.
+2. LOCAL objective: fits only graph-local mass-weighted Hessian blocks.
+3. INTERNAL objective: projects H into Wilson internal coordinates via
+   F = C^{+T} D C^+ (the GF method), fitting the valence force matrix.
+
+All three are linear in k, so the combined problem is a single linear solve.
+The direct stacked residual matrix is solved via scipy.optimize.lsq_linear
+with column scaling, Tikhonov regularization, and non-negative bounds.
+
+See doc/Topics/FFfit/HessianFitting_Theory.md for the full derivation.
+
 Usage:
     from pyBall import FFfit
     fitter = FFfit.FFfit()
@@ -16,6 +47,7 @@ Usage:
 
 import numpy as np
 import ctypes
+from collections import deque
 from ctypes import c_int, c_double, c_char_p, c_void_p, c_bool, byref, POINTER
 from . import cpp_utils_
 
@@ -35,7 +67,7 @@ lib.fffit_create.restype  = c_void_p
 lib.fffit_create.argtypes = []
 
 lib.fffit_destroy.restype  = None
-lib.fffit_destroy.argtypes = []
+lib.fffit_destroy.argtypes = [c_void_p]
 
 lib.fffit_set_geometry.restype  = None
 lib.fffit_set_geometry.argtypes = [c_void_p, c_int, array1d]
@@ -286,3 +318,515 @@ class FFfit:
         k = np.zeros(np_, dtype=np.float64)
         lib.fffit_solve_normal_equations(G_flat, y_arr, k, np_)
         return k
+
+
+def collect_sensitivity_matrices(fitter, extra=None):
+    """Return A[p] = dH/dk_p from a linear FFfit model without finite differences."""
+    n = fitter.natoms * 3
+    npar = fitter.n_free
+    old = fitter.get_params()
+    A = np.empty((npar, n, n), dtype=np.float64)
+    for p in range(npar):
+        k = np.zeros(npar)
+        k[p] = 1.0
+        fitter.set_params(k)
+        A[p] = fitter.compute_model_hessian()
+    fitter.set_params(old)
+    if extra:
+        for p, Ap in extra.items():
+            if p < 0 or p >= npar:
+                raise IndexError(f"extra sensitivity parameter {p} outside [0,{npar})")
+            Ap = np.asarray(Ap, dtype=np.float64)
+            if Ap.shape != (n, n):
+                raise ValueError(f"extra sensitivity {p} has shape {Ap.shape}, expected {(n, n)}")
+            A[p] += Ap
+    return A
+
+
+def mass_weight_hessian(H, masses):
+    """Transform Cartesian Hessian(s) to D = M^-1/2 H M^-1/2.
+
+    The mass-weighted dynamical matrix D relates to vibrational frequencies by:
+        D v_s = λ_s v_s,  where λ_s = ω_s² (eigenvalues are squared frequencies)
+    The mass-weighted displacement is u_s = M^{-1/2} v_s, so that:
+        v_s = M^{1/2} u_s  (Cartesian ← mass-weighted)
+    This transformation makes the kinetic energy diagonal: T = ½ Σ ṁ_i u̇_i².
+    """
+    H = np.asarray(H, dtype=np.float64)
+    masses = np.asarray(masses, dtype=np.float64)
+    if masses.ndim != 1 or np.any(~np.isfinite(masses)) or np.any(masses <= 0.0):
+        raise ValueError("masses must be a finite positive 1D array")
+    n = masses.size * 3
+    if H.shape[-2:] != (n, n):
+        raise ValueError(f"Hessian trailing shape {H.shape[-2:]} does not match {n} Cartesian coordinates")
+    im = 1.0 / np.sqrt(np.repeat(masses, 3))
+    lead = (1,) * (H.ndim - 2)
+    return H * im.reshape(lead + (n, 1)) * im.reshape(lead + (1, n))
+
+
+def rigid_and_vibrational_bases(positions, masses, rtol=1e-10):
+    """Return orthonormal mass-weighted rigid and complementary vibrational bases.
+
+    PHYSICAL BASIS:
+    Rigid-body motion (translation + rotation) produces zero Hessian eigenvalues.
+    These 6 (or 5 for linear molecules) null modes must be removed before fitting
+    vibrational frequencies, otherwise they dominate the least-squares objective
+    with uninformative zero targets.
+
+    CONSTRUCTION:
+    In mass-weighted coordinates, the 3 translation vectors are:
+        T_α = sqrt(m_i) * e_α  (α = x,y,z; repeated for each atom i)
+    The 3 rotation vectors are (about the center of mass):
+        R_α = sqrt(m_i) * (e_α × r_i^CM)  (cross product with COM-positioned r_i)
+    These 6 vectors are assembled into a (3N × 6) matrix and orthonormalized by SVD.
+    The rank of this matrix reveals the number of rigid modes:
+        - 6 for a nonlinear molecule (3 trans + 3 rot)
+        - 5 for a linear molecule (3 trans + 2 rot; rotation about the axis is zero)
+    The SVD left-singular vectors U[:, :rank] span the rigid space; U[:, rank:]
+    spans the complementary vibrational space.
+    """
+    pos = np.asarray(positions, dtype=np.float64)
+    masses = np.asarray(masses, dtype=np.float64)
+    if pos.shape != (masses.size, 3):
+        raise ValueError(f"positions shape {pos.shape} does not match masses shape {masses.shape}")
+    if np.any(~np.isfinite(pos)):
+        raise ValueError("positions contain NaN or infinity")
+    r = pos - np.sum(pos * masses[:, None], axis=0) / np.sum(masses)
+    sm = np.sqrt(masses)
+    R = np.zeros((3 * masses.size, 6))
+    for a in range(3):
+        R[a::3, a] = sm
+        for i in range(masses.size):
+            R[3*i:3*i+3, 3+a] = sm[i] * np.cross(np.eye(3)[a], r[i])
+    U, s, _ = np.linalg.svd(R, full_matrices=True)
+    tol = rtol * max(R.shape) * s[0]
+    rank = int(np.sum(s > tol))
+    return U[:, :rank], U[:, rank:]
+
+
+def reference_vibrational_modes(H_ref, positions, masses):
+    """Diagonalize the reference dynamical matrix in the complete non-rigid space.
+
+    The QM dynamical matrix D = M^{-1/2} H M^{-1/2} is projected onto the
+    vibrational subspace (rigid modes removed) and diagonalized:
+        Q^T D Q C = C Λ
+    where Q spans the vibrational space and C are the eigenvectors within it.
+    The full-space modes are V = Q C, with eigenvalues λ_s = ω_s².
+    Frequencies in cm⁻¹: ν_s = sqrt(|λ_s|) × 521.5.
+    """
+    D = mass_weight_hessian(H_ref, masses)
+    D = 0.5 * (D + D.T)
+    _, Q = rigid_and_vibrational_bases(positions, masses)
+    lam, C = np.linalg.eigh(Q.T @ D @ Q)
+    return Q @ C, lam
+
+
+def build_wilson_matrix(positions, bonds, angles):
+    """Build B=dq/dx for bond lengths and angles in Angstrom and radians.
+
+    The Wilson B matrix (Wilson, Decius, Cross, *Molecular Vibrations*, 1955)
+    relates internal coordinate displacements to Cartesian displacements:
+        Δq = B Δx
+    where q = (r_ij, θ_ijk, ...) are internal coordinates and x = (r_1, ..., r_N)
+    are Cartesian positions.  Each row of B is the Wilson vector b_t = ∂q_t/∂x.
+
+    BOND row (i,j):  b = ∂r/∂x, where r = |r_j - r_i|
+        b_i = -e,  b_j = +e  (e = unit bond vector),  all other atoms = 0
+
+    ANGLE row (i,j,k):  b = ∂θ/∂x, where θ = arccos(u·v), u = (r_i-r_j)/|r_i-r_j|, v = (r_k-r_j)/|r_k-r_j|
+        ∂θ/∂r_i = -(v - ct*u) / (|a| * sin θ)  (from ∂(cos θ)/∂r_i = (v-ct*u)/|a| and ∂θ = -∂(cos θ)/sin θ)
+        ∂θ/∂r_k = -(u - ct*v) / (|c| * sin θ)  (by symmetry i↔k)
+        ∂θ/∂r_j = -(∂θ/∂r_i + ∂θ/∂r_k)  (translational invariance)
+
+    The B matrix is central to the Wilson GF method: G = B M^{-1} B^T is the
+    kinematic matrix, and the vibrational problem becomes G F P = λ P in
+    internal coordinates, where F is the valence force constant matrix.
+    """
+    pos = np.asarray(positions, dtype=np.float64)
+    n = pos.shape[0] * 3
+    B = np.zeros((len(bonds) + len(angles), n), dtype=np.float64)
+    labels = []
+    iq = 0
+    for bond in bonds:
+        i, j = int(bond[0]), int(bond[1])
+        d = pos[j] - pos[i]
+        r = np.linalg.norm(d)
+        if r <= 1e-12:
+            raise ValueError(f"zero-length bond ({i},{j})")
+        e = d / r
+        B[iq, 3*i:3*i+3] = -e
+        B[iq, 3*j:3*j+3] = e
+        labels.append(("bond", i, j))
+        iq += 1
+    for angle in angles:
+        i, j, k = int(angle[0]), int(angle[1]), int(angle[2])
+        a = pos[i] - pos[j]
+        c = pos[k] - pos[j]
+        ra, rc = np.linalg.norm(a), np.linalg.norm(c)
+        if ra <= 1e-12 or rc <= 1e-12:
+            raise ValueError(f"zero-length arm in angle ({i},{j},{k})")
+        u, v = a / ra, c / rc
+        ct = np.clip(np.dot(u, v), -1.0, 1.0)
+        st = np.sqrt(max(0.0, 1.0 - ct*ct))
+        if st <= 1e-8:
+            raise ValueError(f"angle ({i},{j},{k}) is singular at {np.degrees(np.arccos(ct)):.6f} degrees")
+        gi = -(v - ct*u) / (ra * st)
+        gk = -(u - ct*v) / (rc * st)
+        B[iq, 3*i:3*i+3] = gi
+        B[iq, 3*k:3*k+3] = gk
+        B[iq, 3*j:3*j+3] = -(gi + gk)
+        labels.append(("angle", i, j, k))
+        iq += 1
+    return B, labels
+
+
+def internal_coordinate_basis(B, masses, rtol=1e-10):
+    """Orthonormal basis for the mass-weighted Cartesian space sampled by B.
+
+    The mass-weighted Wilson matrix C = B M^{-1/2} maps mass-weighted Cartesian
+    displacements to internal coordinate displacements.  Its row space (obtained
+    via SVD: C = U S V^T) spans the subspace of Cartesian space that is physically
+    described by the internal coordinates.  The columns of V[:rank]^T form an
+    orthonormal basis for this subspace.
+
+    Redundancy: when there are more internal coordinates than independent ones
+    (e.g. all bond lengths + all angles in a ring), C has rank < n_internal.
+    The SVD truncation handles this automatically.
+    """
+    B = np.asarray(B, dtype=np.float64)
+    masses = np.asarray(masses, dtype=np.float64)
+    n = masses.size * 3
+    if B.ndim != 2 or B.shape[1] != n:
+        raise ValueError(f"Wilson matrix shape {B.shape} is incompatible with {n} coordinates")
+    C = B / np.sqrt(np.repeat(masses, 3))[None, :]
+    _, s, Vt = np.linalg.svd(C, full_matrices=False)
+    if s.size == 0:
+        raise ValueError("Wilson matrix has no internal coordinates")
+    rank = int(np.sum(s > rtol * max(C.shape) * s[0]))
+    if rank == 0:
+        raise ValueError("Wilson matrix is numerically rank zero")
+    return Vt[:rank].T, s[:rank]
+
+
+def internal_hessian_projection(H, B, masses, coordinate_scale=None, rtol=1e-10):
+    """Project Cartesian Hessian(s) to the least-norm redundant valence force matrix.
+
+    WILSON GF METHOD IMPLEMENTATION:
+    In the harmonic approximation, E = ½ q^T F q, giving H = B^T F B in Cartesian
+    coordinates.  The mass-weighted dynamical matrix is D = M^{-1/2} H M^{-1/2}.
+    Substituting C = B M^{-1/2} (the mass-weighted, scaled Wilson matrix):
+        D = C^T F C
+    To recover F from D, we use the pseudoinverse C^+ (via SVD):
+        F = C^{+T} D C^+
+    This is the least-norm solution when coordinates are redundant.
+
+    DIMENSIONLESS COORDINATES:
+    Bond displacements are scaled as Δr/r₀ and angles in radians, giving
+    dimensionless internal coordinates.  This makes F dimensionless and
+    comparable across different coordinate types.
+
+    The resulting F matrix reveals the valence force constants and their couplings.
+    For an independent-coordinate model (diagonal F), only the diagonal elements
+    are fitted.  Off-diagonal elements (stretch-stretch, stretch-bend) indicate
+    where the independent model is incomplete.
+    """
+    H = np.asarray(H, dtype=np.float64)
+    B = np.asarray(B, dtype=np.float64)
+    masses = np.asarray(masses, dtype=np.float64)
+    if coordinate_scale is None:
+        coordinate_scale = np.ones(B.shape[0])
+    coordinate_scale = np.asarray(coordinate_scale, dtype=np.float64)
+    if coordinate_scale.shape != (B.shape[0],) or np.any(~np.isfinite(coordinate_scale)) or np.any(coordinate_scale <= 0.0):
+        raise ValueError("coordinate_scale must contain one finite positive scale per Wilson coordinate")
+    Bs = B * coordinate_scale[:, None]
+    C = Bs / np.sqrt(np.repeat(masses, 3))[None, :]
+    Uq, s, Vt = np.linalg.svd(C, full_matrices=False)
+    if s.size == 0:
+        raise ValueError("Wilson matrix has no internal coordinates")
+    rank = int(np.sum(s > rtol * max(C.shape) * s[0]))
+    if rank == 0:
+        raise ValueError("Wilson matrix is numerically rank zero")
+    Cplus = (Vt[:rank].T / s[:rank][None, :]) @ Uq[:, :rank].T
+    D = mass_weight_hessian(H, masses)
+    F = (Cplus.T @ D) @ Cplus  # batched BLAS: (npar, n_int, n_int), ~4400x faster than einsum
+    return F, {"rank": rank, "singular_values": s[:rank], "scaled_wilson_matrix": Bs, "pseudoinverse": Cplus}
+
+
+def local_hessian_mask(natoms, bonds, max_graph_distance=2):
+    """Cartesian mask for atom blocks separated by at most a bond-graph distance.
+
+    PHYSICAL MOTIVATION:
+    A valence force field with only bond and angle terms produces Hessian blocks
+    that are nonzero only between atoms sharing a bond or angle (graph distance ≤ 2).
+    Atoms farther apart in the bond graph have zero Hessian blocks in the model.
+
+    Fitting the full QM Hessian element-by-element penalizes these zero blocks
+    against nonzero QM long-range blocks that the reduced model is structurally
+    incapable of generating.  This mask restricts the fit to only the blocks
+    the model can represent, preventing long-range QM information from dominating
+    the objective and distorting the local parameters.
+
+    The graph distance is computed by BFS on the bond network.  Default d_max=2
+    covers 1-2 (bond) and 1-3 (angle) interactions.  d_max=3 would include
+    1-4 (torsion) blocks.
+    """
+    if max_graph_distance < 0:
+        raise ValueError("max_graph_distance must be non-negative")
+    adj = [[] for _ in range(natoms)]
+    for bond in bonds:
+        i, j = int(bond[0]), int(bond[1])
+        adj[i].append(j)
+        adj[j].append(i)
+    block = np.zeros((natoms, natoms), dtype=bool)
+    for src in range(natoms):
+        dist = np.full(natoms, -1, dtype=int)
+        dist[src] = 0
+        queue = deque([src])
+        while queue:
+            i = queue.popleft()
+            if dist[i] == max_graph_distance:
+                continue
+            for j in adj[i]:
+                if dist[j] < 0:
+                    dist[j] = dist[i] + 1
+                    queue.append(j)
+        block[src, dist >= 0] = dist[dist >= 0] <= max_graph_distance
+    return np.repeat(np.repeat(block, 3, axis=0), 3, axis=1)
+
+
+def _normalized_component(X, b, weight, name):
+    if weight < 0.0:
+        raise ValueError(f"{name} weight must be non-negative")
+    if weight == 0.0:
+        return None
+    scale = np.linalg.norm(b)
+    if not np.isfinite(scale) or scale <= 1e-30:
+        raise ValueError(f"{name} reference norm is zero or non-finite")
+    fac = np.sqrt(weight) / scale
+    return fac * X, fac * b
+
+
+def assemble_hybrid_hessian_system(A, H_ref, positions, masses, bonds, angles,
+                                   mode_weight=1.0, local_weight=1.0, internal_weight=1.0,
+                                   mode_balance="frequency", mode_mixing=0.1, frequency_floor_cm1=50.0,
+                                   local_graph_distance=2):
+    """Assemble direct linear residuals for an all-mode/local/internal hybrid fit.
+
+    HYBRID OBJECTIVE DERIVATION:
+    The simple Hessian-element fit asks "which FF Hessian is closest to the QM
+    Hessian element-by-element?"  A better question for vibrational spectra is
+    "which FF reproduces the action of the QM dynamical matrix on the vibrational
+    modes that matter?"  This function combines three complementary objectives:
+
+    1. MODE TERM (Rayleigh quotient targeting):
+       For each reference vibrational mode v_s with eigenvalue λ_s = ω_s²:
+           Target: v_s^T D(k) v_s = λ_s
+       Since D(k) = Σ_p k_p D_p is linear in k, this is a linear equation:
+           Σ_p k_p (v_s^T D_p v_s) = λ_s
+       Off-diagonal mode mixing v_s^T D(k) v_t (s≠t) is penalized separately
+       to preserve eigenvector structure.
+
+       Mode balancing weights:
+         - 'equal': w_s = 1 (all modes weighted equally)
+         - 'frequency': w_s = 1/max(|λ_s|, λ_floor) — first-order weighting
+           appropriate to squared frequency errors (δω² ~ δλ/λ)
+         - 'relative': w_s = 1/max(|λ_s|, λ_floor)² — relative eigenvalue accuracy
+
+    2. LOCAL TERM (graph-local Hessian blocks):
+       Only mass-weighted Cartesian atom blocks within bond-graph distance
+       d_max are fitted: ||D_ij^FF - D_ij^QM||² for d_graph(i,j) ≤ d_max.
+       This prevents absent long-range Hessian blocks from dominating the
+       reduced local model.
+
+    3. INTERNAL TERM (Wilson GF projection):
+       Projects both reference and model Hessians into the Wilson internal-
+       coordinate basis: F = C^{+T} D C^+, then fits ||F^FF - F^QM||².
+       This targets the valence force constants directly.
+
+    Each term is normalized by its own reference norm before applying user weight,
+    so the three components are dimensionless and comparable.  All three are
+    linear in k, so the combined problem is a single linear least-squares solve.
+    """
+    A = np.asarray(A, dtype=np.float64)
+    H_ref = np.asarray(H_ref, dtype=np.float64)
+    npar, n, n2 = A.shape
+    if n != n2 or H_ref.shape != (n, n):
+        raise ValueError(f"invalid sensitivity/reference shapes A={A.shape}, H_ref={H_ref.shape}")
+    if np.any(~np.isfinite(A)) or np.any(~np.isfinite(H_ref)):
+        raise ValueError("sensitivities or reference Hessian contain NaN or infinity")
+    Dp = mass_weight_hessian(A, masses)
+    Dref = mass_weight_hessian(H_ref, masses)
+    V, lam = reference_vibrational_modes(H_ref, positions, masses)
+    parts, targets, slices = [], [], {}
+
+    if mode_weight > 0.0:
+        if mode_balance == "equal":
+            w = np.ones_like(lam)
+        elif mode_balance == "frequency":
+            lam_floor = (frequency_floor_cm1 / 521.5)**2
+            w = 1.0 / np.maximum(np.abs(lam), lam_floor)
+        elif mode_balance == "relative":
+            lam_floor = (frequency_floor_cm1 / 521.5)**2
+            w = 1.0 / np.maximum(np.abs(lam), lam_floor)**2
+        else:
+            raise ValueError("mode_balance must be 'equal', 'frequency', or 'relative'")
+        if mode_mixing < 0.0:
+            raise ValueError("mode_mixing must be non-negative")
+        Kp = (V.T @ Dp) @ V  # batched BLAS: (npar, nmodes, nmodes), ~2500x faster than einsum
+        imode = np.arange(lam.size)
+        Xdiag = Kp[:, imode, imode].T * np.sqrt(w)[:, None]
+        bdiag = lam * np.sqrt(w)
+        Xmode, bmode = Xdiag, bdiag
+        if mode_mixing > 0.0 and lam.size > 1:
+            off = ~np.eye(lam.size, dtype=bool)
+            wmix = (w[:, None] * w[None, :])**0.25
+            Xoff = Kp[:, off].T * wmix[off, None]
+            Xmode = np.vstack((Xdiag, np.sqrt(mode_mixing) * Xoff))
+            bmode = np.concatenate((bdiag, np.zeros(Xoff.shape[0])))
+        component = _normalized_component(Xmode, bmode, mode_weight, "mode")
+        parts.append(component[0]); targets.append(component[1]); slices["mode"] = parts[-1].shape[0]
+
+    if local_weight > 0.0:
+        mask = local_hessian_mask(len(masses), bonds, local_graph_distance)
+        component = _normalized_component(Dp[:, mask].T, Dref[mask], local_weight, "local Hessian")
+        parts.append(component[0]); targets.append(component[1]); slices["local"] = parts[-1].shape[0]
+
+    B, labels = build_wilson_matrix(positions, bonds, angles)
+    coordinate_scale = np.ones(B.shape[0])
+    for iq, label in enumerate(labels):
+        if label[0] == "bond":
+            coordinate_scale[iq] = 1.0 / np.linalg.norm(np.asarray(positions)[label[2]] - np.asarray(positions)[label[1]])
+    Fref, internal_info = internal_hessian_projection(H_ref, B, masses, coordinate_scale=coordinate_scale)
+    if internal_weight > 0.0:
+        Fp, _ = internal_hessian_projection(A, B, masses, coordinate_scale=coordinate_scale)
+        component = _normalized_component(Fp.reshape(npar, -1).T, Fref.ravel(), internal_weight, "internal Hessian")
+        parts.append(component[0]); targets.append(component[1]); slices["internal"] = parts[-1].shape[0]
+
+    if not parts:
+        raise ValueError("at least one hybrid objective weight must be positive")
+    return np.vstack(parts), np.concatenate(targets), {
+        "n_modes": V.shape[1], "mode_eigenvalues": lam, "internal_rank": internal_info["rank"],
+        "n_internal_coordinates": B.shape[0], "wilson_singular_values": internal_info["singular_values"],
+        "wilson_matrix": B, "coordinate_scale": coordinate_scale, "coordinate_labels": labels,
+        "component_rows": slices,
+    }
+
+
+def solve_regularized_lsq(X, y, prior=None, regularization=0.0, parameter_scale=None,
+                          bounds=(0.0, np.inf), rcond=None):
+    """Solve a scaled direct least-squares problem, optionally with bounds and a prior.
+
+    MATHEMATICAL FORMULATION:
+    The problem is:  min_k ||X k - y||²  subject to lo ≤ k ≤ hi
+    with optional Tikhonov regularization:  + ρ Σ_p ((k_p - k_p^0)/σ_p)²
+
+    The regularization pulls poorly constrained parameters toward physical priors
+    k_p^0 with strength controlled by ρ and per-parameter scale σ_p.  This is
+    equivalent to augmenting the system:
+        [X]         [y]
+        [R] k  ≈   [R k^0]   where R = diag(sqrt(ρ)/σ_p)
+
+    COLUMN SCALING: Each column of X is normalized by its norm before solving,
+    so all parameters have comparable sensitivity.  Bounds are scaled accordingly.
+    This prevents parameters with large sensitivity columns from dominating.
+
+    SOLVER CHOICE:
+    - With bounds: scipy.optimize.lsq_linear (trust-region reflective method)
+      This avoids forming normal equations (which square the condition number:
+      κ(G) = κ(X)²) and handles bounds natively.
+    - Without bounds: numpy.linalg.lstsq (SVD-based, optimal conditioning)
+
+    UNOBSERVABLE PARAMETERS: Columns with near-zero norm (≤ 1e-30) indicate
+    parameters that the data cannot constrain at all — these raise an explicit
+    error rather than producing arbitrary values.
+    """
+    X = np.asarray(X, dtype=np.float64)
+    y = np.asarray(y, dtype=np.float64)
+    if X.ndim != 2 or y.shape != (X.shape[0],):
+        raise ValueError(f"incompatible least-squares shapes X={X.shape}, y={y.shape}")
+    if np.any(~np.isfinite(X)) or np.any(~np.isfinite(y)):
+        raise ValueError("least-squares system contains NaN or infinity")
+    npar = X.shape[1]
+    prior = np.zeros(npar) if prior is None else np.asarray(prior, dtype=np.float64)
+    if prior.shape != (npar,):
+        raise ValueError(f"prior shape {prior.shape} does not match {npar} parameters")
+    if parameter_scale is None:
+        parameter_scale = np.maximum(np.abs(prior), 1.0)
+    parameter_scale = np.asarray(parameter_scale, dtype=np.float64)
+    if parameter_scale.shape != (npar,) or np.any(~np.isfinite(parameter_scale)) or np.any(parameter_scale <= 0.0):
+        raise ValueError("parameter_scale must contain one finite positive value per parameter")
+    if regularization < 0.0:
+        raise ValueError("regularization must be non-negative")
+    if regularization > 0.0:
+        R = np.diag(np.sqrt(regularization) / parameter_scale)
+        X = np.vstack((X, R))
+        y = np.concatenate((y, R @ prior))
+
+    col_norm = np.linalg.norm(X, axis=0)
+    if np.any(col_norm <= 1e-30):
+        bad = np.flatnonzero(col_norm <= 1e-30)
+        raise np.linalg.LinAlgError(f"unobservable force-field parameters: {bad.tolist()}")
+    Xs = X / col_norm[None, :]
+    lo, hi = bounds
+    lo = np.broadcast_to(np.asarray(lo, dtype=np.float64), (npar,)) * col_norm
+    hi = np.broadcast_to(np.asarray(hi, dtype=np.float64), (npar,)) * col_norm
+    bounded = np.any(np.isfinite(lo)) or np.any(np.isfinite(hi))
+    if bounded:
+        from scipy.optimize import lsq_linear
+        result = lsq_linear(Xs, y, bounds=(lo, hi), method="trf", tol=1e-12, lsmr_tol=1e-12, max_iter=1000, verbose=0)
+        if not result.success:
+            raise RuntimeError(f"bounded least-squares failed: {result.message}")
+        z = result.x
+        solver = "scipy.optimize.lsq_linear"
+        optimality = result.optimality
+    else:
+        z, _, _, _ = np.linalg.lstsq(Xs, y, rcond=rcond)
+        solver = "numpy.linalg.lstsq"
+        optimality = np.linalg.norm(Xs.T @ (Xs @ z - y), ord=np.inf)
+    k = z / col_norm
+    s = np.linalg.svd(Xs, compute_uv=False)
+    residual = X @ k - y
+    return k, {
+        "solver": solver, "residual_norm": np.linalg.norm(residual),
+        "relative_residual": np.linalg.norm(residual) / np.linalg.norm(y),
+        "rank": int(np.sum(s > (np.finfo(float).eps * max(Xs.shape) if rcond is None else rcond) * s[0])),
+        "condition": s[0] / s[-1] if s[-1] > 0.0 else np.inf,
+        "singular_values": s, "column_norms": col_norm, "optimality": optimality,
+    }
+
+
+def fit_hybrid_hessian(systems, mode_weight=1.0, local_weight=1.0, internal_weight=1.0,
+                       mode_balance="frequency", mode_mixing=0.1, frequency_floor_cm1=50.0, local_graph_distance=2,
+                       prior=None, regularization=1e-2, parameter_scale=None, bounds=(0.0, np.inf)):
+    """Fit shared linear FF parameters to one or more hybrid Hessian objectives.
+
+    MULTI-SYSTEM ACCUMULATION:
+    When fitting across multiple systems (e.g. SiH4 + Si nanocrystals of different
+    sizes), the same global parameters appear in all systems.  Each system's
+    hybrid residual (mode + local + internal) is stacked vertically and weighted
+    equally by 1/sqrt(n_systems).  This ensures each system contributes equally
+    to the combined objective regardless of system size.
+
+    The combined stacked system is then solved by solve_regularized_lsq with
+    column scaling, Tikhonov regularization toward physical priors, and
+    non-negative bounds (k_p >= 0 for physical stiffnesses).
+    """
+    Xs, ys, system_info = [], [], []
+    npar = None
+    for system in systems:
+        X, y, info = assemble_hybrid_hessian_system(
+            system["A"], system["H_ref"], system["positions"], system["masses"], system["bonds"], system["angles"],
+            mode_weight=mode_weight, local_weight=local_weight, internal_weight=internal_weight,
+            mode_balance=mode_balance, mode_mixing=mode_mixing, frequency_floor_cm1=frequency_floor_cm1, local_graph_distance=local_graph_distance)
+        if npar is None:
+            npar = X.shape[1]
+        elif X.shape[1] != npar:
+            raise ValueError("all systems must use the same global parameter count")
+        Xs.append(X / np.sqrt(len(systems)))
+        ys.append(y / np.sqrt(len(systems)))
+        system_info.append(info)
+    if not Xs:
+        raise ValueError("no systems supplied")
+    k, diagnostics = solve_regularized_lsq(np.vstack(Xs), np.concatenate(ys), prior=prior, regularization=regularization, parameter_scale=parameter_scale, bounds=bounds)
+    diagnostics["systems"] = system_info
+    return k, diagnostics

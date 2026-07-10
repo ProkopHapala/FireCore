@@ -26,16 +26,70 @@ HARTREE_PER_BOHR2_TO_EV_PER_ANG2 = HARTREE_TO_EV * BOHR_TO_ANG_INV**2
 
 RESULTS_DIR = "/home/prokop/SIMULATIONS/jobs_pyscf_vib_OUT_small_nc/results"
 
-def angle_type_key(symbols, i, j, k):
-    si, sk = symbols[i], symbols[k]
+def angle_type_key(symbols, i, j, k, elements=None, central_only=False):
+    outer = elements if central_only else symbols
+    si, sk = outer[i], outer[k]
     return (si, symbols[j], sk) if si <= sk else (sk, symbols[j], si)
 
-def load_pyscf_case(case_dir):
-    """Load PySCF results for a case."""
+
+def assign_si_environment_types(symbols, bonds, enabled=False):
+    """Classify Si by bonded-H coordination: SiH3 (>=3), SiH2, SiH, or bulk Si."""
+    if not enabled:
+        return list(symbols)
+    nH = np.zeros(len(symbols), dtype=int)
+    for i, j, _ in bonds:
+        if symbols[i] == 'Si' and symbols[j] == 'H': nH[i] += 1
+        if symbols[j] == 'Si' and symbols[i] == 'H': nH[j] += 1
+    labels = list(symbols)
+    for i, symbol in enumerate(symbols):
+        if symbol != 'Si': continue
+        if nH[i] > 4:
+            raise ValueError(f"Si atom {i} has impossible H coordination {nH[i]}")
+        labels[i] = 'SiH3' if nH[i] >= 3 else ('SiH2' if nH[i] == 2 else ('SiH' if nH[i] == 1 else 'Si'))
+    return labels
+
+
+def interaction_type_counts(systems):
+    """Count observations supporting each environment-resolved interaction type."""
+    counts = {'bond': {}, 'angle': {}, '1-4': {}, 'torsion': {}}
+    for sys in systems:
+        labels = sys.get('atom_types', sys['symbols'])
+        for i, j, _ in sys['bonds']:
+            key = tuple(sorted((labels[i], labels[j])))
+            counts['bond'][key] = counts['bond'].get(key, 0) + 1
+        for i, j, k, _ in sys['angles']:
+            key = angle_type_key(labels, i, j, k, elements=sys['symbols'], central_only=sys.get('angle_central_only', False))
+            counts['angle'][key] = counts['angle'].get(key, 0) + 1
+        for i, j, _ in sys.get('bonds3', []):
+            key = tuple(sorted((labels[i], labels[j])))
+            counts['1-4'][key] = counts['1-4'].get(key, 0) + 1
+        for i, j, k, l, _, _ in sys.get('dihedrals', []):
+            key = dihedral_type_key(labels, i, j, k, l)
+            counts['torsion'][key] = counts['torsion'].get(key, 0) + 1
+    return counts
+
+
+def print_interaction_type_counts(systems, min_count=3):
+    counts = interaction_type_counts(systems)
+    for kind, table in counts.items():
+        if not table: continue
+        print(f"  {kind} type support:")
+        for key, count in sorted(table.items(), key=lambda item: str(item[0])):
+            marker = '  LOW SUPPORT' if count < min_count else ''
+            print(f"    {key}: {count}{marker}")
+    return counts
+
+def load_pyscf_case(case_dir, geometry_only=False):
+    """Load PySCF results for a case.
+
+    If geometry_only=True, skip loading hessian.npy, modes.npy, and frequencies
+    (the large/expensive files) — only load relaxed geometry and masses.
+    """
     d = {}
-    d['hessian'] = np.load(os.path.join(case_dir, 'hessian.npy'))      # (natoms,3,natoms,3) in Ha/Bohr^2
-    d['modes']   = np.load(os.path.join(case_dir, 'modes.npy'))         # (nmodes, natoms, 3)
-    d['freqs']   = np.load(os.path.join(case_dir, 'frequencies_cm1.npy'))
+    if not geometry_only:
+        d['hessian'] = np.load(os.path.join(case_dir, 'hessian.npy'))      # (natoms,3,natoms,3) in Ha/Bohr^2
+        d['modes']   = np.load(os.path.join(case_dir, 'modes.npy'))         # (nmodes, natoms, 3)
+        d['freqs']   = np.load(os.path.join(case_dir, 'frequencies_cm1.npy'))
     d['masses']  = np.load(os.path.join(case_dir, 'masses.npy'))        # (natoms,)
     # Load relaxed geometry
     xyz_path = os.path.join(case_dir, 'relaxed.xyz')
@@ -110,14 +164,14 @@ def dihedral_energy_gradient(pos, d=1, n=3):
     q12 = p1 - p2   # ji
     q32 = p3 - p2   # jk
     q43 = p4 - p3   # kl
-    q12w = np.linalg.norm(q12)
-    q32w = np.linalg.norm(q32)
-    q43w = np.linalg.norm(q43)
-    if q12w < 1e-12 or q32w < 1e-12 or q43w < 1e-12:
+    l12 = np.linalg.norm(q12)
+    l32 = np.linalg.norm(q32)
+    l43 = np.linalg.norm(q43)
+    if l12 < 1e-12 or l32 < 1e-12 or l43 < 1e-12:
         return 0.0, np.zeros_like(pos)
-    u12 = q12 / q12w
-    u32 = q32 / q32w
-    u43 = q43 / q43w
+    u12 = q12 / l12
+    u32 = q32 / l32
+    u43 = q43 / l43
 
     n123 = np.cross(u12, u32)
     n234 = np.cross(u43, u32)
@@ -132,25 +186,41 @@ def dihedral_energy_gradient(pos, d=1, n=3):
 
     csx = np.dot(n123, n234) * inv_n12
     csy = -np.dot(n123, u43) * inv_n12
-    # cs = (cos phi, -sin phi)  => complex conjugate of e^{i phi}
-    phi = np.arctan2(-csy, csx)
+    # This is the signed UFF/Prokop convention used by Vec2d complex powers.
+    phi = np.arctan2(csy, csx)
     nphi = n * phi
     csnx = np.cos(nphi)
-    csny = -np.sin(nphi)
+    csny = np.sin(nphi)
 
     E = 1.0 + d * csnx
     # f scalar used to build forces (f = -V*d*n*csn.y  with V=1)
     f = -d * n * csny
 
-    fp1 = -f * n123 * il2_123 * q12w
-    fp4 =  f * n234 * il2_234 * q43w
-    c123 = np.dot(u32, u12) * (q32w / q12w)
-    c432 = np.dot(u32, u43) * (q32w / q43w)
+    # hneigh.w in UFF.h stores inverse bond length, not bond length.
+    il12, il32, il43 = 1.0/l12, 1.0/l32, 1.0/l43
+    fp1 = -f * n123 * il2_123 * il12
+    fp4 =  f * n234 * il2_234 * il43
+    c123 = np.dot(u32, u12) * (il32 / il12)
+    c432 = np.dot(u32, u43) * (il32 / il43)
     fp3 = -c123 * fp1 - (c432 + 1.0) * fp4
     fp2 = (c123 - 1.0) * fp1 + c432 * fp4
 
     grad = -np.array([fp1, fp2, fp3, fp4])
     return E, grad
+
+
+def dihedral_angle(pos):
+    """Signed UFF/Prokop dihedral angle in radians for atoms i-j-k-l."""
+    p1, p2, p3, p4 = np.asarray(pos, dtype=float)
+    u12 = p1 - p2; u12 /= np.linalg.norm(u12)
+    u32 = p3 - p2; u32 /= np.linalg.norm(u32)
+    u43 = p4 - p3; u43 /= np.linalg.norm(u43)
+    n123 = np.cross(u12, u32)
+    n234 = np.cross(u43, u32)
+    den = np.linalg.norm(n123) * np.linalg.norm(n234)
+    if den < 1e-14:
+        raise ValueError("dihedral angle is singular for collinear bond vectors")
+    return np.arctan2(-np.dot(n123, u43) / den, np.dot(n123, n234) / den)
 
 
 def dihedral_hessian(pos, d=1, n=3, h=1e-5):
@@ -383,8 +453,8 @@ def build_sensitivity_matrices(positions, bonds, angles, bond_types, angle_types
     Returns A: list of (3N x 3N) numpy arrays, one per free parameter.
     """
     n3 = natoms * 3
-    nparams = max(max(bond_types) + 1 if bond_types else 0,
-                  max(angle_types) + 1 if angle_types else 0)
+    nparams = max(int(bond_types.max()) + 1 if len(bond_types) else 0,
+                  int(angle_types.max()) + 1 if len(angle_types) else 0)
     A = [np.zeros((n3, n3)) for _ in range(nparams)]
     
     # Bond contributions
@@ -414,6 +484,7 @@ def build_sensitivity_matrices(positions, bonds, angles, bond_types, angle_types
         A[t][jj_idx, jj_idx] += eeT + dl * Cjj
     
     # Angle contributions: E = 0.5*kθ*(c-c0)^2/(1-c0^2), so kθ is angular curvature in eV/rad^2
+    # Mirrors C++ angle_dHdk_cos: rank-one g⊗g + prestress (c-c0)*C_cos, all scaled by 1/s0²
     for ia, (i, j, k, theta0) in enumerate(angles):
         t = angle_types[ia]  # already global index from ParamMap
         a_vec = positions[i] - positions[j]
@@ -429,6 +500,7 @@ def build_sensitivity_matrices(positions, bonds, angles, bond_types, angle_types
         gi = (v - cos_theta*u) / al
         gk = (u - cos_theta*v) / cl
         gj = -(gi + gk)
+        dc = cos_theta - c0
         scale = 1.0 / s02
         vecs = {i: gi, j: gj, k: gk}
         for a_atom in [i, j, k]:
@@ -436,6 +508,26 @@ def build_sensitivity_matrices(positions, bonds, angles, bond_types, angle_types
                 a_idx = slice(a_atom*3, a_atom*3+3)
                 b_idx = slice(b_atom*3, b_atom*3+3)
                 A[t][a_idx, b_idx] += scale * np.outer(vecs[a_atom], vecs[b_atom])
+        # Prestress term: (c-c0)*C_cos / s0² — matches C++ angle_dHdk_cos
+        if abs(dc) > 1e-12:
+            I3 = np.eye(3)
+            uuT = np.outer(u, u); vvT = np.outer(v, v)
+            vuT = np.outer(v, u); uvT = np.outer(u, v)
+            C_ii = (-vuT - uvT + 3*cos_theta*uuT - cos_theta*I3) / (al*al)
+            C_kk = (-uvT - vuT + 3*cos_theta*vvT - cos_theta*I3) / (cl*cl)
+            C_ik = (I3 - vvT - uuT + cos_theta*uvT) / (al*cl)
+            C_ki = C_ik.T
+            C_ij = -C_ii - C_ik; C_ji = C_ij.T
+            C_jk = -C_ik - C_kk; C_kj = C_jk.T
+            C_jj = C_ii + C_ik + C_ki + C_kk
+            Ccos = {i: {i: C_ii, j: C_ij, k: C_ik},
+                    j: {i: C_ji, j: C_jj, k: C_jk},
+                    k: {i: C_ki, j: C_kj, k: C_kk}}
+            for a_atom in [i, j, k]:
+                for b_atom in [i, j, k]:
+                    a_idx = slice(a_atom*3, a_atom*3+3)
+                    b_idx = slice(b_atom*3, b_atom*3+3)
+                    A[t][a_idx, b_idx] += scale * dc * Ccos[a_atom][b_atom]
     
     return A
 
@@ -651,7 +743,7 @@ def fit_gradient_descent_multi(systems, lr=1e-4, momentum=0.9, max_iter=5000, to
         k += velocity
     return k
 
-def build_global_param_map(all_bonds, all_angles, all_symbols, all_bonds3=None, all_dihedrals=None):
+def build_global_param_map(all_bonds, all_angles, all_symbols, all_bonds3=None, all_dihedrals=None, all_elements=None, angle_central_only=False):
     """Build a global ParamMap from all systems' element types.
     
     all_bonds/all_angles: list of lists (one per system)
@@ -662,6 +754,7 @@ def build_global_param_map(all_bonds, all_angles, all_symbols, all_bonds3=None, 
     """
     all_bonds3 = all_bonds3 or []
     all_dihedrals = all_dihedrals or []
+    all_elements = all_symbols if all_elements is None else all_elements
     global_bond_map = {}
     global_bond3_map = {}
     global_angle_map = {}
@@ -681,23 +774,28 @@ def build_global_param_map(all_bonds, all_angles, all_symbols, all_bonds3=None, 
                 global_bond3_map[key] = n_bond_types + len(global_bond3_map)
     # Pass 3: discover all angle types, offset after bond types
     n_bond3_types = len(global_bond3_map)
-    for angles, symbols in zip(all_angles, all_symbols):
+    for angles, symbols, elements in zip(all_angles, all_symbols, all_elements):
         for (i, j, k, theta0) in angles:
-            key = angle_type_key(symbols, i, j, k)
+            key = angle_type_key(symbols, i, j, k, elements=elements, central_only=angle_central_only)
             if key not in global_angle_map:
                 global_angle_map[key] = n_bond_types + n_bond3_types + len(global_angle_map)
     # Pass 4: discover all dihedral types, offset after angle types
     n_angle_offset = n_bond_types + n_bond3_types
+    n_dihedral_offset = n_angle_offset + len(global_angle_map)
     for dihedrals, symbols in zip(all_dihedrals, all_symbols):
         for (i, j, k, l, d, n) in dihedrals:
             key = dihedral_type_key(symbols, i, j, k, l)
             if key not in global_dihedral_map:
-                global_dihedral_map[key] = n_angle_offset + len(global_dihedral_map)
-    n_free = n_angle_offset + len(global_dihedral_map)
+                global_dihedral_map[key] = n_dihedral_offset + len(global_dihedral_map)
+    n_free = n_dihedral_offset + len(global_dihedral_map)
+    indices = sorted(list(global_bond_map.values()) + list(global_bond3_map.values()) + list(global_angle_map.values()) + list(global_dihedral_map.values()))
+    if indices != list(range(n_free)):
+        raise RuntimeError(f"global parameter map is not contiguous: {indices}, expected 0..{n_free-1}")
     return global_bond_map, global_bond3_map, global_angle_map, global_dihedral_map, n_free
 
 def compute_averaged_equilibrium(all_bonds, all_angles, all_symbols, all_positions,
-                                 global_bond_map, global_angle_map, global_bond3_map=None, all_bonds3=None):
+                                 global_bond_map, global_angle_map, global_bond3_map=None, all_bonds3=None,
+                                 all_elements=None, angle_central_only=False):
     """Compute averaged equilibrium bond lengths l0 and angle cosine c0 across all systems.
 
     The angle force is written in c=cos(theta), therefore the transferable equilibrium
@@ -706,18 +804,19 @@ def compute_averaged_equilibrium(all_bonds, all_angles, all_symbols, all_positio
     """
     global_bond3_map = global_bond3_map or {}
     all_bonds3 = all_bonds3 or []
+    all_elements = all_symbols if all_elements is None else all_elements
     bond_lengths = {}
     bond3_lengths = {}
     angle_cos_values = {}
     angle_theta_values = {}
 
-    for bonds, angles, symbols, positions in zip(all_bonds, all_angles, all_symbols, all_positions):
+    for bonds, angles, symbols, elements, positions in zip(all_bonds, all_angles, all_symbols, all_elements, all_positions):
         for (i, j, l0) in bonds:
             key = tuple(sorted([symbols[i], symbols[j]]))
             r = np.linalg.norm(positions[j] - positions[i])
             bond_lengths.setdefault(key, []).append(r)
         for (i, j, k, theta0) in angles:
-            key = angle_type_key(symbols, i, j, k)
+            key = angle_type_key(symbols, i, j, k, elements=elements, central_only=angle_central_only)
             ri = positions[i] - positions[j]
             rk = positions[k] - positions[j]
             ri /= np.linalg.norm(ri)
@@ -751,7 +850,7 @@ def compute_averaged_equilibrium(all_bonds, all_angles, all_symbols, all_positio
 
     return avg_l0, avg_l0_3, avg_theta0
 
-def rebuild_topology_with_averaged(bonds, angles, bonds3, symbols, positions, avg_l0, avg_theta0, avg_l0_3=None):
+def rebuild_topology_with_averaged(bonds, angles, bonds3, symbols, positions, avg_l0, avg_theta0, avg_l0_3=None, elements=None, angle_central_only=False):
     """Rebuild bond/angle lists with averaged equilibrium parameters.
     
     Returns new bonds/angles/bonds3 lists with l0 and theta0 replaced by averaged values.
@@ -763,8 +862,9 @@ def rebuild_topology_with_averaged(bonds, angles, bonds3, symbols, positions, av
         new_bonds.append((i, j, new_l0))
 
     new_angles = []
+    elements = symbols if elements is None else elements
     for (i, j, k, theta0) in angles:
-        key = angle_type_key(symbols, i, j, k)
+        key = angle_type_key(symbols, i, j, k, elements=elements, central_only=angle_central_only)
         new_theta0 = avg_theta0[key]
         new_angles.append((i, j, k, new_theta0))
 
@@ -776,6 +876,850 @@ def rebuild_topology_with_averaged(bonds, angles, bonds3, symbols, positions, av
             new_bonds3.append((i, j, new_l0))
 
     return new_bonds, new_angles, new_bonds3
+
+
+def equilibrium_distributions(systems, include_third=True, include_dihedrals=True):
+    """Collect relaxed internal-coordinate values by transferable interaction type."""
+    values = {'bond': {}, 'angle': {}, '1-4': {}, 'dihedral': {}}
+    for sys in systems:
+        symbols, positions = sys.get('atom_types', sys['symbols']), sys['positions']
+        for i, j, _ in sys['bonds']:
+            key = '-'.join(sorted((symbols[i], symbols[j])))
+            values['bond'].setdefault(key, []).append(np.linalg.norm(positions[j] - positions[i]))
+        for i, j, k, _ in sys['angles']:
+            key = '-'.join(angle_type_key(symbols, i, j, k, elements=sys['symbols'], central_only=sys.get('angle_central_only', False)))
+            u = positions[i] - positions[j]; u /= np.linalg.norm(u)
+            v = positions[k] - positions[j]; v /= np.linalg.norm(v)
+            values['angle'].setdefault(key, []).append(np.degrees(np.arccos(np.clip(np.dot(u, v), -1.0, 1.0))))
+        if include_third:
+            for i, j, _ in sys.get('bonds3', []):
+                key = '-'.join(sorted((symbols[i], symbols[j])))
+                values['1-4'].setdefault(key, []).append(np.linalg.norm(positions[j] - positions[i]))
+        if include_dihedrals:
+            for i, j, k, l, _, _ in sys.get('dihedrals', []):
+                key = '-'.join((symbols[i], symbols[j], symbols[k], symbols[l]))
+                values['dihedral'].setdefault(key, []).append(np.degrees(dihedral_angle(positions[[i, j, k, l]])))
+    return values
+
+
+_SI_SUBTYPE_PREFIXES = ('SiH3', 'SiH2', 'SiH', 'Si')
+
+def _element_family_key(subtype_key):
+    """Map a subtype key string (e.g. 'H-SiH2', 'SiH-SiH2', 'H-SiH-Si') to element-only family (e.g. 'H-Si', 'Si-Si', 'H-Si-Si')."""
+    parts = subtype_key.split('-')
+    elem_parts = []
+    for p in parts:
+        matched = False
+        for pref in _SI_SUBTYPE_PREFIXES:
+            if p == pref:
+                elem_parts.append('Si')
+                matched = True
+                break
+        if not matched:
+            elem_parts.append(p)
+    return '-'.join(elem_parts)
+
+
+def _plot_stacked_by_family(values, kind, title, unit, outdir, filename):
+    """Plot one subplot per element-family, with subtypes as stacked histograms."""
+    raw = values[kind]
+    if not raw:
+        fig, ax = plt.subplots(1, 1, figsize=(6, 4), constrained_layout=True)
+        ax.text(0.5, 0.5, 'not enabled', ha='center', va='center', transform=ax.transAxes)
+        ax.set_title(title)
+        fig.savefig(os.path.join(outdir, filename), dpi=170)
+        plt.close(fig)
+        return
+    # Group subtype keys by element family
+    families = {}
+    for sk in sorted(raw.keys()):
+        fk = _element_family_key(sk)
+        families.setdefault(fk, []).append(sk)
+    fam_keys = sorted(families.keys())
+    ncol = min(3, len(fam_keys))
+    nrow = int(np.ceil(len(fam_keys) / ncol))
+    fig, axes = plt.subplots(nrow, ncol, figsize=(5.5*ncol, 4.0*nrow), constrained_layout=True, squeeze=False)
+    rows = []
+    for fi, fk in enumerate(fam_keys):
+        ax = axes[fi // ncol, fi % ncol]
+        subtypes = families[fk]
+        all_vals = [np.asarray(raw[sk]) for sk in subtypes]
+        vmin = min(v.min() for v in all_vals); vmax = max(v.max() for v in all_vals)
+        span = vmax - vmin
+        pad = 0.04*span if span > 1e-10 else max(abs(vmin)*1e-6, 1e-6)
+        bins = np.linspace(vmin - pad, vmax + pad, 31)
+        plot_vals = []
+        labels = []
+        for si, sk in enumerate(subtypes):
+            v = np.asarray(raw[sk])
+            plot_vals.append(v)
+            labels.append(f'{sk} (n={v.size})')
+            rows.append((kind, sk, v.size, np.mean(v), np.std(v), np.min(v), np.max(v), unit))
+        ax.hist(plot_vals, bins=bins, stacked=True, histtype='stepfilled', alpha=0.7, linewidth=0.8, label=labels)
+        ax.set_title(fk, fontsize=11)
+        ax.set_xlabel(unit)
+        ax.set_ylabel('count')
+        ax.ticklabel_format(axis='x', style='plain', useOffset=False)
+        ax.grid(True, alpha=0.2, ls=':')
+        ax.legend(fontsize=7, loc='best')
+    for fi in range(len(fam_keys), nrow*ncol):
+        axes[fi // ncol, fi % ncol].axis('off')
+    fig.suptitle(title, fontsize=13)
+    out = os.path.join(outdir, filename)
+    fig.savefig(out, dpi=170)
+    plt.close(fig)
+    return rows, out
+
+
+def plot_equilibrium_distributions(systems, outdir):
+    """Plot relaxed bond, angle, 1-4, and signed torsion distributions.
+
+    Each element-family (e.g. Si-Si, Si-H for bonds; H-Si-H, Si-Si-H, Si-Si-Si
+    for angles) gets its own subplot with an appropriate x-axis range.
+    Subtypes (e.g. SiH, SiH2, SiH3) are shown as color-coded stacked histograms
+    within each family panel.
+    """
+    values = equilibrium_distributions(systems)
+    os.makedirs(outdir, exist_ok=True)
+    all_rows = []
+    specs = [
+        ('bond',     'Bond length distributions by element family',   'Angstrom', 'equilibrium_bond_distributions.png'),
+        ('angle',    'Bond angle distributions by element family',    'degree',   'equilibrium_angle_distributions.png'),
+        ('1-4',      '1-4 endpoint distance by element family',       'Angstrom', 'equilibrium_1-4_distributions.png'),
+        ('dihedral', 'Signed torsion distributions by element family','degree',   'equilibrium_dihedral_distributions.png'),
+    ]
+    for kind, title, unit, filename in specs:
+        result = _plot_stacked_by_family(values, kind, title, unit, outdir, filename)
+        if result is not None:
+            all_rows.extend(result[0])
+            print(f"  Saved {kind} distributions: {result[1]}")
+    table = os.path.join(outdir, 'equilibrium_parameter_distributions.csv')
+    with open(table, 'w') as f:
+        f.write('coordinate,type,count,mean,std,min,max,unit\n')
+        for row in all_rows: f.write(','.join(map(str, row)) + '\n')
+    print(f"  Saved equilibrium statistics: {table}")
+    return values, all_rows, outdir
+
+
+def dft_stiffness_distributions(systems):
+    """Extract DFT stiffnesses via Wilson GF projection (F = C^{+T} D C^+).
+
+    For each system, project the DFT Hessian into internal coordinates.
+    The diagonal of F gives the directly-extracted stiffness for each
+    bond (eV/Å²) and angle (eV/rad²) — no fitting needed.
+
+    Returns values dict with 'bond' and 'angle' keys, mapping type->list of stiffnesses.
+    """
+    values = {'bond': {}, 'angle': {}}
+    for sys in systems:
+        symbols = sys.get('atom_types', sys['symbols'])
+        elements = sys['symbols']
+        positions = sys['positions']
+        masses = sys['data']['masses']
+        H_ref = sys['H_ref']
+        bonds = sys['bonds']
+        angles = sys['angles']
+        angle_central_only = sys.get('angle_central_only', False)
+        B, labels = FFfit_cpp.build_wilson_matrix(positions, bonds, angles)
+        # Coordinate scale: bonds scaled by r0 (dimensionless Δr/r0), angles in radians (scale=1)
+        coord_scale = np.ones(B.shape[0])
+        for ib, (i, j, _) in enumerate(bonds):
+            coord_scale[ib] = np.linalg.norm(positions[j] - positions[i])
+        F, info = FFfit_cpp.internal_hessian_projection(H_ref, B, masses, coordinate_scale=coord_scale)
+        # F is (n_int, n_int); diagonal = directly-extracted stiffnesses
+        Fdiag = np.diag(F)
+        for ib, (i, j, _) in enumerate(bonds):
+            key = '-'.join(sorted((symbols[i], symbols[j])))
+            # F is in dimensionless coords (Δr/r0), so F_diag has units eV (energy per dimensionless displacement²)
+            # Convert back to eV/Å²: k = F_diag / r0²
+            r0 = coord_scale[ib]
+            values['bond'].setdefault(key, []).append(Fdiag[ib] / (r0 * r0))
+        for ia, (i, j, k, _) in enumerate(angles):
+            key = '-'.join(FFfit_cpp.angle_type_key(symbols, i, j, k, elements=elements, central_only=angle_central_only)) if hasattr(FFfit_cpp, 'angle_type_key') else '-'.join(angle_type_key(symbols, i, j, k, elements=elements, central_only=angle_central_only))
+            # Angles are already in radians (scale=1), so F_diag has units eV/rad²
+            values['angle'].setdefault(key, []).append(Fdiag[len(bonds) + ia])
+    # Convert lists to arrays
+    for kind in values:
+        for key in values[kind]:
+            values[kind][key] = np.asarray(values[kind][key])
+    return values
+
+
+def plot_dft_stiffness_distributions(systems, outdir):
+    """Plot DFT-extracted bond and angle stiffness histograms by element family.
+
+    Uses the Wilson GF method (internal_hessian_projection) to directly extract
+    valence force constants from the DFT Hessian — no fitting required.
+    Stiffnesses are grouped by element family (Si-Si, Si-H for bonds;
+    H-Si-H, H-Si-Si, Si-Si-Si for angles) with subtypes stacked.
+    """
+    values = dft_stiffness_distributions(systems)
+    os.makedirs(outdir, exist_ok=True)
+    all_rows = []
+    specs = [
+        ('bond',  'DFT bond stiffness (Wilson GF diagonal)',  'eV/Å²',  'dft_bond_stiffness_distributions.png'),
+        ('angle', 'DFT angle stiffness (Wilson GF diagonal)', 'eV/rad²', 'dft_angle_stiffness_distributions.png'),
+    ]
+    for kind, title, unit, filename in specs:
+        result = _plot_stacked_by_family(values, kind, title, unit, outdir, filename)
+        if result is not None:
+            all_rows.extend(result[0])
+            print(f"  Saved {kind} stiffness distributions: {result[1]}")
+    table = os.path.join(outdir, 'dft_stiffness_distributions.csv')
+    with open(table, 'w') as f:
+        f.write('coordinate,type,count,mean,std,min,max,unit\n')
+        for row in all_rows: f.write(','.join(map(str, row)) + '\n')
+    print(f"  Saved DFT stiffness statistics: {table}")
+    return values, all_rows, outdir
+
+
+# ========== Stiffness visualization: clustering + interactive HTML ==========
+
+def cluster_1d(values, gap_threshold=2.0):
+    """Identify disjunct clusters in 1D data via gap-based splitting.
+
+    Sorts values, finds gaps between consecutive points where the gap exceeds
+    gap_threshold * median_gap. Returns list of (center, std, indices) tuples.
+    """
+    v = np.sort(np.asarray(values, dtype=float))
+    if len(v) < 2:
+        return [(float(v.mean()), float(v.std()) if len(v) > 1 else 0.0, np.arange(len(v)))]
+    gaps = np.diff(v)
+    median_gap = np.median(gaps)
+    if median_gap < 1e-12:
+        return [(float(v.mean()), float(v.std()), np.arange(len(v)))]
+    is_gap = gaps > gap_threshold * median_gap
+    split_idx = np.where(is_gap)[0] + 1
+    clusters = []
+    prev = 0
+    for si in split_idx:
+        idx = np.arange(prev, si)
+        clusters.append((float(v[idx].mean()), float(v[idx].std()), idx))
+        prev = si
+    idx = np.arange(prev, len(v))
+    clusters.append((float(v[idx].mean()), float(v[idx].std()), idx))
+    return clusters
+
+
+def prepare_stiffness_viz_data(systems):
+    """Compute per-bond/angle stiffnesses via Wilson GF, assign clusters, and compute family vmin/vmax.
+
+    Returns list of dicts, one per system, each with:
+      - positions, symbols, atom_types
+      - bonds: list of (i, j, r0, stiffness, subtype_key, family_key, cluster_id)
+      - angles: list of (i, j, k, theta_deg, stiffness, subtype_key, family_key, cluster_id)
+      - family_ranges: {family_key: (vmin, vmax)} for bonds and angles separately
+    """
+    # First pass: collect all stiffnesses per subtype for clustering
+    all_bond_stiff = {}  # subtype_key -> list of (sys_idx, bond_idx, stiffness)
+    all_angle_stiff = {}
+    sys_data = []
+    for si, sys in enumerate(systems):
+        symbols = sys.get('atom_types', sys['symbols'])
+        elements = sys['symbols']
+        positions = sys['positions']
+        masses = sys['data']['masses']
+        H_ref = sys['H_ref']
+        bonds = sys['bonds']
+        angles = sys['angles']
+        angle_central_only = sys.get('angle_central_only', False)
+        B, labels = FFfit_cpp.build_wilson_matrix(positions, bonds, angles)
+        coord_scale = np.ones(B.shape[0])
+        for ib, (i, j, _) in enumerate(bonds):
+            coord_scale[ib] = np.linalg.norm(positions[j] - positions[i])
+        F, info = FFfit_cpp.internal_hessian_projection(H_ref, B, masses, coordinate_scale=coord_scale)
+        Fdiag = np.diag(F)
+        bond_records = []
+        for ib, (i, j, _) in enumerate(bonds):
+            r0 = coord_scale[ib]
+            k_val = Fdiag[ib] / (r0 * r0)
+            sk = '-'.join(sorted((symbols[i], symbols[j])))
+            fk = _element_family_key(sk)
+            bond_records.append({'i': i, 'j': j, 'r0': r0, 'stiff': k_val, 'subtype': sk, 'family': fk})
+            all_bond_stiff.setdefault(sk, []).append((si, ib, k_val))
+        angle_records = []
+        for ia, (i, j, k, _) in enumerate(angles):
+            k_val = Fdiag[len(bonds) + ia]
+            u = positions[i] - positions[j]; u /= np.linalg.norm(u)
+            v = positions[k] - positions[j]; v /= np.linalg.norm(v)
+            theta = np.degrees(np.arccos(np.clip(np.dot(u, v), -1.0, 1.0)))
+            ak = angle_type_key(symbols, i, j, k, elements=elements, central_only=angle_central_only)
+            sk = '-'.join(ak)
+            fk = _element_family_key(sk)
+            angle_records.append({'i': i, 'j': j, 'k': k, 'theta': theta, 'stiff': k_val, 'subtype': sk, 'family': fk})
+            all_angle_stiff.setdefault(sk, []).append((si, ia, k_val))
+        sys_data.append({
+            'name': sys['name'], 'positions': positions, 'symbols': sys['symbols'],
+            'atom_types': symbols, 'bonds': bond_records, 'angles': angle_records,
+        })
+    # Cluster per subtype
+    bond_clusters = {}  # (sys_idx, bond_idx) -> cluster_id
+    for sk, items in all_bond_stiff.items():
+        vals = np.array([x[2] for x in items])
+        clusters = cluster_1d(vals)
+        for ci, (center, std, indices) in enumerate(clusters):
+            for idx in indices:
+                si, bi, _ = items[idx]
+                bond_clusters[(si, bi)] = ci
+    angle_clusters = {}
+    for sk, items in all_angle_stiff.items():
+        vals = np.array([x[2] for x in items])
+        clusters = cluster_1d(vals)
+        for ci, (center, std, indices) in enumerate(clusters):
+            for idx in indices:
+                si, ai, _ = items[idx]
+                angle_clusters[(si, ai)] = ci
+    # Assign cluster ids and compute family ranges
+    bond_family_vals = {}
+    angle_family_vals = {}
+    for si, sd in enumerate(sys_data):
+        for bi, br in enumerate(sd['bonds']):
+            br['cluster'] = bond_clusters.get((si, bi), 0)
+            bond_family_vals.setdefault(br['family'], []).append(br['stiff'])
+        for ai, ar in enumerate(sd['angles']):
+            ar['cluster'] = angle_clusters.get((si, ai), 0)
+            angle_family_vals.setdefault(ar['family'], []).append(ar['stiff'])
+    family_ranges = {'bond': {}, 'angle': {}}
+    for fk, vals in bond_family_vals.items():
+        family_ranges['bond'][fk] = (float(np.min(vals)), float(np.max(vals)))
+    for fk, vals in angle_family_vals.items():
+        family_ranges['angle'][fk] = (float(np.min(vals)), float(np.max(vals)))
+    for sd in sys_data:
+        sd['family_ranges'] = family_ranges
+    return sys_data
+
+
+def _json_safe(obj):
+    """Recursively convert numpy types to native Python for JSON serialization."""
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, (np.floating, np.integer)):
+        return obj.item()
+    if isinstance(obj, dict):
+        return {k: _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(v) for v in obj]
+    return obj
+
+
+def build_stiffness_html(sys_data, outdir):
+    """Generate a self-contained interactive p5.js HTML for a single nanocrystal.
+
+    Features:
+      - 3D ball-and-stick rendering with mouse rotation
+      - Bonds colored by stiffness (rainbow, vmin/vmax from family)
+      - Angles shown as arcs colored by stiffness
+      - Dropdown to select: all bonds, specific family, specific cluster
+      - Toggle bonds/angles visibility
+    """
+    name = sys_data['name']
+    positions = sys_data['positions']
+    symbols = sys_data['symbols']
+    atom_types = sys_data['atom_types']
+    bonds = sys_data['bonds']
+    angles = sys_data['angles']
+    family_ranges = sys_data['family_ranges']
+    # Build compact JSON data
+    data = {
+        'name': name,
+        'positions': positions.tolist(),
+        'symbols': symbols,
+        'atom_types': atom_types,
+        'bonds': [{'i': b['i'], 'j': b['j'], 'r0': b['r0'], 'stiff': b['stiff'], 'subtype': b['subtype'], 'family': b['family'], 'cluster': b['cluster']} for b in bonds],
+        'angles': [{'i': a['i'], 'j': a['j'], 'k': a['k'], 'theta': a['theta'], 'stiff': a['stiff'], 'subtype': a['subtype'], 'family': a['family'], 'cluster': a['cluster']} for a in angles],
+        'family_ranges': family_ranges,
+    }
+    data_json = json.dumps(_json_safe(data))
+    # Collect unique families and subtypes for dropdowns
+    bond_families = sorted(set(b['family'] for b in bonds))
+    angle_families = sorted(set(a['family'] for a in angles))
+    bond_subtypes = sorted(set(b['subtype'] for b in bonds))
+    angle_subtypes = sorted(set(a['subtype'] for a in angles))
+    html = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Stiffness Map — {name}</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+<style>
+body {{ margin: 0; padding: 0; background: #1a1a2e; color: #eee; font-family: sans-serif; overflow: hidden; }}
+#controls {{ position: absolute; top: 10px; left: 10px; z-index: 10; background: rgba(20,20,40,0.85); padding: 12px; border-radius: 8px; max-width: 320px; }}
+#controls h3 {{ margin: 0 0 8px 0; font-size: 14px; }}
+#controls label {{ font-size: 12px; display: block; margin: 6px 0 2px 0; }}
+#controls select, #controls button {{ font-size: 12px; width: 100%; margin: 2px 0; }}
+#info {{ position: absolute; bottom: 10px; left: 10px; z-index: 10; background: rgba(20,20,40,0.85); padding: 8px; border-radius: 8px; font-size: 11px; max-width: 400px; }}
+canvas {{ display: block; }}
+.legend-bar {{ width: 200px; height: 12px; border-radius: 4px; margin: 4px 0; }}
+#histPanel {{ position: absolute; top: 10px; right: 10px; z-index: 10; background: rgba(20,20,40,0.9); padding: 10px; border-radius: 8px; width: 340px; }}
+#histPanel h3 {{ margin: 0 0 6px 0; font-size: 13px; }}
+#histCanvas {{ background: #111; border-radius: 4px; }}
+#histPanel label {{ font-size: 11px; display: inline-block; margin: 4px 2px 0 0; }}
+#histPanel input[type=range] {{ width: 120px; vertical-align: middle; }}
+</style>
+</head>
+<body>
+<div id="controls">
+  <h3>{name} — Stiffness Map</h3>
+  <label>Show:</label>
+  <select id="modeSelect">
+    <option value="bonds_all">All bonds</option>
+    <option value="angles_all">All angles</option>
+  </select>
+  <label>Filter by family:</label>
+  <select id="familySelect"><option value="all">All families</option></select>
+  <label>Filter by cluster:</label>
+  <select id="clusterSelect"><option value="all">All clusters</option></select>
+  <label>Bond color mode:</label>
+  <select id="colorMode">
+    <option value="stiffness">Stiffness (rainbow)</option>
+    <option value="length">Bond length (rainbow)</option>
+    <option value="cluster">Cluster (discrete)</option>
+    <option value="subtype">Subtype (discrete)</option>
+  </select>
+  <label>Atom size:</label>
+  <input type="range" id="atomSize" min="5" max="30" value="14" style="width:100%">
+  <div id="legendContainer"></div>
+</div>
+<div id="info"></div>
+<div id="histPanel">
+  <h3>Stiffness Histogram</h3>
+  <canvas id="histCanvas" width="320" height="180"></canvas>
+  <div id="histControls">
+    <label>vmin: <input type="range" id="vminSlider" min="0" max="100" value="0" step="0.1"></label>
+    <label>vmax: <input type="range" id="vmaxSlider" min="0" max="100" value="100" step="0.1"></label>
+    <span id="rangeLabel" style="font-size:11px;color:#8af;"></span>
+  </div>
+</div>
+<script>
+const DATA = {data_json};
+let rotX = -0.3, rotY = 0.5, camZoom = 1.0;
+let dragging = false, lastMX = 0, lastMY = 0;
+let mode = 'bonds_all', familyFilter = 'all', clusterFilter = 'all', colorMode = 'stiffness';
+let atomSize = 14;
+let center = [0, 0, 0];
+let scaleF = 1.0;
+let vminUser = null, vmaxUser = null; // user override for viz range
+
+function setup() {{
+  createCanvas(windowWidth, windowHeight, WEBGL);
+  // Compute center and scale
+  let pos = DATA.positions;
+  for (let i = 0; i < pos.length; i++) {{
+    center[0] += pos[i][0]; center[1] += pos[i][1]; center[2] += pos[i][2];
+  }}
+  center = [center[0]/pos.length, center[1]/pos.length, center[2]/pos.length];
+  let maxR = 0;
+  for (let i = 0; i < pos.length; i++) {{
+    let d = dist(pos[i][0], pos[i][1], pos[i][2], center[0], center[1], center[2]);
+    if (d > maxR) maxR = d;
+  }}
+  scaleF = 250 / maxR;
+  // Populate dropdowns
+  let famSel = document.getElementById('familySelect');
+  let bondFams = {json.dumps(bond_families)};
+  let angFams = {json.dumps(angle_families)};
+  for (let f of bondFams) {{ let o = document.createElement('option'); o.value = 'bond_' + f; o.text = 'Bond: ' + f; famSel.appendChild(o); }}
+  for (let f of angFams) {{ let o = document.createElement('option'); o.value = 'angle_' + f; o.text = 'Angle: ' + f; famSel.appendChild(o); }}
+  let modeSel = document.getElementById('modeSelect');
+  modeSel.addEventListener('change', e => {{ mode = e.target.value; updateClusterDropdown(); }});
+  famSel.addEventListener('change', e => {{ familyFilter = e.target.value; updateClusterDropdown(); }});
+  document.getElementById('clusterSelect').addEventListener('change', e => {{ clusterFilter = e.target.value; updateHistSliders(); }});
+  document.getElementById('colorMode').addEventListener('change', e => {{ colorMode = e.target.value; updateLegend(); }});
+  document.getElementById('atomSize').addEventListener('input', e => {{ atomSize = parseFloat(e.target.value); }});
+  // Histogram range sliders
+  let vminSlider = document.getElementById('vminSlider');
+  let vmaxSlider = document.getElementById('vmaxSlider');
+  vminSlider.addEventListener('input', e => {{
+    let v = parseFloat(e.target.value);
+    let range = getStiffRange();
+    vminUser = range[0] + (v/100) * (range[1] - range[0]);
+    updateRangeLabel();
+  }});
+  vmaxSlider.addEventListener('input', e => {{
+    let v = parseFloat(e.target.value);
+    let range = getStiffRange();
+    vmaxUser = range[0] + (v/100) * (range[1] - range[0]);
+    updateRangeLabel();
+  }});
+  updateLegend();
+  updateHistSliders();
+}}
+
+function getStiffRange() {{
+  let isAngle = mode.startsWith('angle');
+  let items = isAngle ? DATA.angles : DATA.bonds;
+  if (familyFilter !== 'all') {{
+    let prefix = isAngle ? 'angle_' : 'bond_';
+    if (familyFilter.startsWith(prefix)) {{
+      let fam = familyFilter.substring(prefix.length);
+      items = items.filter(it => it.family === fam);
+    }} else return [0, 1];
+  }}
+  if (items.length === 0) return [0, 1];
+  let vals = items.map(it => it.stiff);
+  return [Math.min(...vals), Math.max(...vals)];
+}}
+
+function updateRangeLabel() {{
+  let lbl = document.getElementById('rangeLabel');
+  let isAngle = mode.startsWith('angle');
+  let unit = isAngle ? 'eV/rad²' : 'eV/Å²';
+  if (vminUser !== null && vmaxUser !== null)
+    lbl.textContent = ' [' + vminUser.toFixed(3) + ' — ' + vmaxUser.toFixed(3) + ' ' + unit + ']';
+  else
+    lbl.textContent = ' [auto]';
+}}
+
+function updateHistSliders() {{
+  let r = getStiffRange();
+  vminUser = r[0]; vmaxUser = r[1];
+  document.getElementById('vminSlider').value = 0;
+  document.getElementById('vmaxSlider').value = 100;
+  updateRangeLabel();
+}}
+
+function getFamilyFilteredItems() {{
+  let isAngle = mode.startsWith('angle');
+  let items = isAngle ? DATA.angles : DATA.bonds;
+  if (familyFilter !== 'all') {{
+    let prefix = isAngle ? 'angle_' : 'bond_';
+    if (familyFilter.startsWith(prefix)) {{
+      let fam = familyFilter.substring(prefix.length);
+      items = items.filter(it => it.family === fam);
+    }} else return [];
+  }}
+  return items;
+}}
+
+function drawHistogram() {{
+  let canvas = document.getElementById('histCanvas');
+  let ctx = canvas.getContext('2d');
+  let W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, W, H);
+  let isAngle = mode.startsWith('angle');
+  let items = getFamilyFilteredItems();
+  if (items.length === 0) {{ ctx.fillStyle = '#666'; ctx.font = '12px sans-serif'; ctx.fillText('No data', W/2-30, H/2); return; }}
+  let vals = items.map(it => it.stiff);
+  let vMin = Math.min(...vals), vMax = Math.max(...vals);
+  let pad = (vMax - vMin) * 0.05;
+  vMin -= pad; vMax += pad;
+  let nBins = 40;
+  let binW = (vMax - vMin) / nBins;
+  let bins = new Array(nBins).fill(0);
+  let binClusters = Array.from({{length: nBins}}, () => new Set());
+  for (let it of items) {{
+    let bi = Math.min(nBins - 1, Math.max(0, Math.floor((it.stiff - vMin) / binW)));
+    bins[bi]++;
+    binClusters[bi].add(it.cluster);
+  }}
+  let maxCount = Math.max(...bins);
+  if (maxCount === 0) maxCount = 1;
+  let plotW = W - 50, plotH = H - 30, ox = 40, oy = 10;
+  // Axes
+  ctx.strokeStyle = '#444'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox, oy + plotH); ctx.lineTo(ox + plotW, oy + plotH); ctx.stroke();
+  // Bars colored by cluster (if cluster filter active, highlight that cluster)
+  for (let i = 0; i < nBins; i++) {{
+    if (bins[i] === 0) continue;
+    let x = ox + (i / nBins) * plotW;
+    let bw = plotW / nBins - 1;
+    let bh = (bins[i] / maxCount) * plotH;
+    let clusters = [...binClusters[i]].sort((a,b)=>a-b);
+    if (clusterFilter !== 'all') {{
+      let c = parseInt(clusterFilter);
+      if (clusters.includes(c)) {{
+        let col = clusterColor(c);
+        ctx.fillStyle = 'rgb(' + col.join(',') + ')';
+      }} else {{
+        ctx.fillStyle = 'rgba(80,80,80,0.3)';
+      }}
+    }} else {{
+      // Color by stiffness rainbow
+      let midVal = vMin + (i + 0.5) * binW;
+      let fr = getFamilyRange(items[0].family, isAngle);
+      let col = rainbow(midVal, fr[0], fr[1]);
+      ctx.fillStyle = 'rgb(' + Math.round(col[0]) + ',' + Math.round(col[1]) + ',' + Math.round(col[2]) + ')';
+    }}
+    ctx.fillRect(x, oy + plotH - bh, bw, bh);
+  }}
+  // vmin/vmax markers
+  if (vminUser !== null && vmaxUser !== null) {{
+    let xvmin = ox + ((vminUser - vMin) / (vMax - vMin)) * plotW;
+    let xvmax = ox + ((vmaxUser - vMin) / (vMax - vMin)) * plotW;
+    ctx.strokeStyle = '#ff0'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(xvmin, oy); ctx.lineTo(xvmin, oy + plotH); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(xvmax, oy); ctx.lineTo(xvmax, oy + plotH); ctx.stroke();
+    // Highlight range between
+    ctx.fillStyle = 'rgba(255,255,0,0.08)';
+    ctx.fillRect(xvmin, oy, xvmax - xvmin, plotH);
+  }}
+  // Axis labels
+  ctx.fillStyle = '#aaa'; ctx.font = '10px sans-serif';
+  ctx.fillText(vMin.toFixed(2), ox, H - 5);
+  ctx.fillText(vMax.toFixed(2), ox + plotW - 30, H - 5);
+  let unit = isAngle ? 'eV/rad²' : 'eV/Å²';
+  ctx.fillText(unit, W - 50, H - 5);
+  ctx.fillText('count', 5, oy + 10);
+}}
+
+function getFamilyRange(fk, isAngle) {{
+  let ranges = isAngle ? DATA.family_ranges.angle : DATA.family_ranges.bond;
+  return ranges[fk] ? ranges[fk] : [0, 1];
+}}
+
+function mouseWheel(event) {{
+  camZoom *= event.delta > 0 ? 1.1 : 0.9;
+  camZoom = Math.max(0.1, Math.min(10, camZoom));
+  return false;
+}}
+
+function mousePressed() {{
+  if (mouseButton === LEFT) {{ dragging = true; lastMX = mouseX; lastMY = mouseY; }}
+}}
+function mouseReleased() {{ dragging = false; }}
+function mouseDragged() {{
+  if (dragging) {{
+    rotY += (mouseX - lastMX) * 0.01;
+    rotX += (mouseY - lastMY) * 0.01;
+    rotX = Math.max(-Math.PI/2, Math.min(Math.PI/2, rotX));
+    lastMX = mouseX; lastMY = mouseY;
+  }}
+}}
+
+function updateClusterDropdown() {{
+  let sel = document.getElementById('clusterSelect');
+  sel.innerHTML = '<option value="all">All clusters</option>';
+  let items = getFamilyFilteredItems();
+  let clusters = [...new Set(items.map(it => it.cluster))].sort((a,b)=>a-b);
+  for (let c of clusters) {{
+    let count = items.filter(it => it.cluster === c).length;
+    let o = document.createElement('option'); o.value = c; o.text = 'Cluster ' + c + ' (' + count + ')'; sel.appendChild(o);
+  }}
+  clusterFilter = 'all';
+  updateHistSliders();
+}}
+
+function getFilteredItems() {{
+  let isAngle = mode.startsWith('angle');
+  let items = isAngle ? DATA.angles : DATA.bonds;
+  if (familyFilter !== 'all') {{
+    let prefix = isAngle ? 'angle_' : 'bond_';
+    if (familyFilter.startsWith(prefix)) {{
+      let fam = familyFilter.substring(prefix.length);
+      items = items.filter(it => it.family === fam);
+    }} else {{
+      return [];
+    }}
+  }}
+  if (clusterFilter !== 'all') {{
+    let c = parseInt(clusterFilter);
+    items = items.filter(it => it.cluster === c);
+  }}
+  return items;
+}}
+
+function rainbow(t, vmin, vmax) {{
+  let u = (t - vmin) / (vmax - vmin + 1e-12);
+  u = Math.max(0, Math.min(1, u));
+  let r, g, b;
+  if (u < 0.25) {{ r = 0; g = 4*u; b = 1; }}
+  else if (u < 0.5) {{ r = 0; g = 1; b = 1 - 4*(u-0.25); }}
+  else if (u < 0.75) {{ r = 4*(u-0.5); g = 1; b = 0; }}
+  else {{ r = 1; g = 1 - 4*(u-0.75); b = 0; }}
+  return [r*255, g*255, b*255];
+}}
+
+function clusterColor(c) {{
+  let colors = [[255,100,100],[100,255,100],[100,100,255],[255,255,100],[255,100,255],[100,255,255],[200,200,100],[200,100,200]];
+  let col = colors[c % colors.length];
+  return col;
+}}
+
+function subtypeColor(sk, allSubtypes) {{
+  let idx = allSubtypes.indexOf(sk);
+  let colors = [[255,100,100],[100,255,100],[100,100,255],[255,255,100],[255,100,255],[100,255,255],[200,200,100],[200,100,200],[150,200,50],[50,200,150]];
+  return colors[idx % colors.length];
+}}
+
+function updateLegend() {{
+  let container = document.getElementById('legendContainer');
+  let isAngle = mode.startsWith('angle');
+  let items = getFilteredItems();
+  if (items.length === 0) {{ container.innerHTML = ''; return; }}
+  if (colorMode === 'stiffness' || colorMode === 'length') {{
+    let ranges = isAngle ? DATA.family_ranges.angle : DATA.family_ranges.bond;
+    let prefix = isAngle ? 'angle_' : 'bond_';
+    let unit = colorMode === 'stiffness' ? (isAngle ? 'eV/rad²' : 'eV/Å²') : 'Å';
+    let label = colorMode === 'stiffness' ? 'Stiffness' : 'Bond length';
+    let fams = [...new Set(items.map(it => it.family))].sort();
+    let html = '';
+    for (let fk of fams) {{
+      let vmin = ranges[fk] ? ranges[fk][0] : 0;
+      let vmax = ranges[fk] ? ranges[fk][1] : 1;
+      html += '<label>' + label + ' [' + fk + ']: ' + vmin.toFixed(3) + ' — ' + vmax.toFixed(3) + ' ' + unit + '</label>' +
+        '<div class="legend-bar" style="background: linear-gradient(to right, rgb(0,0,255), rgb(0,255,255), rgb(0,255,0), rgb(255,255,0), rgb(255,0,0));"></div>';
+    }}
+    container.innerHTML = html;
+  }} else if (colorMode === 'cluster') {{
+    let clusters = [...new Set(items.map(it => it.cluster))].sort((a,b)=>a-b);
+    let html = '<label>Clusters:</label>';
+    for (let c of clusters) {{
+      let col = clusterColor(c);
+      html += '<div style="display:inline-block;margin:2px 6px;"><span style="display:inline-block;width:10px;height:10px;background:rgb(' + col.join(',') + ');border-radius:50%;"></span> C' + c + '</div>';
+    }}
+    container.innerHTML = html;
+  }} else {{
+    let subs = isAngle ? {json.dumps(angle_subtypes)} : {json.dumps(bond_subtypes)};
+    let html = '<label>Subtypes:</label>';
+    for (let s of subs) {{
+      let col = subtypeColor(s, subs);
+      html += '<div style="display:inline-block;margin:2px 6px;"><span style="display:inline-block;width:10px;height:10px;background:rgb(' + col.join(',') + ');border-radius:50%;"></span> ' + s + '</div>';
+    }}
+    container.innerHTML = html;
+  }}
+}}
+
+function draw() {{
+  background(26, 26, 46);
+  let hw = width / (2 * camZoom), hh = height / (2 * camZoom);
+  ortho(-hw, hw, -hh, hh, -2000, 2000);
+  rotateX(rotX);
+  rotateY(rotY);
+  // Lighting
+  ambientLight(80);
+  directionalLight(200, 200, 200, 0.5, 0.5, -1);
+  // Atoms
+  let pos = DATA.positions;
+  let atomColors = {{'Si': [100,180,255], 'H': [255,255,255], 'SiH': [120,200,255], 'SiH2': [140,220,255], 'SiH3': [160,240,255], 'C': [100,100,100], 'O': [255,100,100], 'N': [100,100,255]}};
+  for (let i = 0; i < pos.length; i++) {{
+    push();
+    let at = DATA.atom_types[i];
+    let col = atomColors[at] || atomColors[DATA.symbols[i]] || [200,200,200];
+    fill(col[0], col[1], col[2]);
+    noStroke();
+    translate((pos[i][0]-center[0])*scaleF, (pos[i][1]-center[1])*scaleF, (pos[i][2]-center[2])*scaleF);
+    sphere(atomSize * (DATA.symbols[i] === 'Si' ? 1.0 : 0.6));
+    pop();
+  }}
+  // Always draw all bonds as thin gray background
+  let isAngle = mode.startsWith('angle');
+  if (!isAngle) {{
+    for (let b of DATA.bonds) {{
+      let p1 = pos[b.i], p2 = pos[b.j];
+      push();
+      stroke(60, 60, 70);
+      strokeWeight(1.5);
+      let x1 = (p1[0]-center[0])*scaleF, y1 = (p1[1]-center[1])*scaleF, z1 = (p1[2]-center[2])*scaleF;
+      let x2 = (p2[0]-center[0])*scaleF, y2 = (p2[1]-center[1])*scaleF, z2 = (p2[2]-center[2])*scaleF;
+      line(x1, y1, z1, x2, y2, z2);
+      pop();
+    }}
+  }}
+  // Highlighted items (filtered)
+  let items = getFilteredItems();
+  let ranges = isAngle ? DATA.family_ranges.angle : DATA.family_ranges.bond;
+  let allSubtypes = isAngle ? {json.dumps(angle_subtypes)} : {json.dumps(bond_subtypes)};
+  for (let it of items) {{
+    let col;
+    let inRange = true;
+    if (vminUser !== null && vmaxUser !== null) {{
+      inRange = (it.stiff >= vminUser && it.stiff <= vmaxUser);
+    }}
+    if (colorMode === 'stiffness') {{
+      let fr = ranges[it.family];
+      let vmin = fr ? fr[0] : 0, vmax = fr ? fr[1] : 1;
+      col = rainbow(it.stiff, vmin, vmax);
+    }} else if (colorMode === 'length' && !isAngle) {{
+      let vmin = Math.min(...items.map(x => x.r0)); vmax = Math.max(...items.map(x => x.r0));
+      col = rainbow(it.r0, vmin, vmax);
+    }} else if (colorMode === 'cluster') {{
+      col = clusterColor(it.cluster);
+    }} else {{
+      col = subtypeColor(it.subtype, allSubtypes);
+    }}
+    if (!isAngle) {{
+      let p1 = pos[it.i], p2 = pos[it.j];
+      push();
+      if (inRange) {{
+        stroke(col[0], col[1], col[2]);
+        strokeWeight(5);
+      }} else {{
+        stroke(col[0]*0.3, col[1]*0.3, col[2]*0.3);
+        strokeWeight(2);
+      }}
+      let x1 = (p1[0]-center[0])*scaleF, y1 = (p1[1]-center[1])*scaleF, z1 = (p1[2]-center[2])*scaleF;
+      let x2 = (p2[0]-center[0])*scaleF, y2 = (p2[1]-center[1])*scaleF, z2 = (p2[2]-center[2])*scaleF;
+      line(x1, y1, z1, x2, y2, z2);
+      pop();
+    }} else {{
+      let p1 = pos[it.i], p2 = pos[it.j], p3 = pos[it.k];
+      push();
+      if (inRange) {{
+        stroke(col[0], col[1], col[2]);
+        strokeWeight(5);
+      }} else {{
+        stroke(col[0]*0.3, col[1]*0.3, col[2]*0.3);
+        strokeWeight(2);
+      }}
+      let x2 = (p2[0]-center[0])*scaleF, y2 = (p2[1]-center[1])*scaleF, z2 = (p2[2]-center[2])*scaleF;
+      let x1 = (p1[0]-center[0])*scaleF, y1 = (p1[1]-center[1])*scaleF, z1 = (p1[2]-center[2])*scaleF;
+      let x3 = (p3[0]-center[0])*scaleF, y3 = (p3[1]-center[1])*scaleF, z3 = (p3[2]-center[2])*scaleF;
+      line(x2, y2, z2, x1, y1, z1);
+      line(x2, y2, z2, x3, y3, z3);
+      pop();
+    }}
+  }}
+  // Draw histogram overlay
+  drawHistogram();
+  // Update info
+  let info = document.getElementById('info');
+  let inCount = items.filter(it => (vminUser === null || (it.stiff >= vminUser && it.stiff <= vmaxUser))).length;
+  info.innerHTML = 'System: ' + DATA.name + ' | Atoms: ' + pos.length + ' | Showing: ' + inCount + '/' + items.length + ' ' + (isAngle ? 'angles' : 'bonds') + ' | Drag to rotate, scroll to zoom';
+}}
+
+function windowResized() {{
+  resizeCanvas(windowWidth, windowHeight);
+}}
+</script>
+</body>
+</html>'''
+    outpath = os.path.join(outdir, f'stiffness_map_{name}.html')
+    with open(outpath, 'w') as f:
+        f.write(html)
+    return outpath
+
+
+def generate_stiffness_html(systems, outdir):
+    """Generate interactive stiffness HTML maps for each nanocrystal.
+
+    Steps:
+      1. Compute per-bond/angle DFT stiffnesses via Wilson GF projection
+      2. Identify disjunct clusters per subtype
+      3. Generate one self-contained p5.js HTML per system
+    """
+    os.makedirs(outdir, exist_ok=True)
+    sys_data_list = prepare_stiffness_viz_data(systems)
+    paths = []
+    for sd in sys_data_list:
+        p = build_stiffness_html(sd, outdir)
+        paths.append(p)
+        print(f"  Generated {sd['name']}: {p}")
+    # Generate index page
+    index_html = '<!DOCTYPE html>\n<html><head><meta charset="utf-8"><title>Stiffness Maps Index</title>\n'
+    index_html += '<style>body{background:#1a1a2e;color:#eee;font-family:sans-serif;padding:20px;}a{color:#6cf;text-decoration:none;font-size:16px;display:block;margin:8px 0;}a:hover{text-decoration:underline;}</style>\n'
+    index_html += '</head><body><h1>Stiffness Maps</h1>\n'
+    for p in paths:
+        fname = os.path.basename(p)
+        name = fname.replace('stiffness_map_', '').replace('.html', '')
+        index_html += f'<a href="{fname}">{name}</a>\n'
+    index_html += '</body></html>'
+    index_path = os.path.join(outdir, 'index.html')
+    with open(index_path, 'w') as f:
+        f.write(index_html)
+    print(f"  Index: {index_path}")
+    return paths
 
 def make_param_map_for_system(bonds, angles, symbols, global_bond_map, global_angle_map, bonds3=None, global_bond3_map=None):
     """Create a per-system ParamMap using global type indices."""
@@ -1025,6 +1969,35 @@ def plot_spectra_overlay(system_data, outdir=None, width=20.0, xmax=2500, noshow
     plt.close(fig)
 
 
+def plot_hessian_comparison(H_ref, H_model, label, outdir):
+    """Plot signed values and log magnitudes of reference, model, and residual Hessians."""
+    os.makedirs(outdir, exist_ok=True)
+    matrices = [H_ref, H_model, H_model - H_ref]
+    names = ['DFT reference', 'FF model', 'model - DFT']
+    vmax = max(np.max(np.abs(H_ref)), np.max(np.abs(H_model)))
+    floor = max(vmax * 1e-10, np.finfo(float).tiny)
+    log_matrices = [np.log10(np.maximum(np.abs(H), floor)) for H in matrices]
+    log_min = np.log10(floor)
+    log_max = np.log10(vmax)
+    fig, axes = plt.subplots(2, 3, figsize=(15, 9), constrained_layout=True)
+    for i, (H, name) in enumerate(zip(matrices, names)):
+        im = axes[0, i].imshow(H, cmap='RdBu_r', vmin=-vmax, vmax=vmax, interpolation='nearest')
+        axes[0, i].set_title(name)
+        axes[0, i].set_xlabel('Cartesian coordinate')
+        axes[0, i].set_ylabel('Cartesian coordinate')
+        fig.colorbar(im, ax=axes[0, i], shrink=0.8, label='eV/A^2')
+        imlog = axes[1, i].imshow(log_matrices[i], cmap='magma', vmin=log_min, vmax=log_max, interpolation='nearest')
+        axes[1, i].set_title(f'log10 |{name}|')
+        axes[1, i].set_xlabel('Cartesian coordinate')
+        axes[1, i].set_ylabel('Cartesian coordinate')
+        fig.colorbar(imlog, ax=axes[1, i], shrink=0.8, label='log10(eV/A^2)')
+    out = os.path.join(outdir, f'{label}_hessian.png')
+    fig.savefig(out, dpi=160)
+    plt.close(fig)
+    print(f"  Saved Hessian comparison: {out}")
+    return out
+
+
 def get_sensitivity_action(fitter, V, masses, dihedral_A=None):
     """Compute D_p v_s for each free parameter p and each reference mode s.
 
@@ -1113,6 +2086,8 @@ def fit_modes_multi(fitters, systems, n_free, freq_floor_cm1=10.0,
     and solve the linear least-squares problem
         sum_systems sum_s w_s | D(k) v_s - lambda_s v_s |^2 -> min.
     """
+    # LEGACY: retained for numerical comparison. New fits use
+    # pyBall.FFfit.fit_hybrid_hessian(), which solves the direct stacked system.
     dihedral_A_per_system = dihedral_A_per_system or [None] * len(systems)
     lambda_floor = (freq_floor_cm1 / 521.5)**2
     G = np.zeros((n_free, n_free))
@@ -1166,6 +2141,229 @@ def fit_gradient_descent_multi_cpp(fitters, systems, n_free, lr=1e-4, momentum=0
         k += velocity
     return k
 
+
+def make_cpp_fitter(sys, maps, n_total):
+    """Build one C++ linear bond/angle/1-4 sensitivity model with global indices."""
+    bond_map, bond3_map, angle_map = maps
+    f = FFfit_cpp.FFfit()
+    f.set_geometry(sys['positions'])
+    labels = sys.get('atom_types', sys['symbols'])
+    f.set_symbols(labels)
+    for i, j, l0 in sys['bonds']: f.add_bond(i, j, l0)
+    for i, j, l0 in sys['bonds3']: f.add_bond(i, j, l0)
+    for i, j, k, t0 in sys['angles']: f.add_angle(i, j, k, t0)
+    nb = len(sys['bonds'])
+    for ib, (i, j, _) in enumerate(sys['bonds'] + sys['bonds3']):
+        key = tuple(sorted((labels[i], labels[j])))
+        f.set_bond_param(ib, bond_map[key] if ib < nb else bond3_map[key])
+    for ia, (i, j, k, _) in enumerate(sys['angles']):
+        key = angle_type_key(labels, i, j, k, elements=sys['symbols'], central_only=sys.get('angle_central_only', False))
+        f.set_angle_param(ia, angle_map[key])
+    f.set_n_free(n_total)
+    return f
+
+
+def parent_parameter_name(name):
+    """Collapse SiH3/SiH2/SiH labels to elemental Si in a parameter name."""
+    prefix, body = name.split(':', 1)
+    fields = ['Si' if field.startswith('SiH') else field for field in body.split('-')]
+    return prefix + ':' + '-'.join(fields)
+
+
+def fit_comparison_variant(base_systems, use_third, use_dihedrals, args, parent_prior=None):
+    """Fit one interaction-set variant with local DFT equilibrium coordinates."""
+    systems = []
+    for base in base_systems:
+        sys = dict(base)
+        sys['bonds'] = list(base['bonds'])
+        sys['angles'] = list(base['angles'])
+        sys['bonds3'] = list(base['bonds3']) if use_third else []
+        sys['dihedrals'] = list(base['dihedrals']) if use_dihedrals else []
+        systems.append(sys)
+    all_bonds = [s['bonds'] for s in systems]; all_angles = [s['angles'] for s in systems]
+    all_bonds3 = [s['bonds3'] for s in systems]; all_dihedrals = [s['dihedrals'] for s in systems]
+    all_symbols = [s.get('atom_types', s['symbols']) for s in systems]
+    all_elements = [s['symbols'] for s in systems]
+    angle_central_only = any(s.get('angle_central_only', False) for s in systems)
+    if angle_central_only and not all(s.get('angle_central_only', False) for s in systems):
+        raise ValueError("all systems in one fit must use the same angle typing scope")
+    bmap, b3map, amap, dmap, npar = build_global_param_map(all_bonds, all_angles, all_symbols, all_bonds3, all_dihedrals, all_elements, angle_central_only)
+    print(f"  parameter types: bond={len(bmap)} 1-4={len(b3map)} angle={len(amap)} torsion={len(dmap)} total={npar}")
+    if args.equilibrium == 'type-average':
+        avg_l0, avg_l0_3, avg_t0 = compute_averaged_equilibrium(all_bonds, all_angles, all_symbols, [s['positions'] for s in systems], bmap, amap, b3map, all_bonds3, all_elements, angle_central_only)
+        for sys in systems:
+            sys['bonds'], sys['angles'], sys['bonds3'] = rebuild_topology_with_averaged(sys['bonds'], sys['angles'], sys['bonds3'], sys.get('atom_types', sys['symbols']), sys['positions'], avg_l0, avg_t0, avg_l0_3, sys['symbols'], angle_central_only)
+    for sys in systems:
+        sys['dihedral_A'] = compute_dihedral_sensitivity(sys['positions'], sys.get('atom_types', sys['symbols']), sys['dihedrals'], dmap, h=args.dihedral_h) if use_dihedrals else {}
+    print("  sensitivity stage: torsions complete")
+    fitters = [make_cpp_fitter(sys, (bmap, b3map, amap), npar) for sys in systems]
+    hybrid_systems = []
+    for f, sys in zip(fitters, systems):
+        hybrid_systems.append({'A': FFfit_cpp.collect_sensitivity_matrices(f, extra=sys['dihedral_A']), 'H_ref': sys['H_ref'],
+                               'positions': sys['positions'], 'masses': sys['data']['masses'], 'bonds': sys['bonds'], 'angles': sys['angles']})
+    print("  sensitivity stage: stacked model complete")
+    names = [''] * npar
+    for key, t in bmap.items(): names[t] = 'bond:' + '-'.join(key)
+    for key, t in b3map.items(): names[t] = '1-4:' + '-'.join(key)
+    for key, t in amap.items(): names[t] = 'angle:' + '-'.join(key)
+    for key, t in dmap.items(): names[t] = 'torsion:' + '/'.join(('-'.join(key[0]), '-'.join(key[1])))
+    prior = np.ones(npar)
+    for t in bmap.values(): prior[t] = 5.0
+    for t in b3map.values(): prior[t] = 0.1
+    for t in amap.values(): prior[t] = 1.0
+    for t in dmap.values(): prior[t] = 0.1
+    if parent_prior is not None:
+        for i, name in enumerate(names):
+            parent = parent_parameter_name(name)
+            if parent not in parent_prior:
+                raise KeyError(f"missing elemental parent prior {parent} for subtype parameter {name}")
+            prior[i] = parent_prior[parent]
+    scale = np.maximum(np.abs(prior), 0.1)
+    k, diag = FFfit_cpp.fit_hybrid_hessian(
+        hybrid_systems, mode_weight=args.hybrid_mode, local_weight=args.hybrid_local, internal_weight=args.hybrid_internal,
+        mode_balance=args.mode_weight, mode_mixing=args.mode_mixing, frequency_floor_cm1=args.frequency_floor,
+        local_graph_distance=args.local_graph_distance, prior=prior, regularization=args.reg, parameter_scale=scale, bounds=(0.0, np.inf))
+    print(f"  solve complete: condition={diag['condition']:.3g} residual={diag['relative_residual']:.3g}")
+    models = []
+    for f, sys in zip(fitters, systems):
+        f.set_params(k)
+        H = f.compute_model_hessian()
+        add_dihedral_hessian(H, k, sys['dihedral_A'])
+        models.append(H)
+    return systems, models, k, names, diag
+
+
+def one_to_one_frequency_metrics(freq_ref, freq_model):
+    """One-to-one minimum-cost frequency assignment; unmatched counts are reported."""
+    from scipy.optimize import linear_sum_assignment
+    if len(freq_ref) == 0 or len(freq_model) == 0:
+        return np.nan, np.nan, abs(len(freq_ref) - len(freq_model))
+    ir, im = linear_sum_assignment(np.abs(freq_ref[:, None] - freq_model[None, :]))
+    diff = freq_model[im] - freq_ref[ir]
+    return np.sqrt(np.mean(diff*diff)), np.mean(np.abs(diff)), abs(len(freq_ref) - len(freq_model))
+
+
+def plot_comparison_spectra(case_name, freq_ref, model_freqs, outdir, width=20.0, xmax=2500.0):
+    """Overlay normalized DFT and fitted-model vibrational spectra."""
+    os.makedirs(outdir, exist_ok=True)
+    x = np.arange(0.0, xmax + 0.5, 0.5)
+    fig, ax = plt.subplots(figsize=(13, 7))
+    curves = [('DFT reference', freq_ref, '#111827', 2.5, '-')]
+    styles = [('#0072B2', 1.8, '--'), ('#009E73', 1.8, '-.'), ('#D55E00', 1.7, ':'), ('#CC79A7', 1.8, (0, (5, 2)))]
+    for (label, freqs), style in zip(model_freqs.items(), styles): curves.append((label, freqs, *style))
+    for label, freqs, color, lw, ls in curves:
+        y = broaden(freqs, x, width)
+        if np.max(y) > 0.0: y /= np.max(y)
+        ax.plot(x, y, color=color, lw=lw, ls=ls, label=label)
+    ax.set(xlim=(0, xmax), ylim=(0, 1.08), xlabel='Frequency (cm$^{-1}$)', ylabel='Normalized density', title=f'{case_name}: progressive force-field vibration fit')
+    ax.grid(True, alpha=0.2, ls=':')
+    ax.legend(frameon=False, fontsize=9, ncol=2)
+    out = os.path.join(outdir, f'{case_name}_model_comparison_spectra.png')
+    fig.savefig(out, dpi=180, bbox_inches='tight')
+    plt.close(fig)
+    return out
+
+
+def run_model_comparison(base_systems, args):
+    """Fit and compare bond/angle, 1-4, torsion, and combined models."""
+    variants = [
+        ('Bond + angle', False, False),
+        ('Bond + angle + 1-4', True, False),
+        ('Bond + angle + UFF torsion', False, True),
+        ('Bond + angle + UFF torsion + 1-4', True, True),
+    ]
+    fitted = {}
+    for label, use_third, use_dihedrals in variants:
+        print(f"\n=== Comparison model: {label} ===")
+        fitted[label] = fit_comparison_variant(base_systems, use_third, use_dihedrals, args)
+    rows = []
+    os.makedirs(args.plot_dir, exist_ok=True)
+    for isys, base in enumerate(base_systems):
+        freq_ref = get_frequencies_cm1(base['H_ref'], base['data']['masses'], data=base['data'], freq_floor=10.0)
+        model_freqs = {}
+        rows.append((base['name'], 'DFT reference', 0, 0.0, 0.0, 0.0, 0, 0, 1.0, ''))
+        for label, _, _ in variants:
+            systems, models, k, names, diag = fitted[label]
+            sys, H = systems[isys], models[isys]
+            freqs = get_frequencies_cm1(H, sys['data']['masses'], freq_floor=10.0, positions=sys['positions'], project_acoustic=True)
+            model_freqs[label] = freqs
+            rmse, mae, unmatched = one_to_one_frequency_metrics(freq_ref, freqs)
+            lam = FFfit_cpp.reference_vibrational_modes(H, sys['positions'], sys['data']['masses'])[1]
+            negative = int(np.sum(lam < -(10.0/521.5)**2))
+            rel_frob = 100.0 * np.linalg.norm(H - sys['H_ref']) / np.linalg.norm(sys['H_ref'])
+            ptxt = '; '.join(f'{name}={value:.4g}' for name, value in zip(names, k))
+            rows.append((base['name'], label, len(k), rmse, mae, rel_frob, unmatched, negative, diag['condition'], ptxt))
+        out = plot_comparison_spectra(base['name'], freq_ref, model_freqs, args.plot_dir, args.spectrum_width, args.spectrum_xmax)
+        print(f"  Saved model spectrum comparison: {out}")
+    header = ('case', 'model', 'npar', 'freq_RMSE_cm-1', 'freq_MAE_cm-1', 'relFrob_percent', 'unmatched_modes', 'negative_modes', 'condition', 'parameters')
+    csv_path = os.path.join(args.plot_dir, 'model_comparison.csv')
+    md_path = os.path.join(args.plot_dir, 'model_comparison.md')
+    with open(csv_path, 'w') as f:
+        f.write(','.join(header) + '\n')
+        for row in rows: f.write(','.join(f'"{x}"' if isinstance(x, str) else str(x) for x in row) + '\n')
+    with open(md_path, 'w') as f:
+        f.write('| Case | Model | Npar | RMSE cm^-1 | MAE cm^-1 | relFrob % | Unmatched | Negative | Condition |\n')
+        f.write('|---|---|---:|---:|---:|---:|---:|---:|---:|\n')
+        for row in rows:
+            f.write(f'| {row[0]} | {row[1]} | {row[2]} | {row[3]:.3f} | {row[4]:.3f} | {row[5]:.3f} | {row[6]} | {row[7]} | {row[8]:.3g} |\n')
+    print(f"\n{'Model':43s} {'N':>3s} {'RMSE':>9s} {'MAE':>9s} {'Frob%':>8s} {'miss':>5s} {'neg':>4s} {'cond':>8s}")
+    for row in rows:
+        if row[1] == 'DFT reference': continue
+        print(f"{row[1]:43s} {row[2]:3d} {row[3]:9.2f} {row[4]:9.2f} {row[5]:8.2f} {row[6]:5d} {row[7]:4d} {row[8]:8.2f}")
+    print(f"  Saved comparison table: {md_path}")
+    return rows
+
+
+def run_typing_comparison(base_systems, args):
+    """Compare elemental and H-coordination Si typing using bond+angle models only."""
+    elemental = []
+    subtyped = []
+    for base in base_systems:
+        se = dict(base); se['atom_types'] = list(base['symbols']); se['angle_central_only'] = False; elemental.append(se)
+        ss = dict(base); ss['atom_types'] = assign_si_environment_types(base['symbols'], base['bonds'], enabled=True); ss['angle_central_only'] = args.si_subtype_scope == 'central'; subtyped.append(ss)
+    print("\n=== Elemental typing support ===")
+    print_interaction_type_counts(elemental, args.min_type_count)
+    print("\n=== Si environment typing support ===")
+    print_interaction_type_counts(subtyped, args.min_type_count)
+    elemental_fit = fit_comparison_variant(elemental, False, False, args)
+    elemental_prior = dict(zip(elemental_fit[3], elemental_fit[2]))
+    fits = {
+        'Elemental Si typing': elemental_fit,
+        'SiH3/SiH2/SiH/Si typing': fit_comparison_variant(subtyped, False, False, args, parent_prior=elemental_prior),
+    }
+    rows = []
+    for isys, base in enumerate(base_systems):
+        freq_ref = get_frequencies_cm1(base['H_ref'], base['data']['masses'], data=base['data'], freq_floor=10.0)
+        model_freqs = {}
+        for label, (systems, models, k, names, diag) in fits.items():
+            sys, H = systems[isys], models[isys]
+            freqs = get_frequencies_cm1(H, sys['data']['masses'], freq_floor=10.0, positions=sys['positions'], project_acoustic=True)
+            model_freqs[label] = freqs
+            rmse, mae, unmatched = one_to_one_frequency_metrics(freq_ref, freqs)
+            rel_frob = 100.0*np.linalg.norm(H - sys['H_ref'])/np.linalg.norm(sys['H_ref'])
+            rows.append((base['name'], label, len(k), rmse, mae, rel_frob, unmatched, diag['condition']))
+        out = plot_comparison_spectra(base['name'] + '_typing', freq_ref, model_freqs, args.plot_dir, args.spectrum_width, args.spectrum_xmax)
+        print(f"  Saved typing spectrum comparison: {out}")
+    csv_path = os.path.join(args.plot_dir, 'typing_comparison.csv')
+    md_path = os.path.join(args.plot_dir, 'typing_comparison.md')
+    param_path = os.path.join(args.plot_dir, 'typing_parameters.csv')
+    with open(csv_path, 'w') as f:
+        f.write('case,typing,npar,freq_RMSE_cm-1,freq_MAE_cm-1,relFrob_percent,unmatched_modes,condition\n')
+        for row in rows: f.write(','.join(f'"{x}"' if isinstance(x, str) else str(x) for x in row) + '\n')
+    with open(md_path, 'w') as f:
+        f.write('| Case | Typing | Npar | RMSE cm^-1 | MAE cm^-1 | relFrob % | Unmatched | Condition |\n')
+        f.write('|---|---|---:|---:|---:|---:|---:|---:|\n')
+        for row in rows: f.write(f'| {row[0]} | {row[1]} | {row[2]} | {row[3]:.3f} | {row[4]:.3f} | {row[5]:.3f} | {row[6]} | {row[7]:.3g} |\n')
+        f.write('| **Mean** | **Elemental Si typing** | | {:.3f} | {:.3f} | {:.3f} | | |\n'.format(*[np.mean([r[i] for r in rows if r[1] == 'Elemental Si typing']) for i in (3, 4, 5)]))
+        f.write('| **Mean** | **SiH3/SiH2/SiH/Si typing** | | {:.3f} | {:.3f} | {:.3f} | | |\n'.format(*[np.mean([r[i] for r in rows if r[1].startswith('SiH3')]) for i in (3, 4, 5)]))
+    with open(param_path, 'w') as f:
+        f.write('typing,parameter,value\n')
+        for label, (_, _, k, names, _) in fits.items():
+            for name, value in zip(names, k): f.write(f'"{label}","{name}",{value}\n')
+    print(f"  Saved typing comparison table: {md_path}")
+    print(f"  Saved typing parameters: {param_path}")
+    return rows
+
 def main():
     parser = argparse.ArgumentParser(description='Fit FF parameters to PySCF Hessians via C++ FFfit library')
     parser.add_argument('--cases', default='SiH4', help='Comma-separated case names or "all_Si" or "all"')
@@ -1177,9 +2375,26 @@ def main():
     parser.add_argument('--dihedral-n', type=int, default=3, help='Dihedral periodicity n (default 3 for sp3)')
     parser.add_argument('--dihedral-d', type=float, default=1.0, help='Dihedral phase sign d (default 1.0)')
     parser.add_argument('--dihedral-h', type=float, default=1e-5, help='Finite-difference step for dihedral Hessian (Angstrom)')
-    parser.add_argument('--mode-weight', type=str, default='equal', help='Mode weight: equal (default), relative (1/lambda^2), adaptive (per-system median floor), inverse (1/lambda), or array string')
-    parser.add_argument('--reg', type=float, default=0.0, help='Ridge regularization weight')
-    parser.add_argument('--use-nnls', action='store_true', help='Use non-negative least squares for mode fit')
+    parser.add_argument('--equilibrium', choices=['local', 'type-average'], default='local', help='Use each relaxed internal coordinate (default) or one transferable equilibrium value per type')
+    parser.add_argument('--plot-distributions', action='store_true', help='Plot relaxed bond/angle/1-4/torsion distributions by type')
+    parser.add_argument('--plot-only', action='store_true', help='Only plot equilibrium distributions (skip Hessian loading and fitting)')
+    parser.add_argument('--plot-stiffness', action='store_true', help='Plot DFT-extracted bond/angle stiffnesses via Wilson GF projection (requires Hessian)')
+    parser.add_argument('--stiffness-html', action='store_true', help='Generate interactive p5.js HTML stiffness maps per nanocrystal (requires Hessian)')
+    parser.add_argument('--compare-models', action='store_true', help='Fit the four progressive interaction sets and write a comparison table/spectrum overlay')
+    parser.add_argument('--si-subtypes', action='store_true', help='Type Si atoms as SiH3 (including SiH4), SiH2, SiH, or bulk Si by bonded-H count')
+    parser.add_argument('--si-subtype-scope', choices=['central', 'full'], default='central', help='Subtype angle centers only (default) or all three angle atoms')
+    parser.add_argument('--compare-typing', action='store_true', help='Compare elemental and Si H-coordination typing using bond+angle models')
+    parser.add_argument('--min-type-count', type=int, default=3, help='Flag interaction types represented by fewer observations')
+    parser.add_argument('--mode-weight', type=str, default='frequency', choices=['equal', 'frequency', 'relative'], help='All-mode balance: equal Hessian accuracy, frequency-error balance (default), or relative eigenvalue accuracy')
+    parser.add_argument('--hybrid-mode', type=float, default=1.0, help='Weight of the complete vibrational-mode objective')
+    parser.add_argument('--hybrid-local', type=float, default=1.0, help='Weight of graph-local mass-weighted Hessian blocks')
+    parser.add_argument('--hybrid-internal', type=float, default=1.0, help='Weight of the Wilson internal-coordinate projection')
+    parser.add_argument('--mode-mixing', type=float, default=0.1, help='Relative penalty for off-diagonal mixing of reference modes')
+    parser.add_argument('--local-graph-distance', type=int, default=2, help='Maximum bond-graph distance included in local Hessian blocks')
+    parser.add_argument('--frequency-floor', type=float, default=50.0, help='Frequency floor (cm^-1) for stable mode weighting')
+    parser.add_argument('--reg', type=float, default=2e-3, help='Dimensionless per-parameter prior regularization weight')
+    parser.add_argument('--use-nnls', action='store_true', help='Deprecated compatibility flag; hybrid fitting is non-negative by default')
+    parser.add_argument('--allow-negative', action='store_true', help='Allow unphysical negative stiffnesses for diagnostic comparison only')
     parser.add_argument('--plot', action='store_true', help='Plot reference vs model vibrational spectra')
     parser.add_argument('--plot-dir', type=str, default='tests/tSiNCs/OUT_FFfit_plots', help='Output directory for spectrum plots')
     parser.add_argument('--exp-spectrum', type=str, default=None, help='Optional experimental IR/FTIR spectrum file (two columns: frequency cm^-1, intensity)')
@@ -1197,50 +2412,86 @@ def main():
         case_names = [c.strip() for c in args.cases.split(',')]
     
     # === Load all systems ===
-    print(f"=== Loading {len(case_names)} systems: {case_names} ===")
+    geo_only = args.plot_only
+    print(f"=== Loading {len(case_names)} systems: {case_names} ===" + (' (geometry only)' if geo_only else ''))
     systems = []
     for name in case_names:
         case_dir = os.path.join(RESULTS_DIR, name)
         if not os.path.isdir(case_dir):
             print(f"  WARNING: skipping {name} (directory not found)")
             continue
-        data = load_pyscf_case(case_dir)
+        data = load_pyscf_case(case_dir, geometry_only=geo_only)
         natoms = data['natoms']
-        H_ref = hessian_ha_bohr_to_ev_ang2(
-            data['hessian'].transpose(0, 2, 1, 3).reshape(natoms*3, natoms*3))
-        bonds, angles, bonds3 = build_topology(data['symbols'], data['positions'], args.bond_cutoff,
-                                                third_bonds=args.third_bonds, third_bond_cutoff=args.third_bond_cutoff)
-        dihedrals = build_dihedrals(data['symbols'], data['positions'], bonds,
-                                    d=args.dihedral_d, n=args.dihedral_n, dihedral=args.dihedrals)
-        if args.mass_weight:
-            masses = data['masses']
-            inv_sqrt_m = 1.0 / np.sqrt(np.repeat(masses, 3))
-            weight = (inv_sqrt_m[:, None] * inv_sqrt_m[None, :]).flatten()
-            H_ref_w = (inv_sqrt_m[:, None] * inv_sqrt_m[None, :]) * H_ref
-        else:
-            weight = None
+        if geo_only:
+            H_ref = np.zeros((natoms*3, natoms*3))  # placeholder, not used
             H_ref_w = H_ref
+            weight = None
+        else:
+            H_ref = hessian_ha_bohr_to_ev_ang2(
+                data['hessian'].transpose(0, 2, 1, 3).reshape(natoms*3, natoms*3))
+            if args.mass_weight:
+                masses = data['masses']
+                inv_sqrt_m = 1.0 / np.sqrt(np.repeat(masses, 3))
+                weight = (inv_sqrt_m[:, None] * inv_sqrt_m[None, :]).flatten()
+                H_ref_w = (inv_sqrt_m[:, None] * inv_sqrt_m[None, :]) * H_ref
+            else:
+                weight = None
+                H_ref_w = H_ref
+        bonds, angles, bonds3 = build_topology(data['symbols'], data['positions'], args.bond_cutoff,
+                                                third_bonds=args.third_bonds or args.compare_models, third_bond_cutoff=args.third_bond_cutoff)
+        atom_types = assign_si_environment_types(data['symbols'], bonds, enabled=args.si_subtypes or args.compare_typing)
+        dihedrals = build_dihedrals(data['symbols'], data['positions'], bonds,
+                                    d=args.dihedral_d, n=args.dihedral_n, dihedral=args.dihedrals or args.compare_models)
         sys = {
             'name': name, 'data': data, 'natoms': natoms, 'H_ref': H_ref, 'H_ref_w': H_ref_w,
             'bonds': bonds, 'angles': angles, 'bonds3': bonds3, 'dihedrals': dihedrals, 'weight': weight,
-            'symbols': data['symbols'], 'positions': data['positions'],
+            'symbols': data['symbols'], 'atom_types': atom_types, 'angle_central_only': (args.si_subtypes or args.compare_typing) and args.si_subtype_scope == 'central', 'positions': data['positions'],
         }
         systems.append(sys)
         print(f"  {name}: natoms={natoms}, bonds={len(bonds)}, angles={len(angles)}, 3rd_bonds={len(bonds3)}, dihedrals={len(dihedrals)}, "
               f"H_ref [{H_ref.min():.2e}, {H_ref.max():.2e}]")
+        if args.si_subtypes or args.compare_typing:
+            unique, count = np.unique(atom_types, return_counts=True)
+            print(f"    Si environment populations: {dict(zip(unique.tolist(), count.tolist()))}")
     
     if not systems:
         print("ERROR: no valid systems found"); sys.exit(1)
+
+    print_interaction_type_counts(systems, min_count=args.min_type_count)
+
+    if args.plot_only:
+        plot_equilibrium_distributions(systems, args.plot_dir)
+        return
+
+    if args.plot_stiffness:
+        plot_dft_stiffness_distributions(systems, args.plot_dir)
+        return
+
+    if args.stiffness_html:
+        generate_stiffness_html(systems, args.plot_dir)
+        return
+
+    if args.compare_typing:
+        plot_equilibrium_distributions(systems, args.plot_dir)
+        run_typing_comparison(systems, args)
+        return
+
+    if args.compare_models:
+        plot_equilibrium_distributions(systems, args.plot_dir)
+        run_model_comparison(systems, args)
+        return
     
     # === Build global parameter mapping ===
     all_bonds = [s['bonds'] for s in systems]
     all_angles = [s['angles'] for s in systems]
     all_bonds3 = [s['bonds3'] for s in systems]
     all_dihedrals = [s['dihedrals'] for s in systems]
-    all_symbols = [s['symbols'] for s in systems]
+    all_symbols = [s.get('atom_types', s['symbols']) for s in systems]
+    all_elements = [s['symbols'] for s in systems]
     all_positions = [s['positions'] for s in systems]
     global_bond_map, global_bond3_map, global_angle_map, global_dihedral_map, n_total = build_global_param_map(
-        all_bonds, all_angles, all_symbols, all_bonds3=all_bonds3, all_dihedrals=all_dihedrals)
+        all_bonds, all_angles, all_symbols, all_bonds3=all_bonds3, all_dihedrals=all_dihedrals,
+        all_elements=all_elements, angle_central_only=args.si_subtypes and args.si_subtype_scope == 'central')
     n_cpp = len(global_bond_map) + len(global_bond3_map) + len(global_angle_map)
     print(f"\n=== Global Parameter Mapping ===")
     print(f"  bond types ({len(global_bond_map)}): {global_bond_map}")
@@ -1255,49 +2506,34 @@ def main():
     print(f"\n=== Averaged Equilibrium Parameters (multi-system) ===")
     avg_l0, avg_l0_3, avg_theta0 = compute_averaged_equilibrium(
         all_bonds, all_angles, all_symbols, all_positions,
-        global_bond_map, global_angle_map, global_bond3_map=global_bond3_map, all_bonds3=all_bonds3)
+        global_bond_map, global_angle_map, global_bond3_map=global_bond3_map, all_bonds3=all_bonds3,
+        all_elements=all_elements, angle_central_only=args.si_subtypes and args.si_subtype_scope == 'central')
     
-    # Rebuild each system's bonds/angles with averaged equilibrium parameters
-    for sys in systems:
-        sys['bonds'], sys['angles'], sys['bonds3'] = rebuild_topology_with_averaged(
-            sys['bonds'], sys['angles'], sys['bonds3'], sys['symbols'], sys['positions'],
-            avg_l0, avg_theta0, avg_l0_3=avg_l0_3 if args.third_bonds else None)
+    if args.plot_distributions or args.plot:
+        plot_equilibrium_distributions(systems, args.plot_dir)
+
+    # Local Hessian fitting shares stiffnesses but expands each interaction at its
+    # actual relaxed DFT coordinate. Type-averaged minima are a separate energy-model choice.
+    if args.equilibrium == 'type-average':
+        for sys in systems:
+            sys['bonds'], sys['angles'], sys['bonds3'] = rebuild_topology_with_averaged(
+                sys['bonds'], sys['angles'], sys['bonds3'], sys.get('atom_types', sys['symbols']), sys['positions'],
+                avg_l0, avg_theta0, avg_l0_3=avg_l0_3 if args.third_bonds else None, elements=sys['symbols'],
+                angle_central_only=args.si_subtypes and args.si_subtype_scope == 'central')
 
     # === Precompute per-system dihedral sensitivity matrices (Python side) ===
     if args.dihedrals:
         print(f"\n=== Precomputing Dihedral Sensitivities ===")
         for sys in systems:
             sys['dihedral_A'] = compute_dihedral_sensitivity(
-                sys['positions'], sys['symbols'], sys['dihedrals'], global_dihedral_map, h=args.dihedral_h)
+                sys['positions'], sys.get('atom_types', sys['symbols']), sys['dihedrals'], global_dihedral_map, h=args.dihedral_h)
             print(f"  {sys['name']}: computed {len(sys['dihedral_A'])} dihedral sensitivity matrices")
     else:
         for sys in systems:
             sys['dihedral_A'] = {}
 
     # === Create C++ FFfit instances with global param indices ===
-    fitters = []
-    for sys in systems:
-        f = FFfit_cpp.FFfit()
-        f.set_geometry(sys['positions'])
-        f.set_symbols(sys['symbols'])
-        for (i, j, l0) in sys['bonds']:
-            f.add_bond(i, j, l0)
-        for (i, j, l0) in sys['bonds3']:
-            f.add_bond(i, j, l0)
-        for (i, j, k, t0) in sys['angles']:
-            f.add_angle(i, j, k, t0)
-        n_bonds = len(sys['bonds'])
-        for ib, (i, j, l0) in enumerate(sys['bonds'] + sys['bonds3']):
-            key = tuple(sorted([sys['symbols'][i], sys['symbols'][j]]))
-            if ib < n_bonds:
-                f.set_bond_param(ib, global_bond_map[key])
-            else:
-                f.set_bond_param(ib, global_bond3_map[key])
-        for ia, (i, j, k, t0) in enumerate(sys['angles']):
-            key = angle_type_key(sys['symbols'], i, j, k)
-            f.set_angle_param(ia, global_angle_map[key])
-        f.set_n_free(n_total)
-        fitters.append(f)
+    fitters = [make_cpp_fitter(sys, (global_bond_map, global_bond3_map, global_angle_map), n_total) for sys in systems]
     
     # C++ fitting knows only bond/angle/3rd-bond parameters; switch to n_cpp for Methods 1 and 2
     for f in fitters: f.set_n_free(n_cpp)
@@ -1344,22 +2580,27 @@ def main():
         print(f"  {sys['name']:12s}: RMSD={rmsd:.4e} eV/A^2  relFrob={rel_frob:.2f}%  "
               f"||H_ref||={nref:.4e}  ||H_model||={nmodel:.4e}  ||diff||={ndiff:.4e}")
     
-    # === Method 3: Mode-basis least-squares (Python) ===
-    print(f"\n=== Method 3: Mode-Basis Fit (Python) ===")
-    if args.mode_weight in ('relative', 'adaptive', 'equal', 'inverse'):
-        mode_weight = args.mode_weight
-    else:
-        # parse comma-separated list of floats or JSON array
-        mode_weight = args.mode_weight
+    # === Method 3: robust hybrid all-mode/local/internal fit (Python) ===
+    print(f"\n=== Method 3: Hybrid All-Mode + Local + Internal-Coordinate Fit ===")
     for f in fitters: f.set_n_free(n_total)
-
-    k_mode = fit_modes_multi(fitters, systems, n_total,
-                             freq_floor_cm1=10.0,
-                             mode_weight=mode_weight,
-                             reg=args.reg,
-                             use_nnls=args.use_nnls,
-                             verbose=True,
-                             dihedral_A_per_system=[s.get('dihedral_A', {}) for s in systems])
+    hybrid_systems = []
+    for f, sys in zip(fitters, systems):
+        A = FFfit_cpp.collect_sensitivity_matrices(f, extra=sys.get('dihedral_A', {}))
+        hybrid_systems.append({'A': A, 'H_ref': sys['H_ref'], 'positions': sys['positions'], 'masses': sys['data']['masses'],
+                               'bonds': sys['bonds'], 'angles': sys['angles']})
+    k_prior = np.ones(n_total)
+    for t in global_bond_map.values(): k_prior[t] = 5.0
+    for t in global_bond3_map.values(): k_prior[t] = 0.1
+    for t in global_angle_map.values(): k_prior[t] = 1.0
+    for t in global_dihedral_map.values(): k_prior[t] = 0.1
+    bounds = (-np.inf, np.inf) if args.allow_negative else (0.0, np.inf)
+    k_mode, fit_diag = FFfit_cpp.fit_hybrid_hessian(
+        hybrid_systems, mode_weight=args.hybrid_mode, local_weight=args.hybrid_local, internal_weight=args.hybrid_internal,
+        mode_balance=args.mode_weight, mode_mixing=args.mode_mixing, frequency_floor_cm1=args.frequency_floor, local_graph_distance=args.local_graph_distance,
+        prior=k_prior, regularization=args.reg, parameter_scale=k_prior, bounds=bounds)
+    print(f"  solver={fit_diag['solver']} residual={fit_diag['relative_residual']:.6e} rank={fit_diag['rank']}/{n_total} condition={fit_diag['condition']:.6e}")
+    for sys, info in zip(systems, fit_diag['systems']):
+        print(f"  {sys['name']}: all_modes={info['n_modes']} internal_rank={info['internal_rank']}/{info['n_internal_coordinates']} rows={info['component_rows']}")
     for key, t in global_bond_map.items():
         print(f"  k_bond[{key}] = {k_mode[t]:.6e} eV/A^2")
     for key, t in global_bond3_map.items():
@@ -1396,6 +2637,7 @@ def main():
         if args.plot:
             plot_spectrum(nz_ref, nz_model, sys['name'], outdir=args.plot_dir,
                           exp_spectrum=args.exp_spectrum, width=args.spectrum_width, xmax=args.spectrum_xmax)
+            plot_hessian_comparison(sys['H_ref'], H_model, sys['name'], args.plot_dir)
         system_spectra_data.append((sys['name'], nz_ref, nz_model))
 
     if args.plot:

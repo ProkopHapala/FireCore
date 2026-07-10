@@ -120,3 +120,14 @@ where `b = ∂phi/∂r` and `C = ∂²phi/∂r²`. The term `f' * C` is non-zero
 3. Add per-dihedral phase selection (`d = -sign(cos(n phi))`) or per-type phase selection to avoid maxima for C diamond.
 4. Re-run `--dihedrals` on `all_Si` and `all` and compare `relFrob` and frequency residuals.
 5. Once stable, consider adding `fffit_add_dihedral` to `FFfit_lib.cpp` and `FFfit.h` so the C++ methods can also fit dihedrals.
+
+## 2026-07 correction: signed angle and inverse bond lengths
+
+The original Python mirror contained two errors that invalidated its torsion Hessian:
+
+- The C++ complex pair is `(cos(phi), sin(phi))`, but Python interpreted the second component as `-sin(phi)`. Reported signed torsions therefore had the opposite sign.
+- `UFF::hneigh[].w` stores inverse bond length. Python used the bond length itself in the endpoint forces and used the inverse ratios in the wrong direction.
+
+`dihedral_angle()` now returns the signed UFF/Prokop angle from `atan2(sin(phi), cos(phi))`. `dihedral_energy_gradient()` uses inverse lengths exactly as `evalDihedral_Prokop()`. A dedicated test compares all 12 analytical gradient components with central finite differences of the torsion energy.
+
+With these corrections, exact UFF torsion sensitivities can be compared fairly. For `Si_R3p8`, however, bounded hybrid fitting still drives their amplitudes to zero at the current `d=1, n=3` phase. Thus they do not improve this case; the remaining issue is the physical form/phase and indefinite prestress curvature, not the angle or gradient implementation.
