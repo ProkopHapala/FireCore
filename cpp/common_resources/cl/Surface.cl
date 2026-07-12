@@ -952,3 +952,155 @@ __kernel void eval_potential_brute(
 
     phi_out[ip] = phi * COULOMB_CONST;
 }
+
+// ============================================================
+//  Hybrid Potential: Short-Range HardCore Evaluation
+// ============================================================
+// Evaluates per-atom radial functions with finite support on a grid.
+// Each grid point sums contributions from nearby "hardcore" atoms.
+// The radial function uses compact polynomial basis:
+//   phi(r) = sum_n c_n * (1 - r/R_cut)^(2n)   for r < R_cut
+//   phi(r) = 0                                  for r >= R_cut
+//
+// Reference: pyBall/OCL/Surface_utils.py::eval_hardcore_potential()
+// Parity: Python implementation in Surface_utils.py
+
+#define HC_MAX_BASIS 8
+
+inline float eval_hardcore_radial(float r, float R_cut, __local float* coeffs, int n_basis){
+    if(r >= R_cut) return 0.0f;
+    float x = 1.0f - r / R_cut;
+    float x2 = x * x;
+    float phi = 0.0f;
+    float xp = 1.0f;
+    for(int n=0; n<n_basis; n++){
+        phi += coeffs[n] * xp;
+        xp *= x2;
+    }
+    return phi;
+}
+
+__kernel void eval_hardcore_grid(
+    __global const float4* eval_points,  // (N_points, 4) evaluation positions
+    const int N_points,
+    __global const float4* hc_atoms,     // (N_hc, 4) hardcore atom positions (.xyz) + type (.w)
+    const int N_hc,
+    __global const float* hc_coeffs,     // (N_types * HC_MAX_BASIS) fitted coefficients
+    __global const float* hc_R_cuts,     // (N_types) cutoff radii per type
+    const int n_basis,                   // number of basis functions per atom
+    const int n_types,                   // number of atom types
+    __global float* phi_out              // (N_points) output potential
+){
+    const int ip = get_global_id(0);
+    if(ip >= N_points) return;
+
+    float3 p = eval_points[ip].xyz;
+    float phi = 0.0f;
+
+    for(int ia=0; ia<N_hc; ia++){
+        float4 atom = hc_atoms[ia];
+        float3 dp = p - atom.xyz;
+        float r = sqrt(dot(dp, dp));
+        int ityp = (int)atom.w;
+        if(ityp < 0 || ityp >= n_types) continue;
+        float R_cut = hc_R_cuts[ityp];
+        if(r >= R_cut) continue;
+        float x = 1.0f - r / R_cut;
+        float x2 = x * x;
+        float xp = 1.0f;
+        int ioff = ityp * HC_MAX_BASIS;
+        for(int n=0; n<n_basis; n++){
+            phi += hc_coeffs[ioff + n] * xp;
+            xp *= x2;
+        }
+    }
+
+    phi_out[ip] = phi;
+}
+
+// ============================================================
+//  Hybrid Potential: Combined B-spline + HardCore evaluation
+// ============================================================
+// Evaluates V_total = V_bspline(p) + V_hardcore(p) at each point.
+// B-spline part uses tricubic interpolation from GridFF.cl basis().
+// HardCore part sums per-atom radial functions from nearby atoms.
+
+__kernel void eval_hybrid_grid(
+    const float4 g0,                    // grid origin
+    const float4 dg,                    // grid spacing
+    const int4 ng,                      // grid dimensions (nx, ny, nz)
+    __global const float* Eg,           // B-spline grid data (flattened nx*ny*nz)
+    __global const float4* eval_points, // evaluation positions
+    const int N_points,
+    __global const float4* hc_atoms,    // hardcore atom positions + type
+    const int N_hc,
+    __global const float* hc_coeffs,    // hardcore coefficients
+    __global const float* hc_R_cuts,    // cutoff radii per type
+    const int n_basis,
+    const int n_types,
+    __global float* phi_bspline_out,    // output: B-spline part
+    __global float* phi_hardcore_out,   // output: HardCore part
+    __global float* phi_total_out       // output: total potential
+){
+    const int ip = get_global_id(0);
+    if(ip >= N_points) return;
+
+    float3 p = eval_points[ip].xyz;
+
+    // --- B-spline part (tricubic interpolation) ---
+    float3 inv_dg = 1.0f / dg.xyz;
+    float3 u = (p - g0.xyz) * inv_dg;
+
+    // Cubic B-spline basis (from GridFF.cl)
+    float ux = u.x - floor(u.x);
+    float uy = u.y - floor(u.y);
+    float uz = u.z - floor(u.z);
+    float4 bx = basis(ux);
+    float4 by = basis(uy);
+    float4 bz = basis(uz);
+
+    int ix = (int)floor(u.x);
+    int iy = (int)floor(u.y);
+    int iz = (int)floor(u.z);
+
+    float V_bspline = 0.0f;
+    for(int dz=0; dz<4; dz++){
+        int jz = iz + dz - 1;
+        if(jz < 0 || jz >= ng.z) continue;
+        for(int dy=0; dy<4; dy++){
+            int jy = iy + dy - 1;
+            jy = (jy + ng.y) % ng.y;  // periodic in y
+            for(int dx=0; dx<4; dx++){
+                int jx = ix + dx - 1;
+                jx = (jx + ng.x) % ng.x;  // periodic in x
+                int idx = jx + ng.x * (jy + ng.y * jz);
+                V_bspline += bx[dx] * by[dy] * bz[dz] * Eg[idx];
+            }
+        }
+    }
+
+    // --- HardCore part ---
+    float V_hardcore = 0.0f;
+    for(int ia=0; ia<N_hc; ia++){
+        float4 atom = hc_atoms[ia];
+        float3 dp = p - atom.xyz;
+        float r = sqrt(dot(dp, dp));
+        int ityp = (int)atom.w;
+        if(ityp < 0 || ityp >= n_types) continue;
+        float R_cut = hc_R_cuts[ityp];
+        if(r >= R_cut) continue;
+        float x = 1.0f - r / R_cut;
+        float x2 = x * x;
+        float xp = 1.0f;
+        int ioff = ityp * HC_MAX_BASIS;
+        for(int n=0; n<n_basis; n++){
+            V_hardcore += hc_coeffs[ioff + n] * xp;
+            xp *= x2;
+        }
+    }
+
+    // --- Outputs ---
+    if(phi_bspline_out)   phi_bspline_out[ip] = V_bspline;
+    if(phi_hardcore_out)  phi_hardcore_out[ip] = V_hardcore;
+    if(phi_total_out)     phi_total_out[ip] = V_bspline + V_hardcore;
+}

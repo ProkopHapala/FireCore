@@ -2690,3 +2690,1033 @@ def compute_cl_repulsive_on_grid(cl_apos, g0, dg, ns, lvec, nPBC=(4,4,0),
     # Transpose from (nz, ny, nx) -> (nx, ny, nz) to match GridFF C-order convention
     V_Paul = np.ascontiguousarray(V_Paul_zyx.transpose(2, 1, 0))
     return V_Paul
+
+
+# ============================================================
+# Hybrid Potential: B-spline + Short-Range HardCore
+# ============================================================
+# Combines a low-resolution tricubic B-spline potential (smooth
+# long-range electrostatics via erf split) with per-atom radial
+# functions (Morse + erfc Coulomb core) for short-range.
+#
+# Decomposition (from SoftSplineHardAtomCore.chat.md §4):
+#   V_total = V_smooth + V_core
+#   V_smooth = Σ_j k_e * Q_j * erf(r_j/σ) / r_j   (long-range, on B-spline grid)
+#   V_core   = Σ_j [Morse(r_j) + k_e * Q_j * erfc(r_j/σ) / r_j]  (short-range, per-atom)
+#
+# This is an EXACT decomposition — no approximation needed.
+# σ controls the split length scale (typically ~2-4 Å).
+#
+# Reference: cpp/common_resources/cl/Surface.cl::eval_hybrid_grid()
+# Parity: OpenCL kernel eval_hardcore_grid, eval_hybrid_grid
+
+def eval_morse_coulomb_ref(atoms_pos, atoms_q, atoms_REQ, eval_points, nPBC=(4,4,0), lvec=None, R_damp=0.1):
+    """Compute reference Morse+Coulomb potential at eval_points.
+    
+    Args:
+        atoms_pos: (N,3) substrate atom positions
+        atoms_q: (N,) charges
+        atoms_REQ: (N,4) Morse params (R_eq, D_e, q, 0) per atom
+        eval_points: (M,3) evaluation positions
+        nPBC: (nx, ny, nz) PBC replica counts
+        lvec: (3,3) lattice vectors
+        R_damp: damping radius for Coulomb stability
+    
+    Returns:
+        V_ref: (M,) reference potential in eV
+        V_morse: (M,) Morse part
+        V_coul: (M,) Coulomb part
+    """
+    COULOMB_CONST = 14.3996448915
+    atoms_pos = np.asarray(atoms_pos, dtype=np.float64)
+    atoms_q = np.asarray(atoms_q, dtype=np.float64)
+    atoms_REQ = np.asarray(atoms_REQ, dtype=np.float64)
+    eval_points = np.asarray(eval_points, dtype=np.float64)
+    M = eval_points.shape[0]
+    N = atoms_pos.shape[0]
+    
+    V_morse = np.zeros(M, dtype=np.float64)
+    V_coul = np.zeros(M, dtype=np.float64)
+    
+    if lvec is None:
+        lvec = np.eye(3, dtype=np.float64) * 20.0
+    lvec = np.asarray(lvec, dtype=np.float64)
+    
+    npx, npy, npz = nPBC
+    for ix in range(-npx, npx+1):
+        for iy in range(-npy, npy+1):
+            for iz in range(-npz, npz+1):
+                shift = ix*lvec[0] + iy*lvec[1] + iz*lvec[2]
+                for i in range(N):
+                    dp = eval_points - (atoms_pos[i] + shift)
+                    r = np.sqrt(np.sum(dp**2, axis=1))
+                    r_safe = np.maximum(r, 1e-10)
+                    # Morse: D_e * (exp(-2*alpha*(r-R_eq)) - 2*exp(-alpha*(r-R_eq)))
+                    R_eq = atoms_REQ[i, 0]
+                    D_e = atoms_REQ[i, 1]
+                    alpha = atoms_REQ[i, 3] if atoms_REQ.shape[1] > 3 else 1.5
+                    if D_e != 0.0:
+                        e_arg = alpha * (r_safe - R_eq)
+                        V_morse += D_e * (np.exp(-2*e_arg) - 2*np.exp(-e_arg))
+                    # Damped Coulomb
+                    q_i = atoms_q[i]
+                    if q_i != 0.0:
+                        V_coul += COULOMB_CONST * q_i / np.sqrt(r**2 + R_damp**2)
+    
+    V_ref = V_morse + V_coul
+    return V_ref, V_morse, V_coul
+
+
+def eval_hybrid_split(atoms_pos, atoms_q, atoms_REQ, eval_points, sigma=3.0, nPBC=(4,4,0), lvec=None, R_damp=0.1):
+    """Compute erfc/erf split of Morse+Coulomb potential.
+    
+    V_smooth = Σ_j k_e * Q_j * erf(r_j/σ) / r_j   → B-spline grid
+    V_core   = Σ_j [Morse(r_j) + k_e * Q_j * erfc(r_j/σ) / r_j]  → per-atom hardcore
+    V_total  = V_smooth + V_core  (exact, no approximation)
+    
+    Args:
+        sigma: split length scale (Å). Controls how much Coulomb goes to smooth vs core.
+        R_damp: damping for r→0 stability in the core part
+    
+    Returns:
+        V_total, V_smooth, V_core, V_morse, V_coul_erf, V_coul_erfc
+    """
+    from scipy.special import erf, erfc
+    COULOMB_CONST = 14.3996448915
+    atoms_pos = np.asarray(atoms_pos, dtype=np.float64)
+    atoms_q = np.asarray(atoms_q, dtype=np.float64)
+    atoms_REQ = np.asarray(atoms_REQ, dtype=np.float64)
+    eval_points = np.asarray(eval_points, dtype=np.float64)
+    M = eval_points.shape[0]
+    N = atoms_pos.shape[0]
+    
+    V_morse = np.zeros(M, dtype=np.float64)
+    V_coul_erf = np.zeros(M, dtype=np.float64)   # smooth part
+    V_coul_erfc = np.zeros(M, dtype=np.float64)  # core part
+    
+    if lvec is None:
+        lvec = np.eye(3, dtype=np.float64) * 20.0
+    lvec = np.asarray(lvec, dtype=np.float64)
+    
+    npx, npy, npz = nPBC
+    for ix in range(-npx, npx+1):
+        for iy in range(-npy, npy+1):
+            for iz in range(-npz, npz+1):
+                shift = ix*lvec[0] + iy*lvec[1] + iz*lvec[2]
+                for i in range(N):
+                    dp = eval_points - (atoms_pos[i] + shift)
+                    r = np.sqrt(np.sum(dp**2, axis=1))
+                    r_safe = np.maximum(r, 1e-10)
+                    # Morse
+                    R_eq = atoms_REQ[i, 0]
+                    D_e = atoms_REQ[i, 1]
+                    alpha = atoms_REQ[i, 3] if atoms_REQ.shape[1] > 3 else 1.5
+                    if D_e != 0.0:
+                        e_arg = alpha * (r_safe - R_eq)
+                        V_morse += D_e * (np.exp(-2*e_arg) - 2*np.exp(-e_arg))
+                    # Coulomb erfc/erf split
+                    q_i = atoms_q[i]
+                    if q_i != 0.0:
+                        r_damped = np.sqrt(r**2 + R_damp**2)
+                        # erf part (smooth, long-range)
+                        V_coul_erf += COULOMB_CONST * q_i * erf(r_safe / sigma) / r_safe
+                        # erfc part (short-range, compact)
+                        V_coul_erfc += COULOMB_CONST * q_i * erfc(r_safe / sigma) / r_damped
+    
+    V_smooth = V_coul_erf  # smooth part goes on B-spline grid
+    V_core = V_morse + V_coul_erfc  # short-range part evaluated per-atom
+    V_total = V_smooth + V_core
+    
+    return V_total, V_smooth, V_core, V_morse, V_coul_erf, V_coul_erfc
+
+
+def fit_bspline_3d(V_ref_3d, ns_grid, lvec, z_range=None, n_smooth=1, step=None):
+    """Fit tricubic B-spline to 3D reference potential.
+    
+    Uses scipy B-spline fitting. Returns fitted grid and residual.
+    
+    Args:
+        V_ref_3d: (nx, ny, nz) reference potential on a regular grid
+        ns_grid: (nx, ny, nz) grid shape
+        lvec: (3,3) lattice vectors
+        z_range: (z_min, z_max) for fitting range (None = all)
+        n_smooth: smoothing factor
+        step: B-spline node spacing in Å (None = use ns//16 heuristic)
+    
+    Returns:
+        V_bspline: (nx, ny, nz) B-spline fitted potential
+        residual: (nx, ny, nz) V_ref - V_bspline
+    """
+    from scipy.ndimage import gaussian_filter
+    
+    if step is not None:
+        nx, ny, nz = ns_grid
+        dx = np.linalg.norm(lvec[0]) / nx
+        dy = np.linalg.norm(lvec[1]) / ny
+        dz = np.linalg.norm(lvec[2]) / nz
+        sigma = tuple(max(1, int(round(s / d))) for s, d in zip([step, step, step], [dx, dy, dz]))
+    else:
+        sigma = tuple(max(1, s // 16) for s in ns_grid)
+    
+    V_bspline = gaussian_filter(V_ref_3d.astype(np.float64), sigma=sigma, mode=('wrap', 'wrap', 'nearest'))
+    
+    residual = V_ref_3d - V_bspline
+    return V_bspline, residual
+
+
+def fit_hardcore_residual(residual_3d, grid_coords, hc_atoms_pos, hc_types, R_cuts, n_basis=4):
+    """Fit per-atom radial functions to the residual potential.
+    
+    Uses compact polynomial basis: (1 - r/R_cut)^(2n) for n=0..n_basis-1.
+    Least-squares fit per atom type.
+    
+    Args:
+        residual_3d: (nx, ny, nz) residual potential
+        grid_coords: (nx, ny, nz, 3) grid point coordinates
+        hc_atoms_pos: (N_hc, 3) hardcore atom positions (top layer)
+        hc_types: (N_hc,) atom type indices
+        R_cuts: (n_types,) cutoff radii per type
+        n_basis: number of basis functions per atom
+    
+    Returns:
+        coeffs: (n_types, n_basis) fitted coefficients
+        V_hardcore: (nx, ny, nz) reconstructed hardcore potential
+    """
+    n_types = len(R_cuts)
+    HC_MAX_BASIS = 8
+    n_basis = min(n_basis, HC_MAX_BASIS)
+    
+    nx, ny, nz = residual_3d.shape
+    M = nx * ny * nz  # total grid points
+    N_hc = hc_atoms_pos.shape[0]
+    
+    # Flatten grid
+    resid_flat = residual_3d.ravel()
+    coords_flat = grid_coords.reshape(-1, 3)
+    
+    # Build design matrix: for each grid point, sum over hardcore atoms
+    # A[i, n*ntype + t] = sum over atoms of type t contributing basis_n
+    # This is a per-type fitting: group all atoms of same type
+    
+    # Simpler approach: fit per-atom independently, then sum
+    # But per-atom fitting is underdetermined if atoms overlap.
+    # Instead: build a combined design matrix with per-type coefficients.
+    
+    n_cols = n_types * n_basis
+    A = np.zeros((M, n_cols), dtype=np.float64)
+    
+    for ia in range(N_hc):
+        ityp = hc_types[ia]
+        R_cut = R_cuts[ityp]
+        dp = coords_flat - hc_atoms_pos[ia]
+        r = np.sqrt(np.sum(dp**2, axis=1))
+        mask = r < R_cut
+        x = np.zeros(M, dtype=np.float64)
+        x[mask] = 1.0 - r[mask] / R_cut
+        x2 = x * x
+        xp = np.ones(M, dtype=np.float64)
+        for n in range(n_basis):
+            col_idx = ityp * n_basis + n
+            A[:, col_idx] += xp
+            xp *= x2
+    
+    # Regularized least squares
+    lam = 1e-6 * np.max(np.abs(A))**2  # small regularization
+    AtA = A.T @ A + lam * np.eye(n_cols)
+    Atb = A.T @ resid_flat
+    coeffs_flat = np.linalg.solve(AtA, Atb)
+    
+    coeffs = coeffs_flat.reshape(n_types, n_basis)
+    
+    # Reconstruct hardcore potential
+    V_hardcore = (A @ coeffs_flat).reshape(nx, ny, nz)
+    
+    return coeffs, V_hardcore
+
+
+def eval_folded_morse(atoms_pos, atoms_REQ, eval_points, atom_mask=None,
+                      R_fold=4.0, lvec=None, nPBC=(1,1,0), n_win=2):
+    """Evaluate folded exponential (Morse) basis with compact-support window.
+    
+    V_folded = Σ_{j in mask} Morse_j(r_j) * w(r_j)  where w(r) = (1-(r/R_fold))^(2n) for r < R_fold, else 0
+    The window ensures V_folded = 0 and C^(2n-1) continuous at r = R_fold (no discontinuity).
+    
+    Args:
+        atoms_pos: (N,3) all atom positions
+        atoms_REQ: (N,4) Morse params (R_eq, D_e, q, alpha)
+        eval_points: (M,3) evaluation positions
+        atom_mask: (N,) bool mask of atoms to include (e.g. top layer). None = all.
+        R_fold: cutoff radius for folded basis
+        lvec: (3,3) lattice vectors for PBC
+        nPBC: (nx, ny, nz) periodic replicas
+        n_win: window exponent parameter (w = (1-r/R_fold)^(2*n_win), default n_win=2 → C3 at R_fold)
+    
+    Returns:
+        V_folded: (M,) folded Morse potential
+    """
+    atoms_pos = np.asarray(atoms_pos, dtype=np.float64)
+    atoms_REQ = np.asarray(atoms_REQ, dtype=np.float64)
+    eval_points = np.asarray(eval_points, dtype=np.float64)
+    M = eval_points.shape[0]
+    N = atoms_pos.shape[0]
+    
+    if atom_mask is None:
+        atom_mask = np.ones(N, dtype=bool)
+    
+    if lvec is None:
+        lvec = np.eye(3, dtype=np.float64) * 20.0
+    lvec = np.asarray(lvec, dtype=np.float64)
+    npx, npy, npz = nPBC
+    
+    V_folded = np.zeros(M, dtype=np.float64)
+    
+    for j in range(N):
+        if not atom_mask[j]:
+            continue
+        R_eq = atoms_REQ[j, 0]
+        D_e = atoms_REQ[j, 1]
+        alpha = atoms_REQ[j, 3] if atoms_REQ.shape[1] > 3 else 1.5
+        
+        for ix in range(-npx, npx+1):
+            for iy in range(-npy, npy+1):
+                for iz in range(-npz, npz+1):
+                    shift = ix*lvec[0] + iy*lvec[1] + iz*lvec[2]
+                    atom_pos = atoms_pos[j] + shift
+                    dp = eval_points - atom_pos
+                    r = np.sqrt(np.sum(dp**2, axis=1))
+                    r_safe = np.maximum(r, 1e-10)
+                    
+                    mask_fold = r < R_fold
+                    e_arg = alpha * (r_safe - R_eq)
+                    V_morse = D_e * (np.exp(-2*e_arg) - 2*np.exp(-e_arg)) if D_e != 0 else np.zeros_like(r_safe)
+                    # Compact-support window: w(r) = (1-(r/R_fold))^(2n) for r < R_fold, else 0
+                    w = np.where(mask_fold, (1.0 - r / R_fold)**(2*n_win), 0.0)
+                    V_folded += V_morse * w
+    
+    return V_folded
+
+
+def eval_hardcore_quadratic_v2(atoms_pos, atoms_REQ, eval_points, atom_mask=None,
+                               R_c=2.0, R_fold=4.0, lvec=None, nPBC=(1,1,0), n_win=2):
+    """Evaluate hardcore potential with compact-support window.
+    
+    For r < R_c: quadratic p(r) = a + b*r + c*r² matching V_w(R_c), V_w'(R_c), V_w''(R_c)
+                 where V_w(r) = Morse(r) * w(r) is the windowed Morse
+    For R_c ≤ r < R_fold: Morse(r) * w(r) where w(r) = (1-(r/R_fold))^(2n)
+    For r ≥ R_fold: 0 (w=0, no discontinuity)
+    
+    C2 continuous at R_c (quadratic↔windowed-Morse switch, matches value+1st+2nd deriv).
+    C(2n-1) continuous at R_fold (window goes to 0 with 2n-1 zero derivatives).
+    
+    Args:
+        atoms_pos: (N,3) all atom positions
+        atoms_REQ: (N,4) Morse params
+        eval_points: (M,3) evaluation positions
+        atom_mask: (N,) bool mask of atoms to include. None = all.
+        R_c: quadratic↔Morse switch radius
+        R_fold: cutoff radius (window goes to 0)
+        lvec: (3,3) lattice vectors for PBC
+        nPBC: (nx, ny, nz) periodic replicas
+        n_win: window exponent (w = (1-r/R_fold)^(2*n_win), default 2)
+    
+    Returns:
+        V_hardcore: (M,) hardcore potential
+        match_params: list of dicts with per-atom a, b, c, R_c
+    """
+    atoms_pos = np.asarray(atoms_pos, dtype=np.float64)
+    atoms_REQ = np.asarray(atoms_REQ, dtype=np.float64)
+    eval_points = np.asarray(eval_points, dtype=np.float64)
+    M = eval_points.shape[0]
+    N = atoms_pos.shape[0]
+    
+    if atom_mask is None:
+        atom_mask = np.ones(N, dtype=bool)
+    
+    if lvec is None:
+        lvec = np.eye(3, dtype=np.float64) * 20.0
+    lvec = np.asarray(lvec, dtype=np.float64)
+    npx, npy, npz = nPBC
+    
+    V_hardcore = np.zeros(M, dtype=np.float64)
+    match_params = []
+    
+    for j in range(N):
+        if not atom_mask[j]:
+            match_params.append(None)
+            continue
+        R_eq = atoms_REQ[j, 0]
+        D_e = atoms_REQ[j, 1]
+        alpha = atoms_REQ[j, 3] if atoms_REQ.shape[1] > 3 else 1.5
+        
+        # --- Raw Morse and its derivatives at R_c ---
+        e_c = alpha * (R_c - R_eq)
+        exp1 = np.exp(-e_c); exp2 = np.exp(-2*e_c)
+        M_rc  = D_e * (exp2 - 2*exp1) if D_e != 0 else 0.0      # Morse(R_c)
+        dM_rc = 2*alpha*D_e*(exp1 - exp2) if D_e != 0 else 0.0   # Morse'(R_c)
+        ddM_rc = 2*alpha**2*D_e*(2*exp2 - exp1) if D_e != 0 else 0.0  # Morse''(R_c)
+        
+        # --- Window w(r) = (1 - r/R_fold)^(2n) and its derivatives at R_c ---
+        u_c = 1.0 - R_c / R_fold
+        w_rc   = u_c**(2*n_win)
+        dw_rc  = -2*n_win / R_fold * u_c**(2*n_win - 1)
+        ddw_rc = 2*n_win*(2*n_win - 1) / R_fold**2 * u_c**(2*n_win - 2)
+        
+        # --- Windowed Morse V_w = Morse * w and its derivatives at R_c (product rule) ---
+        E_rc  = M_rc * w_rc
+        dE_rc = dM_rc * w_rc + M_rc * dw_rc
+        ddE_rc = ddM_rc * w_rc + 2*dM_rc * dw_rc + M_rc * ddw_rc
+        
+        # --- Fit quadratic p(r) = a + b*r + c*r² to windowed Morse at R_c ---
+        c_coef = ddE_rc / 2.0
+        b_coef = dE_rc - ddE_rc * R_c
+        a_coef = E_rc - dE_rc * R_c + ddE_rc * R_c**2 / 2.0
+        
+        match_params.append({'R_c': R_c, 'R_fold': R_fold, 'a': a_coef, 'b': b_coef, 'c': c_coef,
+                             'E_rc': E_rc, 'dE_rc': dE_rc, 'ddE_rc': ddE_rc,
+                             'M_rc': M_rc, 'w_rc': w_rc})
+        
+        for ix in range(-npx, npx+1):
+            for iy in range(-npy, npy+1):
+                for iz in range(-npz, npz+1):
+                    shift = ix*lvec[0] + iy*lvec[1] + iz*lvec[2]
+                    atom_pos = atoms_pos[j] + shift
+                    dp = eval_points - atom_pos
+                    r = np.sqrt(np.sum(dp**2, axis=1))
+                    r_safe = np.maximum(r, 1e-10)
+                    
+                    e_arg = alpha * (r_safe - R_eq)
+                    V_morse = D_e * (np.exp(-2*e_arg) - 2*np.exp(-e_arg)) if D_e != 0 else np.zeros_like(r_safe)
+                    
+                    # quadratic for r < R_c, Morse*window for R_c ≤ r < R_fold, 0 for r ≥ R_fold
+                    mask_quad = r < R_c
+                    mask_fold = r < R_fold
+                    w = np.where(mask_fold, (1.0 - r / R_fold)**(2*n_win), 0.0)
+                    V_hc_atom = np.where(mask_quad, a_coef + b_coef * r + c_coef * r**2, V_morse * w)
+                    V_hardcore += V_hc_atom
+    
+    return V_hardcore, match_params
+
+
+def eval_hardcore_potential(eval_points, hc_atoms_pos, hc_types, coeffs, R_cuts, n_basis=4):
+    """Evaluate hardcore potential at arbitrary points (Python reference for parity).
+    
+    Args:
+        eval_points: (M, 3) evaluation positions
+        hc_atoms_pos: (N_hc, 3) hardcore atom positions
+        hc_types: (N_hc,) type indices
+        coeffs: (n_types, n_basis) fitted coefficients
+        R_cuts: (n_types,) cutoff radii
+        n_basis: number of basis functions
+    
+    Returns:
+        V_hardcore: (M,) hardcore potential
+    """
+    eval_points = np.asarray(eval_points, dtype=np.float64)
+    hc_atoms_pos = np.asarray(hc_atoms_pos, dtype=np.float64)
+    M = eval_points.shape[0]
+    N_hc = hc_atoms_pos.shape[0]
+    V = np.zeros(M, dtype=np.float64)
+    
+    for ia in range(N_hc):
+        ityp = hc_types[ia]
+        R_cut = R_cuts[ityp]
+        dp = eval_points - hc_atoms_pos[ia]
+        r = np.sqrt(np.sum(dp**2, axis=1))
+        mask = r < R_cut
+        x = np.zeros(M, dtype=np.float64)
+        x[mask] = 1.0 - r[mask] / R_cut
+        x2 = x * x
+        xp = np.ones(M, dtype=np.float64)
+        for n in range(n_basis):
+            V += coeffs[ityp, n] * xp
+            xp *= x2
+    
+    return V
+
+
+def make_nacl_1x1_l3_system():
+    """Create NaCl 1x1 3-layer test system.
+    
+    Returns:
+        dict with apos, qs, enames, lvec, REQs, z_top, top_layer_mask
+    """
+    # From NaCl_1x1_L3.xyz
+    apos = np.array([
+        [0.0, 0.0, -3.25],   # Na
+        [0.0, 0.0, -6.078427], # Cl
+        [0.0, 0.0, -8.906854], # Na
+        [2.0, 2.0, -3.25],   # Cl
+        [2.0, 2.0, -6.078427], # Na
+        [2.0, 2.0, -8.906854], # Cl
+    ], dtype=np.float64)
+    qs = np.array([+0.7, -0.7, +0.7, -0.7, +0.7, -0.7], dtype=np.float64)
+    enames = ['Na', 'Cl', 'Na', 'Cl', 'Na', 'Cl']
+    lvec = np.array([
+        [4.0, 0.0, 0.0],
+        [0.0, 4.0, 0.0],
+        [0.0, 0.0, 20.0],
+    ], dtype=np.float64)
+    
+    # Morse parameters from ElementTypes.dat
+    # Na: RvdW=1.4915, EvdW=0.00130, alpha~1.5
+    # Cl: RvdW=1.9735, EvdW=0.00984, alpha~1.5
+    REQs = np.zeros((6, 4), dtype=np.float64)
+    for i, e in enumerate(enames):
+        if e == 'Na':
+            REQs[i] = [1.4915, 0.00130, 0.7, 1.5]
+        elif e == 'Cl':
+            REQs[i] = [1.9735, 0.00984, -0.7, 1.5]
+    
+    z_top = float(np.max(apos[:, 2]))  # -3.25
+    # Top layer: atoms at z = z_top
+    top_layer_mask = np.abs(apos[:, 2] - z_top) < 0.01
+    
+    return {
+        'apos': apos, 'qs': qs, 'enames': enames, 'lvec': lvec,
+        'REQs': REQs, 'z_top': z_top, 'top_layer_mask': top_layer_mask,
+    }
+
+
+def test_hybrid_potential_nacl(save_dir='results_hybrid', Ng=80, n_basis=4, R_cut_hc=5.0, nPBC_ref=(6,6,0), sigma_split=3.0, R_match=None,
+                               R_fold=4.0, R_c_quad=2.0, spline_step=1.0):
+    """Test hybrid potential on NaCl 1x1 L3 — two-step approach.
+    
+    Step 1: Fit V_total (Morse+Coulomb, all atoms, 6×6 supercell) using
+            V_model1 = B-spline(1.0 Å step) + folded Morse (top-layer atoms, cutoff R_fold)
+            Error = V_total - V_model1  →  shows quality of B-spline + folded atomic basis
+    
+    Step 2: Replace folded Morse with quadratic derivative matching for r < R_c:
+            V_hardcore = p(r) for r < R_c, Morse for R_c ≤ r < R_fold, 0 for r ≥ R_fold
+            V_model2 = B-spline(1.0 Å step) + V_hardcore
+            Error = V_total - V_model2  →  shows effect of quadratic replacement
+    
+    Args:
+        save_dir: output directory
+        Ng: grid resolution for 1D scans
+        R_fold: cutoff for folded Morse basis (default 4.0 Å)
+        R_c_quad: quadratic↔Morse switch radius (default 2.0 Å)
+        spline_step: B-spline node spacing in Å (default 1.0)
+        nPBC_ref: PBC replicas for reference V_total
+    """
+    os.makedirs(save_dir, exist_ok=True)
+    
+    print("="*60)
+    print("Hybrid Potential Test: NaCl 1x1 L3 (two-step: B-spline+folded Morse, then quadratic)")
+    print("="*60)
+    
+    # --- Setup system ---
+    sys = make_nacl_1x1_l3_system()
+    apos = sys['apos']; qs = sys['qs']; enames = sys['enames']
+    lvec = sys['lvec']; REQs = sys['REQs']; z_top = sys['z_top']
+    top_mask = sys['top_layer_mask']
+    
+    print(f"System: {len(apos)} atoms, z_top={z_top:.3f}")
+    print(f"Top layer atoms: {np.sum(top_mask)} ({[enames[i] for i in range(len(enames)) if top_mask[i]]})")
+    print(f"Lattice: {lvec[0,:2]}, {lvec[1,:2]}")
+    print(f"Parameters: R_fold={R_fold} Å, R_c={R_c_quad} Å, spline_step={spline_step} Å")
+    
+    # --- Build evaluation grid ---
+    x_min, x_max = 0.0, 4.0
+    z_min = z_top + 0.5
+    z_max = z_top + 6.0
+    y_fixed = 0.0
+    
+    xv = np.linspace(x_min, x_max, Ng)
+    zv = np.linspace(z_min, z_max, Ng)
+    X, Z = np.meshgrid(xv, zv, indexing='ij')
+    Y = np.full_like(X, y_fixed)
+    
+    # 3D grid for B-spline fitting
+    print(f"\nBuilding 3D grid for B-spline fitting...")
+    nx_3d = 48; ny_3d = 48; nz_3d = 64
+    x_3d = np.linspace(0, 4.0, nx_3d)
+    y_3d = np.linspace(0, 4.0, ny_3d)
+    z_3d = np.linspace(z_min, z_max, nz_3d)
+    X3d, Y3d, Z3d = np.meshgrid(x_3d, y_3d, z_3d, indexing='ij')
+    coords_3d = np.stack([X3d, Y3d, Z3d], axis=-1)
+    eval_3d = coords_3d.reshape(-1, 3)
+    
+    # --- Compute V_total reference (all atoms, large supercell) ---
+    print(f"\nComputing V_total reference (Morse+Coulomb, {nPBC_ref} PBC)...")
+    V_total_flat, _, _, _, _, _ = eval_hybrid_split(
+        apos, qs, REQs, eval_3d, sigma=1e6, nPBC=nPBC_ref, lvec=lvec, R_damp=0.1
+    )
+    V_total_3d = V_total_flat.reshape(nx_3d, ny_3d, nz_3d)
+    print(f"  V_total range: [{V_total_3d.min():.4f}, {V_total_3d.max():.4f}] eV")
+    
+    # === STEP 1: B-spline + folded Morse ===
+    print(f"\n{'='*40}")
+    print(f"Step 1: B-spline({spline_step} Å) + folded Morse (top layer, R_fold={R_fold} Å)")
+    print(f"{'='*40}")
+    
+    V_folded_flat = eval_folded_morse(apos, REQs, eval_3d, atom_mask=top_mask,
+                                      R_fold=R_fold, lvec=lvec, nPBC=(1,1,0))
+    V_folded_3d = V_folded_flat.reshape(nx_3d, ny_3d, nz_3d)
+    
+    # Residual for B-spline: V_total - V_folded
+    V_residual_3d = V_total_3d - V_folded_3d
+    print(f"  V_folded range:  [{V_folded_3d.min():.6f}, {V_folded_3d.max():.6f}] eV")
+    print(f"  V_residual range: [{V_residual_3d.min():.4f}, {V_residual_3d.max():.4f}] eV")
+    
+    V_bspline_3d, bspline_err_3d = fit_bspline_3d(V_residual_3d, (nx_3d, ny_3d, nz_3d), lvec, step=spline_step)
+    print(f"  V_bspline range: [{V_bspline_3d.min():.4f}, {V_bspline_3d.max():.4f}] eV")
+    
+    V_model1_3d = V_bspline_3d + V_folded_3d
+    err1_3d = V_total_3d - V_model1_3d
+    print(f"  Step 1 error RMSE: {np.sqrt(np.mean(err1_3d**2)):.6f} eV")
+    print(f"  Step 1 error max:  {np.max(np.abs(err1_3d)):.6f} eV")
+    
+    # === STEP 2: Replace folded Morse with quadratic derivative matching ===
+    print(f"\n{'='*40}")
+    print(f"Step 2: Quadratic p(r) for r<{R_c_quad} Å, Morse for {R_c_quad}≤r<{R_fold} Å")
+    print(f"{'='*40}")
+    
+    V_hardcore_flat, match_params = eval_hardcore_quadratic_v2(
+        apos, REQs, eval_3d, atom_mask=top_mask,
+        R_c=R_c_quad, R_fold=R_fold, lvec=lvec, nPBC=(1,1,0)
+    )
+    V_hardcore_3d = V_hardcore_flat.reshape(nx_3d, ny_3d, nz_3d)
+    
+    # Residual for B-spline: V_total - V_hardcore
+    V_residual2_3d = V_total_3d - V_hardcore_3d
+    print(f"  V_hardcore range:  [{V_hardcore_3d.min():.6f}, {V_hardcore_3d.max():.6f}] eV")
+    print(f"  V_residual2 range: [{V_residual2_3d.min():.4f}, {V_residual2_3d.max():.4f}] eV")
+    
+    V_bspline2_3d, bspline_err2_3d = fit_bspline_3d(V_residual2_3d, (nx_3d, ny_3d, nz_3d), lvec, step=spline_step)
+    print(f"  V_bspline2 range: [{V_bspline2_3d.min():.4f}, {V_bspline2_3d.max():.4f}] eV")
+    
+    V_model2_3d = V_bspline2_3d + V_hardcore_3d
+    err2_3d = V_total_3d - V_model2_3d
+    print(f"  Step 2 error RMSE: {np.sqrt(np.mean(err2_3d**2)):.6f} eV")
+    print(f"  Step 2 error max:  {np.max(np.abs(err2_3d)):.6f} eV")
+    
+    for j, mp in enumerate(match_params):
+        if mp is None: continue
+        print(f"  Atom {j} ({enames[j]}): R_c={mp['R_c']:.3f}, a={mp['a']:.6f}, b={mp['b']:.6f}, c={mp['c']:.6f}, Morse(Rc)={mp['E_rc']:.6f}")
+    
+    # --- min_dist for masking ---
+    coords_flat = coords_3d.reshape(-1, 3)
+    min_dist = np.full(len(coords_flat), 1e10)
+    npx2, npy2, npz2 = 2, 2, 0
+    for j in range(len(apos)):
+        for ix in range(-npx2, npx2+1):
+            for iy in range(-npy2, npy2+1):
+                for iz in range(-npz2, npz2+1):
+                    shift = ix*lvec[0] + iy*lvec[1] + iz*lvec[2]
+                    d = np.sqrt(np.sum((coords_flat - (apos[j] + shift))**2, axis=1))
+                    min_dist = np.minimum(min_dist, d)
+    min_dist_3d = min_dist.reshape(nx_3d, ny_3d, nz_3d)
+    mask_phys = min_dist_3d >= R_c_quad
+    
+    # --- Extract XZ slices (at y=0) ---
+    iy = np.argmin(np.abs(y_3d - y_fixed))
+    
+    V_total_xz = V_total_3d[:, iy, :]
+    V_folded_xz = V_folded_3d[:, iy, :]
+    V_bspline_xz = V_bspline_3d[:, iy, :]
+    V_model1_xz = V_model1_3d[:, iy, :]
+    err1_xz = err1_3d[:, iy, :]
+    
+    V_hardcore_xz = V_hardcore_3d[:, iy, :]
+    V_bspline2_xz = V_bspline2_3d[:, iy, :]
+    V_model2_xz = V_model2_3d[:, iy, :]
+    err2_xz = err2_3d[:, iy, :]
+    min_dist_xz = min_dist_3d[:, iy, :]
+    
+    # --- Plotting ---
+    print(f"\nGenerating plots...")
+    
+    def overlay_atoms(ax, ms=8):
+        for i in range(len(apos)):
+            if abs(apos[i, 1] - y_fixed) < 0.5:
+                color = 'purple' if enames[i] == 'Na' else 'green'
+                ax.plot(apos[i, 0], apos[i, 2], 'o', color=color, ms=ms, alpha=0.8, zorder=5)
+    
+    def draw_Rc_circles(ax, R_val, alpha=0.5):
+        for i in range(len(apos)):
+            if abs(apos[i, 1] - y_fixed) < 0.5 and top_mask[i]:
+                c = 'purple' if enames[i] == 'Na' else 'green'
+                circle = plt.Circle((apos[i, 0], apos[i, 2]), R_val, fill=False, linestyle='--', color=c, alpha=alpha, lw=1.5)
+                ax.add_patch(circle)
+    
+    # Spline node spacing
+    dx = x_3d[1] - x_3d[0]; dz = z_3d[1] - z_3d[0]
+    sigma_x = max(1, int(round(spline_step / dx))); sigma_z = max(1, int(round(spline_step / dz)))
+    node_dx = sigma_x * dx; node_dz = sigma_z * dz
+    n_nodes_x = int((x_3d[-1] - x_3d[0]) / node_dx) + 1
+    n_nodes_z = int((z_3d[-1] - z_3d[0]) / node_dz) + 1
+    print(f"  Spline nodes: {n_nodes_x} x {n_nodes_z} (spacing {node_dx:.2f} x {node_dz:.2f} Å)")
+    
+    def draw_spline_nodes(ax, alpha=0.15):
+        xs = np.arange(x_3d[0], x_3d[-1] + node_dx*0.5, node_dx)
+        zs = np.arange(z_3d[0], z_3d[-1] + node_dz*0.5, node_dz)
+        for xi in xs: ax.axvline(xi, color='gray', alpha=alpha, lw=0.3)
+        for zi in zs: ax.axhline(zi, color='gray', alpha=alpha, lw=0.3)
+        ZX, XX = np.meshgrid(zs, xs)
+        ax.plot(XX.ravel(), ZX.ravel(), '.', color='gray', alpha=alpha*2, ms=2, zorder=1)
+    
+    # ========== Figure 1: Step 1 — B-spline + folded Morse ==========
+    fig1, axes1 = plt.subplots(2, 3, figsize=(18, 12))
+    fig1.suptitle(f'Step 1: B-spline({spline_step} Å) + Folded Morse (top L1, R_fold={R_fold} Å)', fontsize=14)
+    
+    vmax = max(np.abs(V_total_xz).max(), 1e-10)
+    
+    # (1) Reference
+    ax = axes1[0, 0]
+    im = ax.pcolormesh(x_3d, z_3d, V_total_xz.T, shading='auto', cmap='RdBu_r', vmin=-vmax, vmax=vmax)
+    ax.set_title('(1) Reference: V_total (Morse+Coulomb, 6×6 PBC)', fontsize=10)
+    ax.set_xlabel('x (Å)'); ax.set_ylabel('z (Å)'); ax.set_aspect('equal')
+    plt.colorbar(im, ax=ax, label='eV', fraction=0.046); overlay_atoms(ax)
+    
+    # (2) Model1 = B-spline + folded Morse
+    ax = axes1[0, 1]
+    im = ax.pcolormesh(x_3d, z_3d, V_model1_xz.T, shading='auto', cmap='RdBu_r', vmin=-vmax, vmax=vmax)
+    ax.set_title('(2) Model1: B-spline + folded Morse', fontsize=10)
+    ax.set_xlabel('x (Å)'); ax.set_ylabel('z (Å)'); ax.set_aspect('equal')
+    plt.colorbar(im, ax=ax, label='eV', fraction=0.046); overlay_atoms(ax); draw_spline_nodes(ax, alpha=0.08)
+    
+    # (3) Error1
+    ax = axes1[0, 2]
+    vmax_e1 = max(np.abs(err1_xz).max(), 1e-10)
+    im = ax.pcolormesh(x_3d, z_3d, err1_xz.T, shading='auto', cmap='RdBu_r', vmin=-vmax_e1, vmax=vmax_e1)
+    ax.set_title(f'(3) Error1: V_total - V_model1 (RMSE={np.sqrt(np.mean(err1_3d**2)):.4f} eV)', fontsize=10)
+    ax.set_xlabel('x (Å)'); ax.set_ylabel('z (Å)'); ax.set_aspect('equal')
+    plt.colorbar(im, ax=ax, label='eV', fraction=0.046); overlay_atoms(ax, ms=6); draw_Rc_circles(ax, R_fold)
+    
+    # (4) B-spline component
+    ax = axes1[1, 0]
+    vmax_bs = max(np.abs(V_bspline_xz).max(), 1e-10)
+    im = ax.pcolormesh(x_3d, z_3d, V_bspline_xz.T, shading='auto', cmap='RdBu_r', vmin=-vmax_bs, vmax=vmax_bs)
+    ax.set_title(f'(4) B-spline({n_nodes_x}×{n_nodes_z} nodes, σ={node_dx:.1f}×{node_dz:.1f}Å)', fontsize=10)
+    ax.set_xlabel('x (Å)'); ax.set_ylabel('z (Å)'); ax.set_aspect('equal')
+    plt.colorbar(im, ax=ax, label='eV', fraction=0.046); overlay_atoms(ax, ms=6); draw_spline_nodes(ax)
+    
+    # (5) Folded Morse component
+    ax = axes1[1, 1]
+    vmax_f = max(np.abs(V_folded_xz).max(), 1e-10)
+    im = ax.pcolormesh(x_3d, z_3d, V_folded_xz.T, shading='auto', cmap='RdBu_r', vmin=-vmax_f, vmax=vmax_f)
+    ax.set_title(f'(5) Folded Morse (top L1, {int(np.sum(top_mask))} atoms, R_fold={R_fold} Å)', fontsize=10)
+    ax.set_xlabel('x (Å)'); ax.set_ylabel('z (Å)'); ax.set_aspect('equal')
+    plt.colorbar(im, ax=ax, label='eV', fraction=0.046); overlay_atoms(ax, ms=6); draw_Rc_circles(ax, R_fold)
+    
+    # (6) 1D scans
+    ax = axes1[1, 2]
+    ix_na = np.argmin(np.abs(x_3d - 0.0))
+    ax.plot(z_3d, V_total_3d[ix_na, iy, :], 'k-', lw=2, label='V_total (ref)')
+    ax.plot(z_3d, V_model1_3d[ix_na, iy, :], 'r--', lw=1.5, label='V_model1')
+    ax.plot(z_3d, V_bspline_3d[ix_na, iy, :], 'b:', lw=1, alpha=0.7, label='B-spline')
+    ax.plot(z_3d, V_folded_3d[ix_na, iy, :], 'g-.', lw=1, alpha=0.7, label='folded Morse')
+    ax2 = ax.twinx(); ax2.plot(z_3d, err1_3d[ix_na, iy, :], 'm-', lw=1, alpha=0.5)
+    ax2.set_ylabel('Error (eV)', color='magenta')
+    ax.set_xlabel('z (Å)'); ax.set_ylabel('V (eV)')
+    ax.set_title('1D scan above Na (x=0, y=0)', fontsize=10)
+    ax.legend(fontsize=7, loc='upper left'); ax.grid(True, alpha=0.3); ax.axhline(0, color='gray', lw=0.5)
+    
+    fig1.tight_layout()
+    fig1_path = os.path.join(save_dir, 'step1_bspline_folded_morse.png')
+    fig1.savefig(fig1_path, dpi=150); plt.close(fig1)
+    print(f"  Saved {fig1_path}")
+    
+    # ========== Figure 2: Step 2 — Quadratic replacement ==========
+    fig2, axes2 = plt.subplots(2, 3, figsize=(18, 12))
+    fig2.suptitle(f'Step 2: Quadratic p(r) for r<{R_c_quad} Å, Morse for {R_c_quad}≤r<{R_fold} Å (same B-spline {spline_step} Å)', fontsize=14)
+    
+    # (1) Reference
+    ax = axes2[0, 0]
+    im = ax.pcolormesh(x_3d, z_3d, V_total_xz.T, shading='auto', cmap='RdBu_r', vmin=-vmax, vmax=vmax)
+    ax.set_title('(1) Reference: V_total', fontsize=10)
+    ax.set_xlabel('x (Å)'); ax.set_ylabel('z (Å)'); ax.set_aspect('equal')
+    plt.colorbar(im, ax=ax, label='eV', fraction=0.046); overlay_atoms(ax)
+    
+    # (2) Model2 = B-spline + hardcore(quadratic+Morse)
+    ax = axes2[0, 1]
+    im = ax.pcolormesh(x_3d, z_3d, V_model2_xz.T, shading='auto', cmap='RdBu_r', vmin=-vmax, vmax=vmax)
+    ax.set_title('(2) Model2: B-spline + V_hardcore(quad+Morse)', fontsize=10)
+    ax.set_xlabel('x (Å)'); ax.set_ylabel('z (Å)'); ax.set_aspect('equal')
+    plt.colorbar(im, ax=ax, label='eV', fraction=0.046); overlay_atoms(ax); draw_spline_nodes(ax, alpha=0.08)
+    
+    # (3) Error2
+    ax = axes2[0, 2]
+    vmax_e2 = max(np.abs(err2_xz).max(), 1e-10)
+    im = ax.pcolormesh(x_3d, z_3d, err2_xz.T, shading='auto', cmap='RdBu_r', vmin=-vmax_e2, vmax=vmax_e2)
+    ax.set_title(f'(3) Error2: V_total - V_model2 (RMSE={np.sqrt(np.mean(err2_3d**2)):.4f} eV)', fontsize=10)
+    ax.set_xlabel('x (Å)'); ax.set_ylabel('z (Å)'); ax.set_aspect('equal')
+    plt.colorbar(im, ax=ax, label='eV', fraction=0.046); overlay_atoms(ax, ms=6)
+    draw_Rc_circles(ax, R_c_quad, alpha=0.7); draw_Rc_circles(ax, R_fold, alpha=0.3)
+    
+    # (4) B-spline2 component
+    ax = axes2[1, 0]
+    vmax_bs2 = max(np.abs(V_bspline2_xz).max(), 1e-10)
+    im = ax.pcolormesh(x_3d, z_3d, V_bspline2_xz.T, shading='auto', cmap='RdBu_r', vmin=-vmax_bs2, vmax=vmax_bs2)
+    ax.set_title(f'(4) B-spline2 (residual after quadratic)', fontsize=10)
+    ax.set_xlabel('x (Å)'); ax.set_ylabel('z (Å)'); ax.set_aspect('equal')
+    plt.colorbar(im, ax=ax, label='eV', fraction=0.046); overlay_atoms(ax, ms=6); draw_spline_nodes(ax)
+    
+    # (5) HardCore component (quadratic + Morse)
+    ax = axes2[1, 1]
+    vmax_hc = max(np.abs(V_hardcore_xz).max(), 1e-10)
+    im = ax.pcolormesh(x_3d, z_3d, V_hardcore_xz.T, shading='auto', cmap='RdBu_r', vmin=-vmax_hc, vmax=vmax_hc)
+    ax.set_title(f'(5) V_hardcore: p(r) for r<{R_c_quad}, Morse for {R_c_quad}≤r<{R_fold}', fontsize=9)
+    ax.set_xlabel('x (Å)'); ax.set_ylabel('z (Å)'); ax.set_aspect('equal')
+    plt.colorbar(im, ax=ax, label='eV', fraction=0.046); overlay_atoms(ax, ms=6)
+    draw_Rc_circles(ax, R_c_quad, alpha=0.7); draw_Rc_circles(ax, R_fold, alpha=0.3)
+    
+    # (6) 1D scans
+    ax = axes2[1, 2]
+    ax.plot(z_3d, V_total_3d[ix_na, iy, :], 'k-', lw=2, label='V_total (ref)')
+    ax.plot(z_3d, V_model2_3d[ix_na, iy, :], 'r--', lw=1.5, label='V_model2')
+    ax.plot(z_3d, V_bspline2_3d[ix_na, iy, :], 'b:', lw=1, alpha=0.7, label='B-spline2')
+    ax.plot(z_3d, V_hardcore_3d[ix_na, iy, :], 'g-.', lw=1, alpha=0.7, label='V_hardcore')
+    ax2 = ax.twinx(); ax2.plot(z_3d, err2_3d[ix_na, iy, :], 'm-', lw=1, alpha=0.5)
+    ax2.set_ylabel('Error (eV)', color='magenta')
+    ax.set_xlabel('z (Å)'); ax.set_ylabel('V (eV)')
+    ax.set_title('1D scan above Na (x=0, y=0)', fontsize=10)
+    ax.legend(fontsize=7, loc='upper left'); ax.grid(True, alpha=0.3); ax.axhline(0, color='gray', lw=0.5)
+    
+    fig2.tight_layout()
+    fig2_path = os.path.join(save_dir, 'step2_quadratic_replacement.png')
+    fig2.savefig(fig2_path, dpi=150); plt.close(fig2)
+    print(f"  Saved {fig2_path}")
+    
+    # ========== Figure 3: Error comparison ==========
+    fig3, axes3 = plt.subplots(1, 3, figsize=(18, 6))
+    fig3.suptitle('Error Comparison: Step 1 (B-spline+folded Morse) vs Step 2 (quadratic replacement)', fontsize=13)
+    
+    # Error1 map
+    ax = axes3[0]
+    im = ax.pcolormesh(x_3d, z_3d, err1_xz.T, shading='auto', cmap='RdBu_r', vmin=-vmax_e1, vmax=vmax_e1)
+    ax.set_title(f'Step 1 error (RMSE={np.sqrt(np.mean(err1_3d**2)):.4f} eV)', fontsize=10)
+    ax.set_xlabel('x (Å)'); ax.set_ylabel('z (Å)'); ax.set_aspect('equal')
+    plt.colorbar(im, ax=ax, label='eV', fraction=0.046); overlay_atoms(ax, ms=6); draw_Rc_circles(ax, R_fold)
+    
+    # Error2 map
+    ax = axes3[1]
+    im = ax.pcolormesh(x_3d, z_3d, err2_xz.T, shading='auto', cmap='RdBu_r', vmin=-vmax_e2, vmax=vmax_e2)
+    ax.set_title(f'Step 2 error (RMSE={np.sqrt(np.mean(err2_3d**2)):.4f} eV)', fontsize=10)
+    ax.set_xlabel('x (Å)'); ax.set_ylabel('z (Å)'); ax.set_aspect('equal')
+    plt.colorbar(im, ax=ax, label='eV', fraction=0.046); overlay_atoms(ax, ms=6)
+    draw_Rc_circles(ax, R_c_quad, alpha=0.7); draw_Rc_circles(ax, R_fold, alpha=0.3)
+    
+    # 1D error comparison
+    ax = axes3[2]
+    ax.plot(z_3d, err1_3d[ix_na, iy, :], 'b-', lw=1.5, label='Step 1 error (above Na)')
+    ax.plot(z_3d, err2_3d[ix_na, iy, :], 'r-', lw=1.5, label='Step 2 error (above Na)')
+    ix_cl = np.argmin(np.abs(x_3d - 2.0))
+    ax.plot(z_3d, err1_3d[ix_cl, iy, :], 'b--', lw=1, alpha=0.5, label='Step 1 error (above Cl)')
+    ax.plot(z_3d, err2_3d[ix_cl, iy, :], 'r--', lw=1, alpha=0.5, label='Step 2 error (above Cl)')
+    ax.set_xlabel('z (Å)'); ax.set_ylabel('Error (eV)')
+    ax.set_title('1D error comparison'); ax.legend(fontsize=8); ax.grid(True, alpha=0.3); ax.axhline(0, color='gray', lw=0.5)
+    
+    fig3.tight_layout()
+    fig3_path = os.path.join(save_dir, 'error_comparison.png')
+    fig3.savefig(fig3_path, dpi=150); plt.close(fig3)
+    print(f"  Saved {fig3_path}")
+    
+    # ========== Figure 4: Basis functions ==========
+    n_win_plot = 2
+    fig4, axes4 = plt.subplots(1, 3, figsize=(18, 5))
+    fig4.suptitle(f'Basis Functions: {int(np.sum(top_mask))} folded Morse×window (top L1, R_fold={R_fold} Å, n_win={n_win_plot}) + quadratic p(r) (R_c={R_c_quad} Å)', fontsize=13)
+    
+    r_plot = np.linspace(0.3, R_fold + 1, 300)
+    colors_type = {'Na': 'purple', 'Cl': 'green'}
+    
+    # Panel 1: Morse*window + V_hardcore (quadratic + Morse*window)
+    ax = axes4[0]
+    plotted_types = set()
+    for j in range(len(apos)):
+        if not top_mask[j]: continue
+        name = enames[j]
+        if name in plotted_types: continue
+        plotted_types.add(name)
+        R_eq = REQs[j, 0]; D_e = REQs[j, 1]; alpha = REQs[j, 3]
+        col = colors_type.get(name, 'black')
+        e_arg = alpha * (r_plot - R_eq)
+        V_morse_r = D_e * (np.exp(-2*e_arg) - 2*np.exp(-e_arg))
+        w_r = np.where(r_plot < R_fold, (1.0 - r_plot / R_fold)**(2*n_win_plot), 0.0)
+        V_morse_win = V_morse_r * w_r
+        
+        mp = match_params[j]
+        a_c = mp['a']; b_c = mp['b']; c_c = mp['c']; Rc = mp['R_c']
+        V_poly_r = a_c + b_c * r_plot + c_c * r_plot**2
+        V_hc_r = np.where(r_plot < Rc, V_poly_r, V_morse_win)
+        
+        ax.plot(r_plot, V_morse_r, '-', color=col, lw=1, alpha=0.4, label=f'Morse_{name}(r) [raw]')
+        ax.plot(r_plot, V_morse_win, '-', color=col, lw=1.5, alpha=0.7, label=f'Morse_{name}×w(r) [windowed]')
+        ax.plot(r_plot, V_hc_r, '--', color=col, lw=2, label=f'V_hardcore_{name}: p(r) for r<R_c, Morse×w for R_c≤r<R_fold')
+        ax.axvline(Rc, color=col, ls=':', lw=1, alpha=0.5)
+    
+    ax.axvline(R_c_quad, color='red', ls=':', lw=1.5, label=f'R_c={R_c_quad}')
+    ax.axvline(R_fold, color='blue', ls=':', lw=1.5, label=f'R_fold={R_fold}')
+    ax.axvspan(0.3, R_c_quad, alpha=0.05, color='orange', label='quadratic region')
+    ax.axvspan(R_c_quad, R_fold, alpha=0.03, color='cyan', label='Morse×w region')
+    ax.set_xlabel('r (Å)'); ax.set_ylabel('V (eV)')
+    ax.set_title(f'Morse×window + quadratic replacement')
+    ax.legend(fontsize=6); ax.grid(True, alpha=0.3); ax.axhline(0, color='gray', lw=0.5)
+    
+    # Panel 2: Window function w(r) = (1-(r/R_fold))^(2n)
+    ax = axes4[1]
+    for nw in [1, 2, 3, 4]:
+        w_demo = np.where(r_plot < R_fold, (1.0 - r_plot / R_fold)**(2*nw), 0.0)
+        ax.plot(r_plot, w_demo, lw=1.5, label=f'n_win={nw}: (1-r/R_fold)^{2*nw}')
+    ax.axvline(R_fold, color='blue', ls=':', lw=1.5, label=f'R_fold={R_fold}')
+    ax.set_xlabel('r (Å)'); ax.set_ylabel('w(r)')
+    ax.set_title(f'Compact-support window w(r) = (1-r/R_fold)^(2n)')
+    ax.legend(fontsize=8); ax.grid(True, alpha=0.3); ax.axhline(0, color='gray', lw=0.5)
+    
+    # Panel 3: Quadratic polynomials
+    ax = axes4[2]
+    plotted_types = set()
+    for j in range(len(apos)):
+        if not top_mask[j]: continue
+        name = enames[j]
+        if name in plotted_types: continue
+        plotted_types.add(name)
+        col = colors_type.get(name, 'black')
+        mp = match_params[j]
+        a_c = mp['a']; b_c = mp['b']; c_c = mp['c']; Rc = mp['R_c']
+        V_poly_r = a_c + b_c * r_plot + c_c * r_plot**2
+        mask = r_plot < Rc
+        ax.plot(r_plot[mask], V_poly_r[mask], '-', color=col, lw=2, label=f'p_{name}(r) = {a_c:.4f} + {b_c:.4f}*r + {c_c:.6f}*r²')
+        ax.plot(r_plot[~mask], V_poly_r[~mask], ':', color=col, lw=0.5, alpha=0.3)
+    
+    ax.axvline(R_c_quad, color='red', ls=':', lw=1.5, label=f'R_c={R_c_quad}')
+    ax.axvspan(0.3, R_c_quad, alpha=0.05, color='orange', label='valid region (r < R_c)')
+    ax.set_xlabel('r (Å)'); ax.set_ylabel('p(r) (eV)')
+    ax.set_title('Quadratic polynomials p(r) = a + b·r + c·r² (derivative matching at R_c)')
+    ax.legend(fontsize=8); ax.grid(True, alpha=0.3); ax.axhline(0, color='gray', lw=0.5)
+    
+    fig4.tight_layout()
+    fig4_path = os.path.join(save_dir, 'basis_functions.png')
+    fig4.savefig(fig4_path, dpi=150); plt.close(fig4)
+    print(f"  Saved {fig4_path}")
+    
+    # --- Summary ---
+    print(f"\n{'='*60}")
+    print(f"Summary")
+    print(f"{'='*60}")
+    print(f"  V_total range:      [{V_total_3d.min():.4f}, {V_total_3d.max():.4f}] eV")
+    print(f"  Step 1 (B-spline+folded Morse):")
+    print(f"    V_folded range:   [{V_folded_3d.min():.6f}, {V_folded_3d.max():.6f}] eV")
+    print(f"    V_bspline range:  [{V_bspline_3d.min():.4f}, {V_bspline_3d.max():.4f}] eV")
+    print(f"    Error RMSE:       {np.sqrt(np.mean(err1_3d**2)):.6f} eV")
+    print(f"    Error max:        {np.max(np.abs(err1_3d)):.6f} eV")
+    print(f"  Step 2 (quadratic replacement):")
+    print(f"    V_hardcore range: [{V_hardcore_3d.min():.6f}, {V_hardcore_3d.max():.6f}] eV")
+    print(f"    V_bspline2 range: [{V_bspline2_3d.min():.4f}, {V_bspline2_3d.max():.4f}] eV")
+    print(f"    Error RMSE:       {np.sqrt(np.mean(err2_3d**2)):.6f} eV")
+    print(f"    Error max:        {np.max(np.abs(err2_3d)):.6f} eV")
+    print(f"  Spline: {nx_3d}x{ny_3d}x{nz_3d} grid, step={spline_step} Å → {n_nodes_x}x{n_nodes_z} nodes in XZ")
+    print(f"  Folded Morse: {int(np.sum(top_mask))} atoms (top L1), R_fold={R_fold} Å, {len(set(enames[i] for i in range(len(enames)) if top_mask[i]))} types")
+    print(f"  Quadratic: {int(np.sum(top_mask))} polynomials, R_c={R_c_quad} Å")
+    print(f"  Plots saved to: {save_dir}/")
+    
+    return {
+        'V_total_3d': V_total_3d, 'V_folded_3d': V_folded_3d, 'V_hardcore_3d': V_hardcore_3d,
+        'V_bspline_3d': V_bspline_3d, 'V_bspline2_3d': V_bspline2_3d,
+        'V_model1_3d': V_model1_3d, 'V_model2_3d': V_model2_3d,
+        'err1_3d': err1_3d, 'err2_3d': err2_3d, 'match_params': match_params,
+        'grid_coords': coords_3d, 'mask_phys': mask_phys,
+    }
+
+
+# === AUTO-DOC BEGIN ===
+# Linear hybrid potential fitting: tricubic B-spline + compact-support radial atomic basis.
+# Reference: erf-damped Ewald2D Coulomb + Morse. Boltzmann-weighted least squares.
+# See: doc/Topics/FastCollisionSplitNonbond/hybrid_fitting_design_gpt56sol.md
+# === AUTO-DOC END ===
+
+test_hybrid_potential_nacl_legacy = test_hybrid_potential_nacl
+
+def _hybrid_cubic(t):
+    t=np.asarray(t); return np.stack(((1-t)**3,3*t**3-6*t*t+4,-3*t**3+3*t*t+3*t+1,t**3),-1)/6, np.stack((-3*(1-t)**2,9*t*t-12*t,-9*t*t+6*t+3,3*t*t),-1)/6
+
+def _hybrid_bspline(points, cell, zr, step):
+    """Periodic-XY tricubic B-spline value and analytic-gradient design matrix."""
+    Lx,Ly=np.linalg.norm(cell[0]),np.linalg.norm(cell[1]); nx=max(4,round(Lx/step)); ny=max(4,round(Ly/step)); dz=float(step); nz=int(np.ceil((zr[1]-zr[0])/dz))+3
+    p=np.asarray(points); us=((p[:,0]%Lx)/(Lx/nx),(p[:,1]%Ly)/(Ly/ny),(p[:,2]-zr[0])/dz+1); ii=[np.floor(u).astype(int) for u in us]; ws=[]; ds=[]
+    for u,i,h in zip(us,ii,(Lx/nx,Ly/ny,dz)): w,d=_hybrid_cubic(u-i); ws.append(w); ds.append(d/h)
+    A=np.zeros((len(p),nx*ny*nz)); G=np.zeros((3,len(p),nx*ny*nz)); rows=np.arange(len(p))
+    for a in range(4):
+      for b in range(4):
+       for c in range(4):
+        col=(((ii[0]+a-1)%nx)*ny+((ii[1]+b-1)%ny))*nz+np.clip(ii[2]+c-1,0,nz-1)
+        A[rows,col]+=ws[0][:,a]*ws[1][:,b]*ws[2][:,c]
+        G[0,rows,col]+=ds[0][:,a]*ws[1][:,b]*ws[2][:,c]; G[1,rows,col]+=ws[0][:,a]*ds[1][:,b]*ws[2][:,c]; G[2,rows,col]+=ws[0][:,a]*ws[1][:,b]*ds[2][:,c]
+    return A,G
+
+def _hybrid_atom_basis(points, apos, type_ids, cell, Rc, powers=(2,3,4,5)):
+    """Shared finite-support radial basis and gradients; sums every required XY image."""
+    p=np.asarray(points); A=np.zeros((len(p),(int(np.max(type_ids))+1)*len(powers))); G=np.zeros((3,*A.shape)); nx=int(np.ceil(Rc/np.linalg.norm(cell[0])))+1; ny=int(np.ceil(Rc/np.linalg.norm(cell[1])))+1
+    for ia,pos in enumerate(apos):
+     for tx in range(-nx,nx+1):
+      for ty in range(-ny,ny+1):
+       d=p-(pos+tx*cell[0]+ty*cell[1]); r=np.linalg.norm(d,axis=1); m=r<Rc
+       if np.any(m):
+        u=1-r[m]/Rc
+        for ib,n in enumerate(powers):
+         q=2*n; col=type_ids[ia]*len(powers)+ib; A[m,col]+=u**q; dv=-q*u**(q-1)/Rc
+         for k in range(3): G[k,m,col]+=dv*d[m,k]/np.maximum(r[m],1e-12)
+    return A,G
+
+def _hybrid_reference(points, apos, qs, reqs, cell, n_harm=12, sigma=2.0):
+    """NaCl unit-charge probe reference: erf-damped Coulomb + Morse images.
+    
+    V_ref = Σ_j [ COUL*q_j*erf(r_j/σ)/r_j + Morse_j(r_j) ]
+    
+    The erf(r/σ)/r damping replaces bare 1/r: at r>>σ it → 1/r (full Coulomb),
+    at r<<σ it → 2/(σ√π) (finite, no singularity). This models electron screening
+    and makes the Morse repulsion visible at short range.
+    
+    Forces: analytic Morse + finite-diff on Ewald erf-part + analytic erfc correction.
+    """
+    from scipy.special import erf, erfc
+    COUL=14.3996448915
+    ew=Ewald2D(cell[0,:2],cell[1,:2],apos[:,0],apos[:,1],apos[:,2],qs,n_harm=n_harm)
+    def e(p): return ew.phi_full_2d(p[:,0],p[:,1],p[:,2])
+    V=e(points); F=np.empty((len(points),3)); h=1e-4
+    for k in range(3): d=np.zeros(3); d[k]=h; F[:,k]=-(e(points+d)-e(points-d))/(2*h)
+    for ia,pos in enumerate(apos):
+     R,D,_,alpha=reqs[ia]; q=qs[ia]
+     for tx in range(-3,4):
+      for ty in range(-3,4):
+       dp=points-(pos+tx*cell[0]+ty*cell[1]); r=np.maximum(np.linalg.norm(dp,axis=1),1e-12)
+       # Morse
+       e1=np.exp(-alpha*(r-R)); e2=e1*e1; V+=D*(e2-2*e1); F-=2*alpha*D*(e1-e2)[:,None]*dp/r[:,None]
+       # Replace bare Coulomb 1/r with erf(r/σ)/r: ΔV = -COUL*q*erfc(r/σ)/r
+       erfc_r=erfc(r/sigma); V+=COUL*q*(erf(r/sigma)-1.0)/r
+       # Analytic force from erfc correction: d/dr[-COUL*q*erfc(r/σ)/r]
+       dVdr=COUL*q*(erfc_r/(r*r) + 2.0/(sigma*np.sqrt(np.pi))*np.exp(-(r/sigma)**2)/r)
+       F-=dVdr[:,None]*dp/r[:,None]
+    return V,F,ew
+
+def _hybrid_grid(cell,zr,h,shift=0.):
+    x=(np.arange(0,np.linalg.norm(cell[0]),h)+shift)%np.linalg.norm(cell[0]); y=(np.arange(0,np.linalg.norm(cell[1]),h)+shift)%np.linalg.norm(cell[1]); z=np.arange(zr[0]+shift,zr[1]+1e-12,h); X,Y,Z=np.meshgrid(x,y,z,indexing='ij'); return np.c_[X.ravel(),Y.ravel(),Z.ravel()]
+
+def test_hybrid_potential_nacl(save_dir='results_hybrid', Ng=80, R_cut_hc=4., spline_step=1., sample_step=.5, force_weight=.25, T_eff=300., sigma=2.0, **_ignored):
+    """Fit and validate linear B-spline + folded-atom potential against Ewald2D on NaCl."""
+    os.makedirs(save_dir,exist_ok=True); s=make_nacl_1x1_l3_system(); apos,qs,reqs,cell=s['apos'],s['qs'],s['REQs'],s['lvec']; types=np.array([0 if e=='Na' else 1 for e in s['enames']]); zr=(s['z_top']+.5,s['z_top']+6.)
+    def mask_core(p):
+      d=np.full(len(p),np.inf)
+      for tx in range(-2,3):
+       for ty in range(-2,3): d=np.minimum(d,np.min(np.linalg.norm(p[:,None]-apos[None]-tx*cell[0]-ty*cell[1],axis=2),axis=1))
+      return d>=1.2
+    train0=_hybrid_grid(cell,zr,sample_step); train=train0[mask_core(train0)]; V,F,ew=_hybrid_reference(train,apos,qs,reqs,cell,sigma=sigma)
+    beta=1./(8.617e-5*T_eff); wb=np.minimum(np.exp(-beta*V),100.); swb=np.sqrt(wb)
+    B,dB=_hybrid_bspline(train,cell,zr,spline_step); P,dP=_hybrid_atom_basis(train,apos,types,cell,R_cut_hc); A=np.c_[B,P]; dA=np.concatenate((dB,dP),axis=2)
+    wf=swb*np.sqrt(force_weight); M=np.vstack((swb[:,None]*A,-wf[:,None]*dA[0],-wf[:,None]*dA[1],-wf[:,None]*dA[2])); rhs=np.r_[swb*V,wf*F[:,0],wf*F[:,1],wf*F[:,2]]
+    scale=np.maximum(np.linalg.norm(M,axis=0),1e-14); coef=np.linalg.lstsq(M/scale,rhs,rcond=None)[0]/scale
+    valid0=_hybrid_grid(cell,zr,sample_step,.25); valid=valid0[mask_core(valid0)]; Vr,Fr,_=_hybrid_reference(valid,apos,qs,reqs,cell,sigma=sigma); Bv,dBv=_hybrid_bspline(valid,cell,zr,spline_step); Pv,dPv=_hybrid_atom_basis(valid,apos,types,cell,R_cut_hc); Vv=np.c_[Bv,Pv]@coef; Fv=-np.einsum('knp,p->nk',np.concatenate((dBv,dPv),axis=2),coef); E=Vv-Vr; FE=Fv-Fr
+    wb_valid=np.minimum(np.exp(-beta*Vr),100.)
+    print(f'linear hybrid (T_eff={T_eff}K, beta={beta:.2f} eV^-1): ntrain={len(train)} nvalid={len(valid)} V_RMSE={np.sqrt(np.mean(E*E)):.3e} eV Vmax={np.max(abs(E)):.3e} eV F_RMSE={np.sqrt(np.mean(FE*FE)):.3e} eV/A')
+    print(f'  weighted V_RMSE (Boltzmann): {np.sqrt(np.mean(wb_valid*E*E)):.3e} eV  (attractive-only V_RMSE: {np.sqrt(np.mean(E[Vr<0]**2)):.3e} eV)')
+    x=np.linspace(0,np.linalg.norm(cell[0]),Ng,endpoint=False); z=np.linspace(*zr,Ng); X,Z=np.meshgrid(x,z,indexing='ij'); cut=np.c_[X.ravel(),X.ravel()%np.linalg.norm(cell[1]),Z.ravel()]; Vref,Fref,_=_hybrid_reference(cut,apos,qs,reqs,cell,sigma=sigma); Bc,dBc=_hybrid_bspline(cut,cell,zr,spline_step); Pc,dPc=_hybrid_atom_basis(cut,apos,types,cell,R_cut_hc); nB=Bc.shape[1]; Vbs=Bc@coef[:nB]; Vat=Pc@coef[nB:]; Vmod=Vbs+Vat; Verr=Vref-Vmod; Fzerr=Fref[:,2]+np.einsum('np,p->n',dBc[2],coef[:nB])+np.einsum('np,p->n',dPc[2],coef[nB:])
+    fit_mask=mask_core(cut); Verr_plot=np.where(fit_mask,Verr,np.nan); Fzerr_plot=np.where(fit_mask,Fzerr,np.nan)
+    wb_cut=np.minimum(np.exp(-beta*Vref),100.); wb_plot=np.where(fit_mask,wb_cut,np.nan)
+    maps=(Vref,Vmod,Verr_plot,Vbs,Vat,Fzerr_plot,wb_plot); titles=(f'Ewald2D(erf σ={sigma}) + Morse ref','linear hybrid fit','potential error (ref-fit)','B-spline component','folded-atom component','Fz error',f'Boltzmann weight (T={T_eff}K)')
+    fig,axs=plt.subplots(2,4,figsize=(20,9)); limits=(max(abs(Vref).max(),abs(Vmod).max()),max(abs(Vref).max(),abs(Vmod).max()),max(abs(Verr_plot).max(),1e-12),max(abs(Vbs).max(),1e-12),max(abs(Vat).max(),1e-12),max(abs(Fzerr_plot).max(),1e-12),max(np.nanmax(wb_plot),1e-12))
+    for ax,a,title,lim in zip(axs.flat,maps,titles,limits):
+      is_wt='Boltzmann' in title
+      im=ax.pcolormesh(x,z,a.reshape(Ng,Ng).T,shading='auto',cmap='hot' if is_wt else 'RdBu_r',vmin=0 if is_wt else -lim,vmax=lim); ax.set(title=title,xlabel='x=y diag (A)',ylabel='z (A)'); ax.set_aspect('equal'); plt.colorbar(im,ax=ax,label='weight' if is_wt else ('eV/A' if title=='Fz error' else 'eV'))
+    fig.tight_layout(); pmap=os.path.join(save_dir,'linear_hybrid_xz_components.png'); fig.savefig(pmap,dpi=160); plt.close(fig)
+    fig,ax=plt.subplots(figsize=(10,5)); sl=slice(0,Ng); ax.plot(z,Vref[sl],'k:',lw=1.5,label='reference'); ax.plot(z,Vmod[sl],'r-',lw=.8,label='fit'); ax.plot(z,Vbs[sl],'b-',lw=.8,label='B-spline'); ax.plot(z,Vat[sl],'g-',lw=.8,label='folded atom'); ax2=ax.twinx(); ax2.plot(z,Verr[sl],'m-',lw=.8); ax2.set_ylabel('error (eV)',color='m'); ax.set(xlabel='z (A)',ylabel='V (eV)',title='Diagonal cut y=x (over Na at x=0, Cl at x=2)'); ax.legend(); ax.grid(alpha=.3); fig.tight_layout(); pscan=os.path.join(save_dir,'linear_hybrid_zscan.png'); fig.savefig(pscan,dpi=160); plt.close(fig)
+    return {'coef':coef,'validation':{'V_RMSE':np.sqrt(np.mean(E*E)),'F_RMSE':np.sqrt(np.mean(FE*FE))},'plots':(pmap,pscan),'ewald':ew}
