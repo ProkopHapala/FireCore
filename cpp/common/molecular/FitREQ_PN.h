@@ -59,11 +59,34 @@ inline double getSR1_PN( double r, double H, double R0, double& dEdH, double& dE
     return H * dEdH;
 }
 
+inline double getSR1sr_PN(double r, double H, double R0, double SRcut, double& dEdH, double& dEdR) {
+    if (r >= SRcut) { dEdH = 0.0; dEdR = 0.0; return 0.0; }
+    const double ucut = r / SRcut;
+    const double smooth = 1.0 - 3.0 * ucut * ucut + 2.0 * ucut * ucut * ucut;
+    const double iR0 = 1.0 / R0;
+    const double u = r * iR0;
+    dEdH = safe_exp(-u) * smooth;
+    dEdR = H * u * iR0 * dEdH;
+    return H * dEdH;
+}
+
 inline double getSR2_PN( double r, double H, double R0, double& dEdH, double& dEdR ){
     const double iR0 = 1.0 / R0;
     const double u  = r * iR0; 
     const double u2  = u * u; 
     dEdH = safe_exp( -u2 );
+    dEdR = 2.0 * H * u2 * iR0 * dEdH;
+    return H * dEdH;
+}
+
+inline double getSR2sr_PN(double r, double H, double R0, double SRcut, double& dEdH, double& dEdR) {
+    if (r >= SRcut) { dEdH = 0.0; dEdR = 0.0; return 0.0; }
+    const double ucut = r / SRcut;
+    const double smooth = 1.0 - 3.0 * ucut * ucut + 2.0 * ucut * ucut * ucut;
+    const double iR0 = 1.0 / R0;
+    const double u = r * iR0;
+    const double u2 = u * u;
+    dEdH = safe_exp(-u2) * smooth;
     dEdR = 2.0 * H * u2 * iR0 * dEdH;
     return H * dEdH;
 }
@@ -76,6 +99,20 @@ inline double getSR3_PN( double r, double H, double R0, double& dEdH, double& dE
     const double s = 1.0 / ( ep + em );
     dEdH = 2.0 * s;
     dEdR = H * u * iR0 * ( ep - em ) * dEdH * s;
+    return H * dEdH;
+}
+
+inline double getSR3sr_PN(double r, double H, double R0, double SRcut, double& dEdH, double& dEdR) {
+    if (r >= SRcut) { dEdH = 0.0; dEdR = 0.0; return 0.0; }
+    const double ucut = r / SRcut;
+    const double smooth = 1.0 - 3.0 * ucut * ucut + 2.0 * ucut * ucut * ucut;
+    const double iR0 = 1.0 / R0;
+    const double u = r * iR0;
+    const double ep = safe_exp3(u);
+    const double em = 1.0 / ep;
+    const double s = 1.0 / (ep + em);
+    dEdH = 2.0 * s * smooth;
+    dEdR = H * u * iR0 * (ep - em) * dEdH * s;
     return H * dEdH;
 }
 
@@ -1296,14 +1333,14 @@ double evalEnergyDerivs ( int i0, int ni, int j0, int nj, int* types, Vec3d* ps,
                     dEdREQs[j].w -= sEpairs * ( REQi.x * f1 + REQi.w * f2 );
                 }else{
                     double dE_dR = 0.0;
-                    if     (iEpairs==1) Eij_Epairs = sEpairs * getSR1_PN( r, H, REQi.x, dE_dH, dE_dR );
-                    else if(iEpairs==2) Eij_Epairs = sEpairs * getSR2_PN( r, H, REQi.x, dE_dH, dE_dR );
-                    else if(iEpairs==3) Eij_Epairs = sEpairs * getSR3_PN( r, H, REQi.x, dE_dH, dE_dR );
-                    else if(iEpairs==5) Eij_Epairs = sEpairs * getSR5_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
-                    else if(iEpairs==6) Eij_Epairs = sEpairs * getSR6_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
-                    else if(iEpairs==7) Eij_Epairs = sEpairs * getSR7_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
-                    else if(iEpairs==8) Eij_Epairs = sEpairs * getSR8_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
-                    else if(iEpairs==9) Eij_Epairs = sEpairs * getSR9_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    if     (iEpairs==1) Eij_Epairs = sEpairs * getSR1sr_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==2) Eij_Epairs = sEpairs * getSR2sr_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==3) Eij_Epairs = sEpairs * getSR3sr_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==5) Eij_Epairs = sEpairs * getSR5_PN  ( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==6) Eij_Epairs = sEpairs * getSR6_PN  ( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==7) Eij_Epairs = sEpairs * getSR7_PN  ( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==8) Eij_Epairs = sEpairs * getSR8_PN  ( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==9) Eij_Epairs = sEpairs * getSR9_PN  ( r, H, REQi.x, SRcut, dE_dH, dE_dR );
                     else exit(printf("FitREQ_PN.h::ERROR: iEpairs=%i not implemented\n", iEpairs));
                     dE_dH *= sEpairs;
                     dEdREQs[i].x -= sEpairs * dE_dR;
@@ -1317,14 +1354,14 @@ double evalEnergyDerivs ( int i0, int ni, int j0, int nj, int* types, Vec3d* ps,
                     dEdREQs[j].w -= sEpairs * REQi.w * f2;
                 }else{
                     double dE_dR = 0.0;
-                    if     (iEpairs==1) Eij_Epairs = sEpairs * getSR1_PN( r, H, REQj.x, dE_dH, dE_dR );
-                    else if(iEpairs==2) Eij_Epairs = sEpairs * getSR2_PN( r, H, REQj.x, dE_dH, dE_dR );
-                    else if(iEpairs==3) Eij_Epairs = sEpairs * getSR3_PN( r, H, REQj.x, dE_dH, dE_dR );
-                    else if(iEpairs==5) Eij_Epairs = sEpairs * getSR5_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
-                    else if(iEpairs==6) Eij_Epairs = sEpairs * getSR6_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
-                    else if(iEpairs==7) Eij_Epairs = sEpairs * getSR7_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
-                    else if(iEpairs==8) Eij_Epairs = sEpairs * getSR8_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
-                    else if(iEpairs==9) Eij_Epairs = sEpairs * getSR9_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    if     (iEpairs==1) Eij_Epairs = sEpairs * getSR1sr_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==2) Eij_Epairs = sEpairs * getSR2sr_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==3) Eij_Epairs = sEpairs * getSR3sr_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==5) Eij_Epairs = sEpairs * getSR5_PN  ( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==6) Eij_Epairs = sEpairs * getSR6_PN  ( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==7) Eij_Epairs = sEpairs * getSR7_PN  ( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==8) Eij_Epairs = sEpairs * getSR8_PN  ( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==9) Eij_Epairs = sEpairs * getSR9_PN  ( r, H, REQj.x, SRcut, dE_dH, dE_dR );
                     else exit(printf("FitREQ_PN.h::ERROR: iEpairs=%i not implemented\n", iEpairs));
                     dE_dH *= sEpairs;
                     dEdREQs[j].x -= sEpairs * dE_dR;
@@ -1816,14 +1853,14 @@ void evalEnergyComponents ( int i0, int ni, int j0, int nj, int* types, Vec3d* p
                     Eij_Epairs = sEpairs * getSR4_PN( r, REQi.x*REQj.w, REQi.w*REQj.w, f1, f2, SRcut, SR4m, SR4n );
                 }else{
                     double dE_dR = 0.0;
-                    if     (iEpairs==1) Eij_Epairs = sEpairs * getSR1_PN( r, H, REQi.x, dE_dH, dE_dR );
-                    else if(iEpairs==2) Eij_Epairs = sEpairs * getSR2_PN( r, H, REQi.x, dE_dH, dE_dR );
-                    else if(iEpairs==3) Eij_Epairs = sEpairs * getSR3_PN( r, H, REQi.x, dE_dH, dE_dR );
-                    else if(iEpairs==5) Eij_Epairs = sEpairs * getSR5_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
-                    else if(iEpairs==6) Eij_Epairs = sEpairs * getSR6_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
-                    else if(iEpairs==7) Eij_Epairs = sEpairs * getSR7_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
-                    else if(iEpairs==8) Eij_Epairs = sEpairs * getSR8_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
-                    else if(iEpairs==9) Eij_Epairs = sEpairs * getSR9_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    if     (iEpairs==1) Eij_Epairs = sEpairs * getSR1sr_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==2) Eij_Epairs = sEpairs * getSR2sr_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==3) Eij_Epairs = sEpairs * getSR3sr_PN( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==5) Eij_Epairs = sEpairs * getSR5_PN  ( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==6) Eij_Epairs = sEpairs * getSR6_PN  ( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==7) Eij_Epairs = sEpairs * getSR7_PN  ( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==8) Eij_Epairs = sEpairs * getSR8_PN  ( r, H, REQi.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==9) Eij_Epairs = sEpairs * getSR9_PN  ( r, H, REQi.x, SRcut, dE_dH, dE_dR );
                     else exit(printf("FitREQ_PN.h::ERROR: iEpairs=%i not implemented\n", iEpairs));
                 }
             }else if( bEpj ){  
@@ -1833,14 +1870,14 @@ void evalEnergyComponents ( int i0, int ni, int j0, int nj, int* types, Vec3d* p
                     Eij_Epairs = sEpairs * getSR4_PN( r, REQi.w*REQj.x, REQi.w*REQj.w, f1, f2, SRcut, SR4m, SR4n );
                 }else{
                     double dE_dR = 0.0;
-                    if     (iEpairs==1) Eij_Epairs = sEpairs * getSR1_PN( r, H, REQj.x, dE_dH, dE_dR );
-                    else if(iEpairs==2) Eij_Epairs = sEpairs * getSR2_PN( r, H, REQj.x, dE_dH, dE_dR );
-                    else if(iEpairs==3) Eij_Epairs = sEpairs * getSR3_PN( r, H, REQj.x, dE_dH, dE_dR );
-                    else if(iEpairs==5) Eij_Epairs = sEpairs * getSR5_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
-                    else if(iEpairs==6) Eij_Epairs = sEpairs * getSR6_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
-                    else if(iEpairs==7) Eij_Epairs = sEpairs * getSR7_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
-                    else if(iEpairs==8) Eij_Epairs = sEpairs * getSR8_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
-                    else if(iEpairs==9) Eij_Epairs = sEpairs * getSR9_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    if     (iEpairs==1) Eij_Epairs = sEpairs * getSR1sr_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==2) Eij_Epairs = sEpairs * getSR2sr_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==3) Eij_Epairs = sEpairs * getSR3sr_PN( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==5) Eij_Epairs = sEpairs * getSR5_PN  ( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==6) Eij_Epairs = sEpairs * getSR6_PN  ( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==7) Eij_Epairs = sEpairs * getSR7_PN  ( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==8) Eij_Epairs = sEpairs * getSR8_PN  ( r, H, REQj.x, SRcut, dE_dH, dE_dR );
+                    else if(iEpairs==9) Eij_Epairs = sEpairs * getSR9_PN  ( r, H, REQj.x, SRcut, dE_dH, dE_dR );
                     else exit(printf("FitREQ_PN.h::ERROR: iEpairs=%i not implemented\n", iEpairs));
                 }
             }else{
