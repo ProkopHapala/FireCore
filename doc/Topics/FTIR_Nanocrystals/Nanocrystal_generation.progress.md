@@ -257,7 +257,7 @@ replicate lattice → cut (planes | sphere) → recalculateBonds
 
 **VSEPR reference:** `web/molgui_webgpu/EditableMolecule.js` `missingDirsVSEPR` ↔ `pyBall/nanocrystal_gen.py` `missing_dirs_vsepr_tetra`.
 
-**Clash resolve note:** Default clash resolver rotates H around its parent to separate H–H pairs &lt; 1.8 Å. This fixes dense facet cuts but can distort local tetrahedral angles when many **inter-surface** H clashes exist (e.g. 42 on C sphere R=6). For geometry validation / cross-check, use `--resolveClashes 0`; for production facet cuts with downstream MMFF relax, keep default **on** (G2: 0 clashes with resolve on).
+**Clash resolve note:** Default clash resolver rotates H around its parent to separate H–H pairs &lt; 1.5 Å. **Bug fix (2026-07-30):** tangent direction was inverted (`tan = dir - (dir·rep)*rep` → `tan = rep - (rep·dir)*dir`), causing H atoms to rotate **toward** each other instead of away. This was masked for Si (Si–H long enough that H–H &gt; 1.8 Å, clash resolver never triggered) but catastrophic for diamond CH₂ (ideal H–H = 1.788 Å &lt; 1.8 Å threshold → resolver collapsed H–H to 0.58 Å). Threshold lowered from 1.8 → 1.5 Å to avoid triggering on ideal tetrahedral CH₂ geometry. Same fix applied to Python parity (`pyBall/nanocrystal_gen.py:resolve_cap_h_clashes`). For geometry validation / cross-check, use `--resolveClashes 0`; for production facet cuts with downstream MMFF relax, keep default **on**.
 
 #### 4. Test & validation harnesses
 
@@ -341,7 +341,7 @@ Canonical comparison files: `tests/tSiNCs/crosscheck/C_sphere_R6_{py,js}.xyz`, `
 ### Known limitations / next steps
 
 1. **Python Miller cut** is not a native port of `CrystalUtils` — still calls Node for planes/bridges.
-2. **Clash resolve** vs **tetrahedral angles**: trade-off on dense spheres; MMFF relax remains downstream (M-G5).
+2. **Clash resolve** vs **tetrahedral angles**: fixed (2026-07-30) — tangent direction corrected, threshold lowered to 1.5 Å; ideal tetrahedral H-X-H angles now preserved for both Si and C. MMFF relax remains downstream (M-G5).
 3. **Fixture regen**: `diamond_nc_R6_init.xyz` in vibration fixtures predates VSEPR fix; re-bootstrap when Hessian pipeline needs updated init geometry.
 4. **M-G3–M-G5**: bridge regression documented (G3 preset); CI hook for `geometry_report.json` not yet wired.
 5. **Cap H–H bond stiffness:** topology bonds use default `BondTypes.dat` H–H (`l0=0.74 Å`, `k=10`); for vibration, tune `l0`/`k` per actual cap H–H distance (~1.77 Å on CH₂) when wiring into LFF/MMFFL.
@@ -361,6 +361,35 @@ Canonical comparison files: `tests/tSiNCs/crosscheck/C_sphere_R6_{py,js}.xyz`, `
 
 **Code:** `web/molgui_webgpu/EditableMolecule.js`, `pyBall/nanocrystal_gen.py`, flags on `tests/tSiNCs/gen_nanocrystals.{mjs,py}`.
 
+#### 8. AFM tip nanocrystals (2026-07-30)
+
+**Motivation:** Generate H-passivated Si and diamond nanocrystals with a **single-atom apex** pointing along the [111] direction, resembling an AFM tip (trigonal pyramid). The tip is a truncated tetrahedron: 3 side facets from {111} planes + 1 bottom truncation plane.
+
+**Implementation:** `tests/tSiNCs/gen_afm_tip.mjs` — standalone CLI that bypasses `buildPlanesFromTemplates` (which applies uniform cmin/cmax) and constructs **custom planes** with asymmetric bounds:
+
+- **3 side facets**: normals along `[1,1,-1]`, `[1,-1,1]`, `[-1,1,1]` (the 3 {111} directions that are NOT [111]); `cmax = sideHalf`, `cmin = -BIG` (interior of tetrahedron opening toward [111])
+- **1 bottom plane**: normal `[-1,-1,-1]`; `cmax = bottomDepth`, `cmin = -BIG`
+- After cutting + H-passivation, molecule is **rotated** using `Mat3.alignVectorToZ([111])` so the spike points along z
+
+**Key parameters:** `--sideHalf` (controls apex height and tip sharpness), `--bottomDepth` (base thickness), `--nRep` (cell replication, must be large enough to encompass the tip).
+
+**Results:**
+
+| Material | Atoms | Apex z (Å) | H-X-H angle | H-H dist (Å) |
+|----------|-------|-----------|-------------|-------------|
+| Si (sideHalf=5, bottomDepth=6, nRep=5) | 87 Si + 76 H | 9.43 | 109.5° | 2.384 |
+| C (sideHalf=4, bottomDepth=5, nRep=7) | 200 C + 136 H | 9.25 | 109.5° | 1.788 |
+
+Both show perfect tetrahedral stacking: 1 atom at apex → 3 atoms (trigonal) → 3 → 3 → ...
+
+**Usage:**
+```bash
+node tests/tSiNCs/gen_afm_tip.mjs --material Si --sideHalf 5.0 --bottomDepth 6.0 --nRep 5
+node tests/tSiNCs/gen_afm_tip.mjs --material C  --sideHalf 4.0 --bottomDepth 5.0 --nRep 7
+```
+
+Output: `tests/tSiNCs/OUT_afm_tip/afm_tip_{material}_{params}.{mol2,xyz}`
+
 ### Files to add to git (reusable code only)
 
 **Core modules & generators**
@@ -370,7 +399,8 @@ Canonical comparison files: `tests/tSiNCs/crosscheck/C_sphere_R6_{py,js}.xyz`, `
 | `tests/tSiNCs/gen_nanocrystals.mjs` | JS generator (modified: sphere mode, C/Si, resolveClashes, outwardBias) |
 | `tests/tSiNCs/gen_nanocrystals.py` | Python CLI (sphere native; planes → Node) |
 | `pyBall/nanocrystal_gen.py` | Shared Python builder: VSEPR, sphere cut, xyz I/O |
-| `web/molgui_webgpu/EditableMolecule.js` | Cap pipeline + `addCapHHBonds` (modified) |
+| `web/molgui_webgpu/EditableMolecule.js` | Cap pipeline + `addCapHHBonds` (modified: clash resolve tangent fix, threshold 1.5 Å) |
+| `tests/tSiNCs/gen_afm_tip.mjs` | AFM-tip nanocrystal generator (truncated tetrahedron, [111] apex) |
 
 **Test & utility scripts**
 
@@ -387,6 +417,7 @@ Canonical comparison files: `tests/tSiNCs/crosscheck/C_sphere_R6_{py,js}.xyz`, `
 git add \
   tests/tSiNCs/gen_nanocrystals.mjs \
   tests/tSiNCs/gen_nanocrystals.py \
+  tests/tSiNCs/gen_afm_tip.mjs \
   tests/tSiNCs/test_nanocrystal_geometry.mjs \
   scripts/mol2_to_xyz.mjs \
   pyBall/nanocrystal_gen.py \
@@ -395,10 +426,10 @@ git add \
   tests/tMMFF/test_nanocrystal_sparse_hessian.py
 ```
 
-**Do not add** (generated outputs): `tests/tSiNCs/crosscheck/*.{xyz,mol2,json}`, `tests/tSiNCs/geometry/**/*.{xyz,mol2,json}`, `OUT_nanocrystals*/`.
+**Do not add** (generated outputs): `tests/tSiNCs/crosscheck/*.{xyz,mol2,json}`, `tests/tSiNCs/geometry/**/*.{xyz,mol2,json}`, `OUT_nanocrystals*/`, `OUT_afm_tip/`.
 
 **Optional** (reusable viewers from related linearized-topology work, not nanocrystal-gen core): `tests/tSiNCs/linearized/adamantane_npz_viewer.html`, `tests/tSiNCs/linearized/si_G2_facet111_caps_only_debug_viewer.html` — add separately if NPZ/topology inspection is in scope.
 
 ---
 
-*Report closed: 2026-06-15. Cap H–H bonds documented same day.*
+*Report closed: 2026-06-15. Cap H–H bonds documented same day. AFM tip generator + clash resolve fix added 2026-07-30.*

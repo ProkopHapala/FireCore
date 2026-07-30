@@ -176,7 +176,7 @@ function resolveCapHClashes(mol, minDist = 1.8, maxIter = 16) {
                     dir.mulScalar(1 / r);
                     rep.setV(h).sub(mol.atoms[oj].pos);
                     if (!(rep.normalize() > 0)) continue;
-                    tan.setV(dir).addMul(rep, -dir.dot(rep));
+                    tan.setV(rep).addMul(dir, -rep.dot(dir));
                     if (!(tan.normalize() > 0)) continue;
                     const step = 0.12;
                     dir.addMul(tan, step);
@@ -536,7 +536,7 @@ export class EditableMolecule {
             }
         }
         const resolveClashes = (opts.resolveClashes !== undefined) ? !!opts.resolveClashes : true;
-        if (resolveClashes && out.nAdded > 0) resolveCapHClashes(this, 1.8, 12);
+        if (resolveClashes && out.nAdded > 0) resolveCapHClashes(this, 1.5, 12);
         return out;
     }
 

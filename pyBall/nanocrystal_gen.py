@@ -204,7 +204,7 @@ def resolve_cap_h_clashes(pos, elems, heavy_sym='C', min_dist=1.8, max_iter=16):
                     if rn < 1e-12:
                         continue
                     rep /= rn
-                    tan = dvec - dvec.dot(rep) * rep
+                    tan = rep - rep.dot(dvec) * dvec
                     tn = np.linalg.norm(tan)
                     if tn < 1e-12:
                         continue

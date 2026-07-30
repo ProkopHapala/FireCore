@@ -54,6 +54,11 @@ trigger:
 
 8. **Foreground execution.** Never hide output (`| tail`, `| head`, `&`). Full stdout visible.
 
+9. **CRITICAL — equal axes for spatial maps:** any `imshow` of XY/XZ/YZ density or potential
+   **MUST** use `aspect='equal'` so **1 Å along x = 1 Å along y/z**. Never `aspect='auto'`
+   (distorts spheres → ellipses). Tip/molecule diagnostics: plot in **molecular frame**
+   (before pad+roll), mark where 1D cuts are taken on the 2D map.
+
 ---
 
 ## Topology editing pattern

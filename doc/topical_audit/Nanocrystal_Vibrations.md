@@ -42,6 +42,7 @@ Pipeline for generating silicon / diamond nanocrystal structures and computing v
 | `web/molgui_webgpu/Nanocrystals.js` | **Active** | Core library: CIF → supercell → Miller/sphere cuts → prune → H-cap → bridges |
 | `tests/tSiNCs/nanocrystals.mjs` | **Active** | Unified CLI: `generate`, `ensemble`, `topology`, `audit`, `nonbond`, `rings` |
 | `tests/tSiNCs/gen_nanocrystals.mjs` | **Deprecated** | Thin wrapper; use `nanocrystals.mjs generate` |
+| `tests/tSiNCs/gen_afm_tip.mjs` | **Active** | AFM-tip nanocrystal generator: truncated tetrahedron with [111] apex, Si + diamond |
 | `tests/tSiNCs/gen_nanocrystals.py` | **Active** | Python CLI: spherical cuts native; Miller planes via Node |
 | `pyBall/nanocrystal_gen.py` | **Active** | Python sphere-cut builder; parity target for JS |
 | `doc/Topics/FTIR_Nanocrystals/gen_nanocrystals.chat.md` | **Active** | Generation CLI and `Nanocrystals.js` reference |
