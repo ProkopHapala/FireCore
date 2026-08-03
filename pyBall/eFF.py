@@ -736,6 +736,47 @@ def FindMinrho2( points, fname, nstepMax=1000, dt=0.001, Fconv=1e-3, optAlg=-1, 
     values = np.ctypeslib.as_array( ptr ,(points*3,) ) 
     return  values
 
+#int processMol2( const char* fname, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, const char* xyz_out="processMol2.xyz", const char* fgo_out="processMol2.fgo" ){
+lib.processMol2.argtypes  = [c_char_p, c_double_p, c_double_p, c_double_p, c_int, c_double, c_double, c_int, c_bool, c_bool, c_bool, c_char_p, c_char_p ]
+lib.processMol2.restype   =  c_int # The C++ function returns the number of configurations processed (1)
+def processMol2( fname, outEs=None, apos=None, epos=None, nstepMax=1000, dt=0.5e-2, Fconv=1e-3, ialg=2, bCoreElectrons=False, bChangeCore=True, bChangeEsize=True, xyz_out="processMol2.xyz", fgo_out="processMol2.fgo", bOutputs=(0,0,0) ):
+    """
+    Load a .mol2 file, generate electrons into the middle of bonds (like processXYZ)
+    and relax the electronic degrees of freedom with fixed nuclei.
+
+    Args:
+        fname      : path to the .mol2 file
+        outEs      : (optional) 1D array of size 8 for energies (Etot,Ek,Eee,EeePaul,EeeExch,Eae,EaePaul,Eaa)
+        apos       : (optional) array (na,3) to store relaxed atomic positions
+        epos       : (optional) array (ne,4) to store relaxed electron positions {x,y,z,size}
+        nstepMax   : maximum number of relaxation steps
+        dt         : relaxation time step [fs]
+        Fconv      : force convergence criterion [eV/A]
+        ialg       : optimizer algorithm (0=GD, 1=MD, 2=FIRE, -1=LeapFrog)
+        bCoreElectrons : if True add core-electron pairs for atoms with Z>1
+        bChangeCore     : if True re-assign core parameters from atom_params
+        bChangeEsize    : if True set electron sizes from the default esize0
+        xyz_out    : output .xyz trajectory file (None to omit)
+        fgo_out    : output .fgo file (None to omit)
+        bOutputs   : tuple (bE, bApos, bEpos) toggles whether to allocate/return each output
+    Returns:
+        (outEs, apos, epos)
+    """
+    if bOutputs[0] and outEs is None: outEs = np.zeros(8, dtype=np.float64)
+    if bOutputs[1] and apos  is None: apos  = np.zeros( (na, 3) )
+    if bOutputs[2] and epos  is None: epos  = np.zeros( (ne, 4) )
+    print("processMol2() xyz_out ", xyz_out )
+    print("processMol2() fgo_out ", fgo_out )
+    lib.processMol2( cstr(fname), _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, ialg, bCoreElectrons, bChangeCore, bChangeEsize, cstr(xyz_out), cstr(fgo_out) )
+    return outEs, apos, epos
+
+lib.EvalH2.argtypes  = [c_int, c_double]
+lib.EvalH2.restype   = c_double_p
+def EvalH2( points, distance):
+    # Ek=0, Eee EeePaul EeeExch Eae EaePaul Eaa
+    ptr = lib.EvalH2( points, distance)
+    values = np.ctypeslib.as_array( ptr ,(points*3,) ) 
+    return  values
 
 # ========= Python Functions
 

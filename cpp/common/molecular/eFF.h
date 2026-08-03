@@ -60,7 +60,7 @@ Erf approximation:
 //double aAE = 20.0;
 
 //#define QE -2.0
-#define QE -1.0
+#define QE 1.0//charge of electron it used to be -1.0 but calculations seem to work only with 1.0
 
 constexpr static const double Hartree_to_eV = 27.211386245988;
 
@@ -243,9 +243,9 @@ class EFF{ public:
 { 3.0,   0.1,      2.0,      0.0,       0.0,       0.0,       0.0,       0.0      }, // 3: Li (Simple core: Z=3, sQ=0.5, sP=0.5, cP=1.0 for 1s2)
 { 4.0,   0.1,      2.0,      0.0,       0.0,       0.0,       0.0,       0.0      }, // 4: Be (Simple core: Z=4, sQ=0.4, sP=0.4, cP=1.0 for 1s2)
 { 5.0,   0.1,      2.0,      0.0,       0.0,       0.0,       0.0,       0.0      }, // 5: B  (Simple core: Z=5, sQ=0.35,sP=0.35,cP=1.0 for 1s2)
-{ 6.0,   0.621427, 2.0,     22.721015, 0.728733,  1.103199,  17.695345, 6.693621  }, // 6: C (ECP: Z_nuc=6, R_core=0.621, Z_core=2. p-type)
-{ 7.0,   0.0,      2.0,      0.0,       0.0,       0.0,       0.0,       0.0      }, // 7: N (ECP: Z_nuc=7, R_core=0.0,   Z_core=2. p-type)
-{ 8.0,   0.167813, 2.0,     25.080199, 0.331574,  1.276183,  12.910142, 3.189333  }, // 8: O (ECP: Z_nuc=8, R_core=0.167, Z_core=2. p-type)
+{ 6.0,   0.621427, 2.0,      22.721015, 0.728733,  1.103199,  17.695345, 6.693621 }, // 6: C (ECP: Z_nuc=6, R_core=0.621, Z_core=2. p-type)
+{ 7.0,   0.2,      2.0,      0.0,       0.0,       0.0,       0.0,       0.0      }, // 7: N (ECP: Z_nuc=7, R_core=0.0,   Z_core=2. p-type)
+{ 8.0,   0.3,      2.0,      25.080199, 0.331574,  1.276183,  12.910142, 3.189333 }, // 8: O (ECP: Z_nuc=8, R_core=0.167813, Z_core=2. p-type)
 { 9.0,   0.3,      2.0,      0.0,       0.0,       0.0,       0.0,       0.0      }  // 9: F (Simple core: Z=9, sQ=0.3, sP=0.3, cP=1.0 for 1s2)
 // Add Al, Si etc. as needed
 };
@@ -268,7 +268,7 @@ constexpr static const double aMasses[9] = {  1.0, 4.0, 7.0, 9.0,  11.0,  12.0, 
     double KPauliKin     = 50.0; // ToDo : Not sure if we should use this - perhaps this model of pauli energy should work "ab inition"
 
     constexpr static const double default_esize = 0.5;
-    constexpr static const double min_esize     = 0.1;
+    constexpr static const double min_esize     = 0.05;
 
     double eConst = 1;
     std::vector<double> paramsSi = {1.0, 0.5, 0.3};

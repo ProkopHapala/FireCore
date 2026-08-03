@@ -215,7 +215,7 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
     for(itr=0; itr<nstepMax; itr++ ){
         ff.clearForce();
         Etot = ff.eval();
-
+        
         if( ff.bNegativeSizes & (verbosity>0) ){ printf( "negative electron sizes in step #%i => perhaps decrease relaxation time step dt=%g[fs]? \n", itr, opt.dt ); }
         if(ff.nfix>0){ if(ialg>0){ ff.clear_fixed_dynamics(); }else{ ff.clear_fixed_force(); } }
         switch(ialg){
@@ -513,7 +513,7 @@ void builder2EFF(EFF& ff, const MM::Builder& builder, bool bRealloc=true ){
     }
 }
 
-int builder2EFFstatic( EFF* ff, MM::Builder& builder, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, double esize0=0.1, double le=-0.5 ){
+int builder2EFFstatic( EFF* ff, MM::Builder& builder, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, double esize0=0.5, double le=-0.5 ){
     //printf( "builder2EFFstatic() builder.atoms.size() %i builder.bonds.size() %i ff=%p \n", builder.atoms.size(), builder.bonds.size(), ff );
     //if(ff){ printf( "builder2EFFstatic() ff.na %i ff.ne %i \n", ff->na, ff->ne ); }
     int ie=0;
@@ -554,7 +554,7 @@ int builder2EFFstatic( EFF* ff, MM::Builder& builder, bool bCoreElectrons=true, 
             }else if (bChangeCore){
                 Quat4d& apar = ff->aPars[ia];
                 //apar = EFF::default_AtomParams[iZ];
-                apar = ff->atom_params[iZ];
+                ff->assign_params(ia,iZ);
                 if   (ff->bCoreCoul){ apar.x = iZ    ; }
                 else                { apar.x = iZ-2.0; }
             }
@@ -855,6 +855,75 @@ void TemporarySetOneParameter(double value){
     
 }
 
+int processMol2( const char* fname, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, const char* xyz_out="processMol2.xyz", const char* fgo_out="processMol2.fgo" ){
+    setvbuf(stdout, NULL, _IONBF, 0);
+    printf( "processMol2(%s) \n", fname );
+    printf( "processMol2() xyz_out=%s fgo_out=%s \n", xyz_out, fgo_out );
+    
+    if(params.atypes.size()==0){
+        const char* sElementTypes  = "common_resources/ElementTypes.dat";
+        const char* sAtomTypes     = "common_resources/AtomTypes.dat"; 
+        const char* sBondTypes     = "common_resources/BondTypes.dat"; 
+        const char* sAngleTypes    = "common_resources/AngleTypes.dat";
+        const char* sDihedralTypes = "common_resources/DihedralTypes.dat";
+        params.init( sElementTypes, sAtomTypes, sBondTypes, sAngleTypes, sDihedralTypes );
+    }
+    
+    builder.params = &params;
+    builder.clear();
+    builder.bindParams( &params );
+    
+    builder.load_mol2( fname );
+    
+    int natoms = builder.atoms.size();
+    if(natoms==0){ printf("ERROR processMol2(): no atoms loaded from '%s'\n", fname); return 0; }
+    
+    builder.tryAddConfsToAtoms( 0, -1 );
+    builder.printAtomConfs();
+    
+    char coreMode = bCoreElectrons ? 'a' : 'f';
+    ff.setCoreMode(coreMode);
+    
+    int ne = builder2EFFstatic( 0, builder, bCoreElectrons, bChangeCore, bChangeEsize );
+    if(verbosity>0)printf("processMol2() natoms=%i ne=%i builder.atoms.size()=%i builder.bonds.size()=%i\n", natoms, ne, builder.atoms.size(), builder.bonds.size() );
+    
+    ff.realloc( natoms, ne, true );
+    
+    //opt.bindOrAlloc( ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses );
+    builder2EFFstatic( &ff, builder, bCoreElectrons, bChangeCore, bChangeEsize );
+    
+    if(verbosity>1) ff.info();
+    if( nstepMax>0 ){
+        if (bFixedAtoms) {
+              int nfix = ff.na;
+              ff.realloc_fixed(nfix);
+              for(int i=0; i<nfix; i++){
+                  ff.fixed_poss[i].f = ff.apos[i];
+                  ff.fixed_inds[i] = Vec2i{i,7};
+                }
+        } 
+        else {
+            ff.nfix = 0; // Clear fixed atoms if not requested (ff is a global, so stale nfix from previous calls must be cleared)
+        }
+        initOpt( dt, 0.1, 100.0, false );
+        run( nstepMax, dt, Fconv, ialg, 0, 0 );
+    }
+    ff.eval();
+    if(verbosity>0){
+        printf("processMol2() na: %i ne: %i Etot(%.6f)=T(%.6f)+ee(%.6f)+ea(%.6f)+aa(%.6f)\n", ff.na, ff.ne, ff.Etot, ff.Ek, ff.Eee, ff.Eae, ff.Eaa );
+    }
+    if(xyz_out) ff.save_xyz(xyz_out, "a");
+    if(fgo_out) ff.writeTo_fgo(fgo_out, false, "a", 0);
+    ff.copyEnergies         (outEs, 0);
+    ff.copyAtomPositions    ((Vec3d*)apos_, 0);
+    ff.copyElectronPositions((Quat4d*)epos_, 0);
+    
+    return 1;
+}
+
+// Following functions are used only by outside programs, they are for graphing and relaxation of parameters
+
+
 double* EvalTwoElectrons(int points, double distance, bool samespin, bool bEvalCoulomb = false, bool bEvalPauli = true){ // evaluate the distribution of energy between two electrons
     double* Eout;
     Eout = new double[points];
@@ -890,6 +959,78 @@ double* EvalTwoElectrons(int points, double distance, bool samespin, bool bEvalC
     printf("EvalTwoElectrons() Eout[0] %g Eout[points-1] %g \n", Eout[0], Eout[points-1] );
     return Eout;
 }
+
+double* EvalH2(int points, double TestedParameterlength){ // evaluate the distribution of energy between two electrons
+    
+    double* Eout;
+    Eout = new double[points];
+    printf("EvalH2() points %i, TestedParameterlength %g,  \n", points, TestedParameterlength );
+    ff.bEvalCoulomb = true;
+    ff.bEvalPauli   = true;
+
+
+    ff.na = 2;
+    ff.ne = 2;
+    
+    
+    ff.realloc(2, 2, true);
+    
+    
+
+    ff.apos [0].set(0,0,0);
+    ff.apos [1].set(1,0,0);
+
+    ff.assign_params(0, 1);
+    ff.assign_params(1, 1);
+    setFixedAtoms(true);
+
+    ff.espin  [0] = 1;
+    ff.espin  [1] = -1;
+    ff.echarge[0] = fabs(-1.0);
+    ff.echarge[1] = fabs(-1.0);
+    int nfix=ff.na;
+    ff.realloc_fixed(nfix);
+    for(int i=0; i<nfix; i++){
+        ff.fixed_poss[i].f = ff.apos[i];
+        ff.fixed_inds[i] = Vec2i{i,7};
+        printf("fixed indsx = %f \n fixed indsy = %f", ff.fixed_inds[i].x,ff.fixed_inds[i].y);
+    }
+    initOpt(0.1, 0, 100.0, false); 
+    for (int i=0; i<points; i++){ 
+        ff.epos [0].set(0.5,0,0);
+        ff.epos [1].set(0.5,0,0);
+
+
+        ff.esize  [0] = 0.5;
+        ff.esize  [1] = 0.5;
+
+        
+        ff.Setrho2(TestedParameterlength/points*i);  
+        
+        bool bConv = false;
+        printf("eval = %f\n", ff.eval());
+
+        if (i == points-1){
+
+            setTrjName("processXYZ.xyz", savePerNsteps=10);
+        }
+        run(100,0.1, 0, 2, NULL, NULL, &bConv);   
+        ff.eval();
+        double endForce = ff.aforce[0].norm();
+        Eout[i] = endForce; 
+        
+        Eout[points + i] = endForce;    
+        Eout[2*points + i] =  ff.esize[1];   
+        printf("eval = %f\n", Eout[i]);
+        printf("force = %f\n", endForce);
+        printf("%f", ff.esize[0]); 
+
+    }
+    //ff.dealloc();
+    return Eout;
+}
+
+
 
 double* FindMinrho2(int points, const char* fname, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int optAlg=-1){
     
