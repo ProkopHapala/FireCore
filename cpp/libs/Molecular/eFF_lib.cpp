@@ -855,10 +855,10 @@ void TemporarySetOneParameter(double value){
     
 }
 
-int processMol2( const char* fname, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, const char* xyz_out="processMol2.xyz", const char* fgo_out="processMol2.fgo" ){
+int processMol2( const char* fname, double* outEs=0, double* apos_=0,double* aforce=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, const char* xyz_out="processMol2.xyz", const char* fgo_out="processMol2.fgo", int* convSum=0 ){
     setvbuf(stdout, NULL, _IONBF, 0);
-    printf( "processMol2(%s) \n", fname );
-    printf( "processMol2() xyz_out=%s fgo_out=%s \n", xyz_out, fgo_out );
+    if(verbosity>2) printf( "processMol2(%s) \n", fname );
+    if(verbosity>2) printf( "processMol2() xyz_out=%s fgo_out=%s \n", xyz_out, fgo_out );
     
     if(params.atypes.size()==0){
         const char* sElementTypes  = "common_resources/ElementTypes.dat";
@@ -906,7 +906,9 @@ int processMol2( const char* fname, double* outEs=0, double* apos_=0, double* ep
             ff.nfix = 0; // Clear fixed atoms if not requested (ff is a global, so stale nfix from previous calls must be cleared)
         }
         initOpt( dt, 0.1, 100.0, false );
-        run( nstepMax, dt, Fconv, ialg, 0, 0 );
+        bool bConv = false;
+        run( nstepMax, dt, Fconv, ialg, 0, 0, &bConv );
+        if(bConv && convSum){ (*convSum)++; }
     }
     ff.eval();
     if(verbosity>0){
@@ -917,6 +919,7 @@ int processMol2( const char* fname, double* outEs=0, double* apos_=0, double* ep
     ff.copyEnergies         (outEs, 0);
     ff.copyAtomPositions    ((Vec3d*)apos_, 0);
     ff.copyElectronPositions((Quat4d*)epos_, 0);
+    ff.copyAtomForces       ((Vec3d*)aforce, 0);
     
     return 1;
 }

@@ -22,6 +22,7 @@ from pyBall import eFF as eff
 
 #elementPath = "export/scan_data/single_CH4.xyz"             #for CH4
 #elementPath_e = "export/scan_data/single_CH4_e.xyz" #1 CH4
+elementPath = "EMolecules/CH3/.mol2" 
 
 #elementPath_e = "export/scan_data/CH4_10rnd_be.xyz" #10 CH4       
 
@@ -36,7 +37,7 @@ from pyBall import eFF as eff
 #elementPath_e = "testofMol2.xyz"
 elementPath_e = "export/scan_data/double_H2O_ee2.xyz"                   #HydrogenBonds
 #elementPath = "export/scan_data/double_H2O.xyz"
-fileToSaveProcess = "processXYZ.xyz"
+fileToSaveProcess = "processMol2.xyz"
 
 
 import shutil
@@ -51,7 +52,7 @@ if __name__ == "__main__":
 
     eff.setVerbosity(3,2)
     #eff.processXYZ( elementPath, nstepMax=0,ialg=2, dt=0.0001, Fconv=1e-7, bCoreElectrons=True) 
-    #eff.processMol2( elementPath, nstepMax=100000,ialg=2, dt=0.1, Fconv=1e-7, xyz_out=fileToSaveProcess)
+    eff.processMol2( elementPath, nstepMax=10000,ialg=2, dt=0.01, Fconv=1e-7, )
     
-    eff.processXYZ_e( elementPath_e, nstepMax=100000,optAlg = 2, dt=0.1, Fconv=1e-7) #, KRSrho=KRSrho 
+    #eff.processXYZ_e( elementPath_e, nstepMax=100000,optAlg = 2, dt=0.1, Fconv=1e-7) #, KRSrho=KRSrho 
     #exec(open("xyz_view_new-----.py").read())

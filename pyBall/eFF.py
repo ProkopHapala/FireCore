@@ -736,10 +736,44 @@ def FindMinrho2( points, fname, nstepMax=1000, dt=0.001, Fconv=1e-3, optAlg=-1, 
     values = np.ctypeslib.as_array( ptr ,(points*3,) ) 
     return  values
 
-#int processMol2( const char* fname, double* outEs=0, double* apos_=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, const char* xyz_out="processMol2.xyz", const char* fgo_out="processMol2.fgo" ){
-lib.processMol2.argtypes  = [c_char_p, c_double_p, c_double_p, c_double_p, c_int, c_double, c_double, c_int, c_bool, c_bool, c_bool, c_char_p, c_char_p ]
+def _mol2_sizes(fname, bCoreElectrons=True):
+    """Parse a .mol2 file and return (natoms, nElectrons).
+
+    Electron count is computed the same way the C++ builder2EFFstatic() does:
+      - 2 electrons per bond (bond e-pair)
+      - 2 electrons per heavy atom (Z>1) when bCoreElectrons is True (core pair)
+      - lone-pair e-pairs (conf.ne) are 0 for mol2 loads
+    """
+    natoms = 0
+    nbonds = 0
+    nheavy = 0
+    inAtom = inBond = False
+    heavy = set("BCNOFPSClBrI")  # elements with Z>1
+    with open(fname) as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith("@"):
+                inAtom = line.startswith("@<TRIPOS>ATOM")
+                inBond = line.startswith("@<TRIPOS>BOND")
+                continue
+            if inAtom and line:
+                tok = line.split()
+                if len(tok) >= 6:
+                    elem = tok[1].lstrip('.')
+                    if elem.rstrip('0123456789_') in heavy:
+                        nheavy += 1
+                    natoms += 1
+            elif inBond and line:
+                tok = line.split()
+                if len(tok) >= 3:
+                    nbonds += 1
+    ne = 2*nbonds + (2*nheavy if bCoreElectrons else 0)
+    return natoms, ne
+
+#int processMol2( const char* fname, double* outEs=0, double* apos_=0, double* aforce=0, double* epos_=0, int nstepMax=1000, double dt=0.001, double Fconv=1e-3, int ialg=2, bool bCoreElectrons=true, bool bChangeCore=true, bool bChangeEsize=true, const char* xyz_out="processMol2.xyz", const char* fgo_out="processMol2.fgo", int* convSum=0 ){
+lib.processMol2.argtypes  = [c_char_p, c_double_p, c_double_p, c_double_p, c_double_p, c_int, c_double, c_double, c_int, c_bool, c_bool, c_bool, c_char_p, c_char_p, c_int_p ]
 lib.processMol2.restype   =  c_int # The C++ function returns the number of configurations processed (1)
-def processMol2( fname, outEs=None, apos=None, epos=None, nstepMax=1000, dt=0.5e-2, Fconv=1e-3, ialg=2, bCoreElectrons=False, bChangeCore=True, bChangeEsize=True, xyz_out="processMol2.xyz", fgo_out="processMol2.fgo", bOutputs=(0,0,0) ):
+def processMol2( fname, outEs=None, apos=None, aforce=None, epos=None, nstepMax=1000, dt=0.5e-2, Fconv=1e-3, ialg=2, bCoreElectrons=False, bChangeCore=True, bChangeEsize=True, xyz_out="processMol2.xyz", fgo_out="processMol2.fgo", bOutputs=(0,0,0,0), convSum=[0] ):
     """
     Load a .mol2 file, generate electrons into the middle of bonds (like processXYZ)
     and relax the electronic degrees of freedom with fixed nuclei.
@@ -748,6 +782,7 @@ def processMol2( fname, outEs=None, apos=None, epos=None, nstepMax=1000, dt=0.5e
         fname      : path to the .mol2 file
         outEs      : (optional) 1D array of size 8 for energies (Etot,Ek,Eee,EeePaul,EeeExch,Eae,EaePaul,Eaa)
         apos       : (optional) array (na,3) to store relaxed atomic positions
+        aforce     : (optional) array (na,3) to store relaxed atomic forces
         epos       : (optional) array (ne,4) to store relaxed electron positions {x,y,z,size}
         nstepMax   : maximum number of relaxation steps
         dt         : relaxation time step [fs]
@@ -758,17 +793,23 @@ def processMol2( fname, outEs=None, apos=None, epos=None, nstepMax=1000, dt=0.5e
         bChangeEsize    : if True set electron sizes from the default esize0
         xyz_out    : output .xyz trajectory file (None to omit)
         fgo_out    : output .fgo file (None to omit)
-        bOutputs   : tuple (bE, bApos, bEpos) toggles whether to allocate/return each output
+        bOutputs   : tuple (bE, bApos, bAforce, bEpos) toggles whether to allocate/return each output
+        convSum    : (optional) single-element list; [0] is incremented if the relaxation converged
     Returns:
-        (outEs, apos, epos)
+        (outEs, apos, aforce, epos)
     """
+    # Size output arrays from the input .mol2 file
+    na_, ne_ = _mol2_sizes(fname, bCoreElectrons)
     if bOutputs[0] and outEs is None: outEs = np.zeros(8, dtype=np.float64)
-    if bOutputs[1] and apos  is None: apos  = np.zeros( (na, 3) )
-    if bOutputs[2] and epos  is None: epos  = np.zeros( (ne, 4) )
+    if bOutputs[1] and apos  is None: apos  = np.zeros( (na_, 3) )
+    if bOutputs[2] and aforce is None: aforce = np.zeros( (na_, 3) )
+    if bOutputs[3] and epos  is None: epos  = np.zeros( (ne_, 4) )
     print("processMol2() xyz_out ", xyz_out )
     print("processMol2() fgo_out ", fgo_out )
-    lib.processMol2( cstr(fname), _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, ialg, bCoreElectrons, bChangeCore, bChangeEsize, cstr(xyz_out), cstr(fgo_out) )
-    return outEs, apos, epos
+    convSumC = ctypes.c_int(0)
+    lib.processMol2( cstr(fname), _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(aforce, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, ialg, bCoreElectrons, bChangeCore, bChangeEsize, cstr(xyz_out), cstr(fgo_out), ctypes.byref(convSumC) )
+    convSum[0] = convSumC.value
+    return outEs, apos, aforce, epos
 
 lib.EvalH2.argtypes  = [c_double, c_int, c_double]
 lib.EvalH2.restype   = c_double_p

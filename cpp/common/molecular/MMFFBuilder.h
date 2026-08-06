@@ -3133,7 +3133,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
     }
 
     int load_mol2(const char* fname, const Vec3d& pos0=Vec3dZero, const Mat3d& rot=Mat3dIdentity ) {
-        if(verbosity>0)printf( "MM::Builder.load_mol2(%s)\n", fname );
+        if(verbosity>2)printf( "MM::Builder.load_mol2(%s)\n", fname );
         FILE* fp = fopen(fname, "r");
         if(fp == NULL){
             printf("ERROR in MM::Builder::load_mol2(): Cannot open %s\n", fname);
@@ -3201,7 +3201,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                 
                 // Try to read charge if present
                 sscanf(buff, "%*d %*s %*lf %*lf %*lf %*s %*s %*s %lf", &charge);
-                printf( "Builder::load_mol2() [%i] atom_id=%d atom_name=%s pos=(%lf %lf %lf) atom_type=%s charge=%lf\n", iline, atom_id, atom_name, pos.x, pos.y, pos.z, atom_type, charge );
+                if(verbosity>2) printf( "Builder::load_mol2() [%i] atom_id=%d atom_name=%s pos=(%lf %lf %lf) atom_type=%s charge=%lf\n", iline, atom_id, atom_name, pos.x, pos.y, pos.z, atom_type, charge );
                 
                 // substitute character '.' with '_' in atom_type
                 char* dot = strchr(atom_type, '.'); if(dot) { *dot = '_'; }
@@ -3244,7 +3244,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                 int bond_id, a1, a2, bond_type;
                 //char bond_type[8];
                 int ret = sscanf(buff, "%d %d %d %d", &bond_id, &a1, &a2, &bond_type);
-                printf( "Builder::load_mol2() [%i] bond_id=%d a1=%d a2=%d type=%i\n", iline, bond_id, a1, a2, bond_type );
+                if(verbosity>2) printf( "Builder::load_mol2() [%i] bond_id=%d a1=%d a2=%d type=%i\n", iline, bond_id, a1, a2, bond_type );
                 if(ret < 3) continue;
                 // Convert 1-based atom indices to 0-based
                 Bond bond;
@@ -3264,7 +3264,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         }
 
         fclose(fp);
-        if(verbosity>0)printf("Builder::load_mol2() END read natoms[%d] nbonds[%d] from %s\n", (int)(atoms.size()-n0), (int)(bonds.size()-n0), fname);
+        if(verbosity>2)printf("Builder::load_mol2() END read natoms[%d] nbonds[%d] from %s\n", (int)(atoms.size()-n0), (int)(bonds.size()-n0), fname);
         return ifrag;
     }
 
