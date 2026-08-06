@@ -7,7 +7,7 @@
 
 #include "math.h"
 #include "fastmath.h"
-double rho2 = -0.16; ///< This is a parameter same as rho but It is going to be changed for better performance, it is only used for different spin "attraction"
+double rho2 = -0.1203361; ///< This is a parameter same as rho but It is going to be changed for better performance, it is only used for different spin "attraction"
 /*!  
 eFF : Electron Force Field
 ---------------------------

@@ -960,11 +960,11 @@ double* EvalTwoElectrons(int points, double distance, bool samespin, bool bEvalC
     return Eout;
 }
 
-double* EvalH2(int points, double TestedParameterlength){ // evaluate the distribution of energy between two electrons
+double* EvalH2(double start, int points, double end){ // evaluate the distribution of energy between two electrons
     
     double* Eout;
     Eout = new double[points];
-    printf("EvalH2() points %i, TestedParameterlength %g,  \n", points, TestedParameterlength );
+    printf("EvalH2() points %i, TestedParameterlength %g,  \n", points, end );
     ff.bEvalCoulomb = true;
     ff.bEvalPauli   = true;
 
@@ -975,14 +975,11 @@ double* EvalH2(int points, double TestedParameterlength){ // evaluate the distri
     
     ff.realloc(2, 2, true);
     
-    
-
     ff.apos [0].set(0,0,0);
-    ff.apos [1].set(1,0,0);
+    ff.apos [1].set(0.7414,0,0);
 
     ff.assign_params(0, 1);
     ff.assign_params(1, 1);
-    setFixedAtoms(true);
 
     ff.espin  [0] = 1;
     ff.espin  [1] = -1;
@@ -996,16 +993,18 @@ double* EvalH2(int points, double TestedParameterlength){ // evaluate the distri
         printf("fixed indsx = %f \n fixed indsy = %f", ff.fixed_inds[i].x,ff.fixed_inds[i].y);
     }
     initOpt(0.1, 0, 100.0, false); 
-    for (int i=0; i<points; i++){ 
+    for (int i=start; i<points; i++){ 
+        printf("H2 relax itr = %i, rho2 = %f\n",i , (end-start)/points*i+start);
         ff.epos [0].set(0.5,0,0);
         ff.epos [1].set(0.5,0,0);
 
-
+        ff.apos [0].set(0,0,0);
+        ff.apos [1].set(1,0,0);
         ff.esize  [0] = 0.5;
         ff.esize  [1] = 0.5;
 
         
-        ff.Setrho2(TestedParameterlength/points*i);  
+        ff.Setrho2((end-start)/points*i+start);  
         
         bool bConv = false;
         printf("eval = %f\n", ff.eval());
@@ -1014,16 +1013,16 @@ double* EvalH2(int points, double TestedParameterlength){ // evaluate the distri
 
             setTrjName("processXYZ.xyz", savePerNsteps=10);
         }
-        run(100,0.1, 0, 2, NULL, NULL, &bConv);   
+        run(1000,0.1, 0, 2, NULL, NULL, &bConv);   
         ff.eval();
-        double endForce = ff.aforce[0].norm();
-        Eout[i] = endForce; 
+        double endforce = ff.aforce[0].norm();   
+        Eout[i] = endforce; 
         
-        Eout[points + i] = endForce;    
-        Eout[2*points + i] =  ff.esize[1];   
+        //Eout[points + i] = endforce;    
+        //Eout[2*points + i] =  ff.esize[1];   
         printf("eval = %f\n", Eout[i]);
-        printf("force = %f\n", endForce);
-        printf("%f", ff.esize[0]); 
+        printf("force = %f\n", endforce);
+        printf("%f\n", ff.esize[0]); 
 
     }
     //ff.dealloc();

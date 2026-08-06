@@ -32,9 +32,9 @@ from pyBall import eFF as eff
 # elementPath_e = "export/scan_data/angdistscan_CH4_forces_fixed.xyz"
 # elementPath_e = "export/scan_data/CH4_10rnd_be.xyz" #be stands for better electrons. They are positioned at hydrogen atoms
 
-elementPath = "testofMol2.mol2"
-elementPath_e = "testofMol2.xyz"
-#elementPath_e = "export/scan_data/double_H2O_ee2.xyz"                   #HydrogenBonds
+#elementPath = "testofMol2.mol2"
+#elementPath_e = "testofMol2.xyz"
+elementPath_e = "export/scan_data/double_H2O_ee2.xyz"                   #HydrogenBonds
 #elementPath = "export/scan_data/double_H2O.xyz"
 fileToSaveProcess = "processXYZ.xyz"
 
@@ -51,7 +51,7 @@ if __name__ == "__main__":
 
     eff.setVerbosity(3,2)
     #eff.processXYZ( elementPath, nstepMax=0,ialg=2, dt=0.0001, Fconv=1e-7, bCoreElectrons=True) 
-    eff.processMol2( elementPath, nstepMax=100000,ialg=2, dt=0.1, Fconv=1e-7, xyz_out=fileToSaveProcess)
+    #eff.processMol2( elementPath, nstepMax=100000,ialg=2, dt=0.1, Fconv=1e-7, xyz_out=fileToSaveProcess)
     
-    #eff.processXYZ_e( elementPath_e, nstepMax=1,optAlg = 2, dt=0.0001, Fconv=1e-7) #, KRSrho=KRSrho 
+    eff.processXYZ_e( elementPath_e, nstepMax=100000,optAlg = 2, dt=0.1, Fconv=1e-7) #, KRSrho=KRSrho 
     #exec(open("xyz_view_new-----.py").read())

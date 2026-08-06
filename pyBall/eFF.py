@@ -770,12 +770,12 @@ def processMol2( fname, outEs=None, apos=None, epos=None, nstepMax=1000, dt=0.5e
     lib.processMol2( cstr(fname), _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, ialg, bCoreElectrons, bChangeCore, bChangeEsize, cstr(xyz_out), cstr(fgo_out) )
     return outEs, apos, epos
 
-lib.EvalH2.argtypes  = [c_int, c_double]
+lib.EvalH2.argtypes  = [c_double, c_int, c_double]
 lib.EvalH2.restype   = c_double_p
-def EvalH2( points, distance):
+def EvalH2( start, points, distance):
     # Ek=0, Eee EeePaul EeeExch Eae EaePaul Eaa
-    ptr = lib.EvalH2( points, distance)
-    values = np.ctypeslib.as_array( ptr ,(points*3,) ) 
+    ptr = lib.EvalH2( start, points, distance)
+    values = np.ctypeslib.as_array( ptr ,(points,) ) 
     return  values
 
 # ========= Python Functions
