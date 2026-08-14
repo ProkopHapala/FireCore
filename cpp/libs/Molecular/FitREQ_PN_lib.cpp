@@ -169,30 +169,34 @@ void evalSamplePairs(int isamp, double* pair_out){
             const double r = dij.norm();
 
             double Eij_Coul = 0.0, Eij_vdW = 0.0, Eij_Hcorr = 0.0, Eij_Epairs = 0.0;
-            double dE_dH=0.0, dE_dR=0.0, f1=0.0, f2=0.0, alpha=0.0;
+            double dE_dH=0.0, dE_dR=0.0, f1=0.0, f2=0.0, alpha=W.kMorse;
             double fA=0.0, fR=0.0, fH1=0.0, fH2=0.0;
 
             if( bEpi ){
                 if(bEpj) continue;
                 // --- Electron pair interaction
-                if     (W.iEpairs==1) Eij_Epairs = W.sEpairs * getSR1_PN( r, H, REQi.x, dE_dH, dE_dR );
-                else if(W.iEpairs==2) Eij_Epairs = W.sEpairs * getSR2_PN( r, H, REQi.x, dE_dH, dE_dR );
-                else if(W.iEpairs==3) Eij_Epairs = W.sEpairs * getSR3_PN( r, H, REQi.x, dE_dH, dE_dR );
-                else if(W.iEpairs==4) Eij_Epairs = W.sEpairs * getSR4_PN( r, REQi.x*REQj.w, REQi.w*REQj.w, f1, f2, W.SRcut, W.SR4m, W.SR4n );
-                else if(W.iEpairs==5) Eij_Epairs = W.sEpairs * getSR5_PN( r, H, REQi.x, W.SRcut, dE_dH, dE_dR );
-                else if(W.iEpairs==6) Eij_Epairs = W.sEpairs * getSR6_PN( r, H, REQi.x, W.SRcut, dE_dH, dE_dR );
-                else if(W.iEpairs==7) Eij_Epairs = W.sEpairs * getSR7_PN( r, H, REQi.x, W.SRcut, dE_dH, dE_dR );
-                else if(W.iEpairs==8) Eij_Epairs = W.sEpairs * getSR8_PN( r, H, REQi.x, W.SRcut, dE_dH, dE_dR );
+                if     (W.iEpairs==1) Eij_Epairs = W.sEpairs * getSR1sr_PN( r, H, REQi.x, W.SRcut, dE_dH, dE_dR );
+                else if(W.iEpairs==2) Eij_Epairs = W.sEpairs * getSR2sr_PN( r, H, REQi.x, W.SRcut, dE_dH, dE_dR );
+                else if(W.iEpairs==3) Eij_Epairs = W.sEpairs * getSR3sr_PN( r, H, REQi.x, W.SRcut, dE_dH, dE_dR );
+                else if(W.iEpairs==4) Eij_Epairs = W.sEpairs * getSR4_PN  ( r, REQi.x*REQj.w, REQi.w*REQj.w, f1, f2, W.SRcut, W.SR4m, W.SR4n );
+                else if(W.iEpairs==5) Eij_Epairs = W.sEpairs * getSR5_PN  ( r, H, REQi.x, W.SRcut, dE_dH, dE_dR );
+                else if(W.iEpairs==6) Eij_Epairs = W.sEpairs * getSR6_PN  ( r, H, REQi.x, W.SRcut, dE_dH, dE_dR );
+                else if(W.iEpairs==7) Eij_Epairs = W.sEpairs * getSR7_PN  ( r, H, REQi.x, W.SRcut, dE_dH, dE_dR );
+                else if(W.iEpairs==8) Eij_Epairs = W.sEpairs * getSR8_PN  ( r, H, REQi.x, W.SRcut, dE_dH, dE_dR );
+                else if(W.iEpairs==9) Eij_Epairs = W.sEpairs * getSR9_PN  ( r, H, REQi.x, W.SRcut, dE_dH, dE_dR );
+                else exit(printf("FitREQ_PN.h::ERROR: iEpairs=%i not implemented\n", W.iEpairs));
             }else if( bEpj ){
                 // --- Electron pair interaction
-                if     (W.iEpairs==1) Eij_Epairs = W.sEpairs * getSR1_PN( r, H, REQj.x, dE_dH, dE_dR );
-                else if(W.iEpairs==2) Eij_Epairs = W.sEpairs * getSR2_PN( r, H, REQj.x, dE_dH, dE_dR );
-                else if(W.iEpairs==3) Eij_Epairs = W.sEpairs * getSR3_PN( r, H, REQj.x, dE_dH, dE_dR );
-                else if(W.iEpairs==4) Eij_Epairs = W.sEpairs * getSR4_PN( r, REQi.w*REQj.x, REQi.w*REQj.w, f1, f2, W.SRcut, W.SR4m, W.SR4n );
-                else if(W.iEpairs==5) Eij_Epairs = W.sEpairs * getSR5_PN( r, H, REQj.x, W.SRcut, dE_dH, dE_dR );
-                else if(W.iEpairs==6) Eij_Epairs = W.sEpairs * getSR6_PN( r, H, REQj.x, W.SRcut, dE_dH, dE_dR );
-                else if(W.iEpairs==7) Eij_Epairs = W.sEpairs * getSR7_PN( r, H, REQj.x, W.SRcut, dE_dH, dE_dR );
-                else if(W.iEpairs==8) Eij_Epairs = W.sEpairs * getSR8_PN( r, H, REQj.x, W.SRcut, dE_dH, dE_dR );
+                if     (W.iEpairs==1) Eij_Epairs = W.sEpairs * getSR1sr_PN( r, H, REQj.x, W.SRcut, dE_dH, dE_dR );
+                else if(W.iEpairs==2) Eij_Epairs = W.sEpairs * getSR2sr_PN( r, H, REQj.x, W.SRcut, dE_dH, dE_dR );
+                else if(W.iEpairs==3) Eij_Epairs = W.sEpairs * getSR3sr_PN( r, H, REQj.x, W.SRcut, dE_dH, dE_dR );
+                else if(W.iEpairs==4) Eij_Epairs = W.sEpairs * getSR4_PN  ( r, REQi.w*REQj.x, REQi.w*REQj.w, f1, f2, W.SRcut, W.SR4m, W.SR4n );
+                else if(W.iEpairs==5) Eij_Epairs = W.sEpairs * getSR5_PN  ( r, H, REQj.x, W.SRcut, dE_dH, dE_dR );
+                else if(W.iEpairs==6) Eij_Epairs = W.sEpairs * getSR6_PN  ( r, H, REQj.x, W.SRcut, dE_dH, dE_dR );
+                else if(W.iEpairs==7) Eij_Epairs = W.sEpairs * getSR7_PN  ( r, H, REQj.x, W.SRcut, dE_dH, dE_dR );
+                else if(W.iEpairs==8) Eij_Epairs = W.sEpairs * getSR8_PN  ( r, H, REQj.x, W.SRcut, dE_dH, dE_dR );
+                else if(W.iEpairs==9) Eij_Epairs = W.sEpairs * getSR9_PN  ( r, H, REQj.x, W.SRcut, dE_dH, dE_dR );
+                else exit(printf("FitREQ_PN.h::ERROR: iEpairs=%i not implemented\n", W.iEpairs));
             }else{
                 // --- Electrostatic interaction
                 if     (W.iCoul==1) Eij_Coul = W.sCoul * Q * COULOMB_CONST / r;
@@ -222,7 +226,7 @@ void evalSamplePairs(int isamp, double* pair_out){
                     fH2             = 3.0;
                 }else if(W.ivdW==4){ // Morse
                     if( W.kMorse < 0.0 ) alpha = 6.0 / R0; 
-                    fA                 = exp( -alpha * ( r - R0 ) );
+                    fA                 = safe_exp2( -alpha * ( r - R0 ) );
                     fR                 = fA * fA;
                     fH1                = 1.0;
                     fH2                = 2.0;
@@ -230,7 +234,7 @@ void evalSamplePairs(int isamp, double* pair_out){
                     if( W.kMorse < 0.0 ) alpha = 6.0 / R0; 
                     const double u     = R0 / r;
                     const double u3    = u * u * u;
-                    const double e     = exp( -alpha * ( r - R0 ) );
+                    const double e     = safe_exp2( -alpha * ( r - R0 ) );
                     fA                 = u3 * u3;
                     fR                 = e * e;
                     fH1                = 1.0;
@@ -238,7 +242,7 @@ void evalSamplePairs(int isamp, double* pair_out){
                 }
                 Eij_vdW =  W.svdW * eps * ( fH1 * fR - fH2 * fA );
                 // --- Hydrogen-bond corrections
-                if(W.sHcorr>0.0){
+                if(sH>0.0){
                     if(W.iHbond==1||W.iHbond==3) Eij_Hcorr += W.sHcorr * eps * H * fH1 * fR;
                     if(W.iHbond==2||W.iHbond==3) Eij_Hcorr += W.sHcorr * eps * H * fH2 * fA;
                 }

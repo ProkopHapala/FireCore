@@ -1883,11 +1883,11 @@ void evalEnergyComponents ( int i0, int ni, int j0, int nj, int* types, Vec3d* p
             }else{
                 // --- Electrostatic interaction
                 if(iCoul==1){ // point charges
-                    dE_dQ = COULOMB_CONST / r ;
+                    dE_dQ = sCoul * COULOMB_CONST / r ;
                 }else if(iCoul==2){ // point charges with softclamp
-                    dE_dQ = dampCoulomb_SoftClamp(r, clamp_y1, clamp_y2) * COULOMB_CONST;
+                    dE_dQ = sCoul * dampCoulomb_SoftClamp(r, clamp_y1, clamp_y2) * COULOMB_CONST;
                 }else if(iCoul>9){ // Boys clamping with different approximations
-                    dE_dQ = dampCoulomb_Boys(r, boys_rmin, iCoul-10) * COULOMB_CONST;
+                    dE_dQ = sCoul * dampCoulomb_Boys(r, boys_rmin, iCoul-10) * COULOMB_CONST;
                 }
                 Eij_Coul = Q * dE_dQ;                
                 // --- Van der Waals interaction
@@ -1922,7 +1922,7 @@ void evalEnergyComponents ( int i0, int ni, int j0, int nj, int* types, Vec3d* p
                     }else{
                         fR0   = 2.0 * alpha;
                     }
-                    fA                 = exp( -alpha * ( r - R0 ) );
+                    fA                 = safe_exp2( -alpha * ( r - R0 ) );
                     fR                 = fA * fA;
                     fH1                = 1.0;
                     fH2                = 2.0;
@@ -1933,25 +1933,25 @@ void evalEnergyComponents ( int i0, int ni, int j0, int nj, int* types, Vec3d* p
                     }
                     const double u     = R0 / r;
                     const double u3    = u * u * u;
-                    const double e     = exp( -alpha * ( r - R0 ) );
+                    const double e     = safe_exp2( -alpha * ( r - R0 ) );
                     fA                 = u3 * u3;
                     fR                 = e * e;
                     fH1                = 1.0;
                     fH2                = 2.0;
                     fR0                = 2.0 * alpha;
                 }
-                dE_deps = fH1 * fR - fH2 * fA;
+                dE_deps = svdW * (fH1 * fR - fH2 * fA);
                 Eij_vdW   = eps * dE_deps;
                 // --- Hydrogen-bond corrections
                 if(sH>0.0){
                     if(iHbond==1||iHbond==3){
                         const double f         = fH1 * fR;
-                        const double dE_deps_H = H * f;
+                        const double dE_deps_H = sHcorr * H * f;
                         Eij_Hcorr        = eps * dE_deps_H;
                     }
                     if(iHbond==2||iHbond==3){
                         const double f         = fH2 * fA;
-                        const double dE_deps_H = H * f;
+                        const double dE_deps_H = sHcorr * H * f;
                         Eij_Hcorr       += eps * dE_deps_H;
                     }
                 }
