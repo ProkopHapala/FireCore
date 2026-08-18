@@ -82,6 +82,87 @@ int loadXYZ( const char* fname, bool bAddEpairs, bool bOutXYZ, bool bSaveJustEle
     return W.loadXYZ( fname, bAddEpairs, bOutXYZ, OutXYZ_fname, bAppend );
 }
 
+// Variable-projection support used by FitHBonds.  The nonlinear mixing-rule
+// scan lives in Python; these calls expose the PN-based streamed linear design.
+void clearSamples(){ W.clearSamples(); }
+
+int export_Erefs( double* Erefs ){
+    return W.export_Erefs(Erefs);
+}
+
+void setGlobalParams( double kMorse, double Lepairs ){
+    W.kMorse=kMorse;
+    W.Lepairs=Lepairs;
+}
+
+void setLinearVdW( int ivdW ){
+    if((ivdW<1)||(ivdW>5)){ printf("ERROR setLinearVdW(): ivdW=%i (expected 1..5)\n",ivdW); abort(); }
+    W.linearVdW=ivdW;
+}
+
+void setEpairBasis( int ibasis, int npow ){
+    W.linearEpairBasis=ibasis;
+    W.linearEpairPow=npow;
+}
+
+void setEpairPowScheme( int scheme ){
+    W.linearEpairPowScheme=scheme;
+}
+
+void setLinearEpairCutoff( double rc ){
+    W.linearEpairCutoff=rc;
+}
+
+void setLinearEpairSR( int sr, double r0, double rc, int sr4m, int sr4n ){
+    if((sr<1)||(sr>9)){ printf("ERROR setLinearEpairSR(): sr=%i (expected 1..9)\n",sr); abort(); }
+    W.linearEpairBasis=100+sr;
+    W.linearEpairR0=r0;
+    W.linearEpairCutoff=rc;
+    W.linearSR4m=sr4m;
+    W.linearSR4n=sr4n;
+}
+
+int getNLinearCols(){
+    W.buildLinearPairFits();
+    return W.nLinearCols;
+}
+
+double evalSampleBaseMorseCoul( int isamp ){
+    W.DOFsToTypes();
+    return W.evalSampleBaseMorseCoul(isamp);
+}
+
+void evalSamplePhi_HcorrEpair( int isamp, int hkind, int npar, double* phi ){
+    W.DOFsToTypes();
+    W.buildLinearPairFits();
+    if(npar!=W.nLinearCols){ printf("ERROR evalSamplePhi_HcorrEpair(): npar=%i expected=%i\n",npar,W.nLinearCols); abort(); }
+    W.evalSampleLinearPhi(isamp,hkind,phi,npar);
+}
+
+double buildNormalEqs_HcorrEpair( int hkind, int npar, double* ATWA, double* ATWb ){
+    W.DOFsToTypes();
+    W.buildLinearPairFits();
+    if(npar!=W.nLinearCols){ printf("ERROR buildNormalEqs_HcorrEpair(): npar=%i expected=%i\n",npar,W.nLinearCols); abort(); }
+    double sumWB2=0.0;
+    W.buildNormalEqsLinear(hkind,ATWA,ATWb,sumWB2);
+    return sumWB2;
+}
+
+int getLinearFitsMapping( int* kind_out, int* type1_out, int* type2_out, int* col_out ){
+    W.buildLinearPairFits();
+    int n=0;
+    for(int t1=0;t1<W.ntype;t1++) for(int t2=0;t2<W.ntype;t2++){
+        const FitREQ_PN::LinearPairFit& fit=W.linearPairFits[t1*W.ntype+t2];
+        if(fit.epairCol>=0){
+            if(kind_out) kind_out[n]=1; if(type1_out) type1_out[n]=t1; if(type2_out) type2_out[n]=t2; if(col_out) col_out[n]=fit.epairCol; n++;
+        }
+        if(fit.hcorrCol>=0){
+            if(kind_out) kind_out[n]=2; if(type1_out) type1_out[n]=t1; if(type2_out) type2_out[n]=t2; if(col_out) col_out[n]=fit.hcorrCol; n++;
+        }
+    }
+    return n;
+}
+
 void init_buffers(){
     //printf( "init_buffers() \n" );
 

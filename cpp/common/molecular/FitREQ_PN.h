@@ -431,6 +431,25 @@ class FitREQ_PN{ public:
     std::vector<int> typesPresent;
     std::vector<int> fittedTypes;
 
+    // Channel-resolved linear design used by the FitHBonds variable-projection
+    // workflow.  Epair columns are keyed by (Epair type, real-atom type);
+    // Hcorr columns are keyed by an unordered real-atom type pair.
+    struct LinearPairFit{ int epairCol=-1; int hcorrCol=-1; };
+    std::vector<LinearPairFit> linearPairFits;
+    int nLinearCols = 0;
+
+    // A linear Epair basis is a fitting helper, separate from the physical
+    // Epair parameters stored in typeREQs.  The selected SR shape is evaluated
+    // by the canonical getSR*_PN functions below.
+    int    linearEpairBasis     = 101; // 1..3 polynomial, 101..109 = SR1..SR9
+    int    linearEpairPow       = 2;
+    int    linearEpairPowScheme = 0;
+    int    linearVdW            = 4; // FireCore ivdW code: LJ12, LJ8, LJ9, Morse, Buckingham
+    double linearEpairR0        = 1.0;
+    double linearEpairCutoff    = 3.0;
+    int    linearSR4m           = 2;
+    int    linearSR4n           = 2;
+
     // parameters
     int    iWeightModel    = 1;     // weight of model energy 1=linear, 2=cubic_smooth_step  
     double EmodelCut       = 10.0;  // sample model energy when we consider it too repulsive and ignore it during fitting
@@ -759,6 +778,17 @@ int loadXYZ( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false, char*
     //init_types();
     countTypesPresent( );
     printTypeParams( true );
+    return nbatch;
+}
+
+void clearSamples(){
+    for(Atoms* atoms : samples) delete atoms;
+    samples.clear();
+    nbatch=0;
+}
+
+int export_Erefs( double* Erefs )const{
+    if(Erefs){ for(int i=0; i<nbatch; i++){ Erefs[i]=samples[i]->Energy; } }
     return nbatch;
 }
 
@@ -1282,6 +1312,201 @@ void fillTempArrays( const Atoms* atoms, Vec3d* apos, double* Qs  )const{
             //isEp[iE] = 1;
         }
     }
+}
+
+// ============================================================================
+// Channel-resolved linear design for the FitHBonds variable-projection scan.
+// These helpers intentionally use the same PN radial functions as the physical
+// evaluator.  They only construct a linear least-squares design; the nonlinear
+// scan and Gauss-Newton mixing-rule solve remain in Python.
+
+int getNLinearEpairTerms()const{
+    if((linearEpairBasis>=101)&&(linearEpairBasis<=109)) return (linearEpairBasis==104) ? 2 : 1;
+    return (linearEpairBasis>0) ? linearEpairPow : 1;
+}
+
+void evalLinearEpairBasis( double r, double* phi )const{
+    const int nterm=getNLinearEpairTerms();
+    for(int i=0;i<nterm;i++) phi[i]=0.0;
+    if((linearEpairR0<=0.0)||(linearEpairCutoff<=0.0)){
+        printf("ERROR evalLinearEpairBasis(): positive R0 and cutoff required\n"); abort();
+    }
+    if(r>=linearEpairCutoff) return;
+
+    if((linearEpairBasis>=101)&&(linearEpairBasis<=109)){
+        const int sr=linearEpairBasis-100;
+        if(((sr==5)||(sr==6)||(sr==8))&&(linearEpairR0>=linearEpairCutoff)){
+            printf("ERROR evalLinearEpairBasis(): SR%i requires R0 < cutoff\n",sr); abort();
+        }
+        double dEdH=0.0, dEdR=0.0;
+        switch(sr){
+            case 1: getSR1sr_PN(r,1.0,linearEpairR0,linearEpairCutoff,dEdH,dEdR); phi[0]=dEdH; break;
+            case 2: getSR2sr_PN(r,1.0,linearEpairR0,linearEpairCutoff,dEdH,dEdR); phi[0]=dEdH; break;
+            case 3: getSR3sr_PN(r,1.0,linearEpairR0,linearEpairCutoff,dEdH,dEdR); phi[0]=dEdH; break;
+            case 4: getSR4_PN  (r,0.0,0.0,phi[0],phi[1],linearEpairCutoff,linearSR4m,linearSR4n); break;
+            case 5: getSR5_PN  (r,1.0,linearEpairR0,linearEpairCutoff,dEdH,dEdR); phi[0]=dEdH; break;
+            case 6: getSR6_PN  (r,1.0,linearEpairR0,linearEpairCutoff,dEdH,dEdR); phi[0]=dEdH; break;
+            case 7: getSR7_PN  (r,1.0,linearEpairR0,linearEpairCutoff,dEdH,dEdR); phi[0]=dEdH; break;
+            case 8: getSR8_PN  (r,1.0,linearEpairR0,linearEpairCutoff,dEdH,dEdR); phi[0]=dEdH; break;
+            case 9: getSR9_PN  (r,1.0,linearEpairR0,linearEpairCutoff,dEdH,dEdR); phi[0]=dEdH; break;
+        }
+        return;
+    }
+
+    const double u=r/linearEpairCutoff;
+    double f=0.0, fp=0.0;
+    switch(linearEpairBasis){
+        case 1: f=1.0-u;               fp=f*f; break;
+        case 2: f=1.0-u*u;             fp=f*f; break;
+        case 3: f=1.0-u*u*(3.0-2.0*u); fp=f;   break;
+        default: printf("ERROR evalLinearEpairBasis(): unsupported basis %i\n",linearEpairBasis); abort();
+    }
+    for(int i=0;i<nterm;i++){ phi[i]=fp; fp*=linearEpairPowScheme ? fp : f; }
+}
+
+void buildLinearPairFits(){
+    linearPairFits.assign(ntype*ntype,LinearPairFit{});
+    nLinearCols=0;
+    const int nterm=getNLinearEpairTerms();
+    for(const Atoms* atoms : samples){
+        const AddedData* adata=(const AddedData*)atoms->userData;
+        for(int i=atoms->n0;i<atoms->natoms;i++){
+            const bool bEpi=adata->host[i]>=0;
+            const int ti=atoms->atypes[i];
+            for(int j=0;j<atoms->n0;j++){
+                const bool bEpj=adata->host[j]>=0;
+                const int tj=atoms->atypes[j];
+                if(bEpi!=bEpj){
+                    const int ie=bEpi ? i : j;
+                    const int ia=bEpi ? j : i;
+                    const int te=atoms->atypes[ie];
+                    const int ta=atoms->atypes[ia];
+                    const int th=atoms->atypes[adata->host[ie]];
+                    if(!fittedTypes[th] || !fittedTypes[ta]) continue;
+                    LinearPairFit& fit=linearPairFits[te*ntype+ta];
+                    if(fit.epairCol<0){ fit.epairCol=nLinearCols; nLinearCols+=nterm; }
+                }else if(!bEpi){
+                    if(!fittedTypes[ti] || !fittedTypes[tj]) continue;
+                    const int tlo=(ti<tj)?ti:tj;
+                    const int thi=(ti<tj)?tj:ti;
+                    LinearPairFit& fit=linearPairFits[tlo*ntype+thi];
+                    if((typeREQs[ti].w*typeREQs[tj].w<0.0)&&(fit.hcorrCol<0)) fit.hcorrCol=nLinearCols++;
+                }
+            }
+        }
+    }
+}
+
+void evalLinearVdWTerms( double r, double R0, double& fA, double& fR, double& fH1, double& fH2 )const{
+    switch(linearVdW){
+        case 1: { // Lennard-Jones 12-6
+            const double u=R0/r, u3=u*u*u;
+            fA=u3*u3; fR=fA*fA; fH1=1.0; fH2=2.0;
+        } break;
+        case 2: { // Lennard-Jones 8-6
+            const double u=R0/r, u2=u*u;
+            fA=u2*u2*u2; fR=fA*u2; fH1=3.0; fH2=4.0;
+        } break;
+        case 3: { // Lennard-Jones 9-6
+            const double u=R0/r, u3=u*u*u;
+            fA=u3*u3; fR=fA*u3; fH1=2.0; fH2=3.0;
+        } break;
+        case 4: { // Morse
+            const double alpha=(kMorse<0.0) ? 6.0/R0 : kMorse;
+            fA=safe_exp2(-alpha*(r-R0)); fR=fA*fA; fH1=1.0; fH2=2.0;
+        } break;
+        case 5: { // Buckingham: exponential repulsion plus r^-6 attraction
+            const double alpha=(kMorse<0.0) ? 6.0/R0 : kMorse;
+            const double u=R0/r, u3=u*u*u;
+            fA=u3*u3; const double e=safe_exp2(-alpha*(r-R0)); fR=e*e; fH1=1.0; fH2=2.0;
+        } break;
+        default: printf("ERROR evalLinearVdWTerms(): ivdW=%i not implemented\n",linearVdW); abort();
+    }
+}
+
+double evalSampleBaseVdWCoul( int isamp )const{
+    const Atoms* atoms=samples[isamp];
+    const AddedData* adata=(const AddedData*)atoms->userData;
+    alignas(32) double Qs[atoms->natoms];
+    alignas(32) Vec3d apos[atoms->natoms];
+    fillTempArrays(atoms,apos,Qs);
+    double E=0.0;
+    for(int i=atoms->n0;i<atoms->natoms;i++){
+        if(adata->host[i]>=0) continue;
+        const Quat4d& REQi=typeREQs[atoms->atypes[i]];
+        for(int j=0;j<atoms->n0;j++){
+            if(adata->host[j]>=0) continue;
+            const Quat4d& REQj=typeREQs[atoms->atypes[j]];
+            const double r=(apos[j]-apos[i]).norm();
+            double fA, fR, fH1, fH2;
+            evalLinearVdWTerms(r,REQi.x+REQj.x,fA,fR,fH1,fH2);
+            E += REQi.y*REQj.y*(fH1*fR-fH2*fA) + Qs[i]*Qs[j]*COULOMB_CONST/r;
+        }
+    }
+    return E;
+}
+
+// Backward-compatible API name retained for existing FitHBonds scripts.
+double evalSampleBaseMorseCoul( int isamp )const{ return evalSampleBaseVdWCoul(isamp); }
+
+void evalSampleLinearPhi( int isamp, int hkind, double* phi, int npar )const{
+    if((hkind!=1)&&(hkind!=2)){ printf("ERROR evalSampleLinearPhi(): hkind=%i\n",hkind); abort(); }
+    for(int p=0;p<npar;p++) phi[p]=0.0;
+    const Atoms* atoms=samples[isamp];
+    const AddedData* adata=(const AddedData*)atoms->userData;
+    alignas(32) double Qs[atoms->natoms];
+    alignas(32) Vec3d apos[atoms->natoms];
+    fillTempArrays(atoms,apos,Qs);
+    const int nterm=getNLinearEpairTerms();
+    std::vector<double> basis(nterm);
+    for(int i=atoms->n0;i<atoms->natoms;i++){
+        const bool bEpi=adata->host[i]>=0;
+        const int ti=atoms->atypes[i];
+        for(int j=0;j<atoms->n0;j++){
+            const bool bEpj=adata->host[j]>=0;
+            const int tj=atoms->atypes[j];
+            const double r=(apos[j]-apos[i]).norm();
+            if(bEpi!=bEpj){
+                const int te=bEpi ? ti : tj;
+                const int ta=bEpi ? tj : ti;
+                const LinearPairFit& fit=linearPairFits[te*ntype+ta];
+                if(fit.epairCol<0) continue;
+                evalLinearEpairBasis(r,basis.data());
+                for(int p=0;p<nterm;p++) phi[fit.epairCol+p]+=basis[p];
+            }else if(!bEpi){
+                const int tlo=(ti<tj)?ti:tj;
+                const int thi=(ti<tj)?tj:ti;
+                const LinearPairFit& fit=linearPairFits[tlo*ntype+thi];
+                if(fit.hcorrCol<0) continue;
+                const Quat4d& REQi=typeREQs[ti];
+                const Quat4d& REQj=typeREQs[tj];
+                double fA, fR, fH1, fH2;
+                evalLinearVdWTerms(r,REQi.x+REQj.x,fA,fR,fH1,fH2);
+                phi[fit.hcorrCol]+=REQi.y*REQj.y*((hkind==1) ? fH1*fR : fH2*fA);
+            }
+        }
+    }
+}
+
+void buildNormalEqsLinear( int hkind, double* ATWA, double* ATWb, double& sumWB2 )const{
+    const int npar=nLinearCols;
+    for(int i=0;i<npar*npar;i++) ATWA[i]=0.0;
+    for(int i=0;i<npar;i++) ATWb[i]=0.0;
+    sumWB2=0.0;
+    std::vector<double> phi(npar);
+    for(int isamp=0;isamp<samples.size();isamp++){
+        const double w=weights ? weights[isamp] : 1.0;
+        if(!(w>=0.0)||!std::isfinite(w)) continue;
+        evalSampleLinearPhi(isamp,hkind,phi.data(),npar);
+        const double b=samples[isamp]->Energy-evalSampleBaseMorseCoul(isamp);
+        sumWB2+=w*b*b;
+        for(int p=0;p<npar;p++){
+            const double wp=w*phi[p];
+            ATWb[p]+=wp*b;
+            for(int q=0;q<=p;q++) ATWA[p*npar+q]+=wp*phi[q];
+        }
+    }
+    for(int p=0;p<npar;p++) for(int q=0;q<p;q++) ATWA[q*npar+p]=ATWA[p*npar+q];
 }
 
 __attribute__((hot)) 

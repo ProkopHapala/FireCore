@@ -90,6 +90,93 @@ def loadXYZ(fname, bAddEpairs=False, bOutXYZ=False, bSaveJustElementXYZ=False, O
     nbatch = lib.loadXYZ(cstr(fname), bAddEpairs, bOutXYZ, bSaveJustElementXYZ, cstr(OutXYZ_fname), bEvalOnlyCorrections, bAppend)
     return nbatch
 
+# Channel-resolved linear design used by the FitHBonds variable-projection scan.
+lib.clearSamples.argtypes = []
+lib.clearSamples.restype = None
+def clearSamples():
+    global nbatch
+    lib.clearSamples()
+    nbatch = 0
+
+lib.export_Erefs.argtypes = [c_double_p]
+lib.export_Erefs.restype = c_int
+def export_Erefs(Erefs=None, n=None):
+    if Erefs is None:
+        if n is None: n = lib.export_Erefs(None)
+        Erefs = np.zeros(n)
+    lib.export_Erefs(_np_as(Erefs, c_double_p))
+    return Erefs
+
+lib.setGlobalParams.argtypes = [c_double, c_double]
+lib.setGlobalParams.restype = None
+def setGlobalParams(kMorse=1.6, Lepairs=0.5):
+    lib.setGlobalParams(kMorse, Lepairs)
+
+lib.setLinearVdW.argtypes = [c_int]
+lib.setLinearVdW.restype = None
+def setLinearVdW(ivdW=4):
+    """Select the FireCore VdW family for the linear-fit baseline (1..5)."""
+    lib.setLinearVdW(ivdW)
+
+lib.setEpairBasis.argtypes = [c_int, c_int]
+lib.setEpairBasis.restype = None
+def setEpairBasis(ibasis, npow=2):
+    lib.setEpairBasis(ibasis, npow)
+
+lib.setEpairPowScheme.argtypes = [c_int]
+lib.setEpairPowScheme.restype = None
+def setEpairPowScheme(scheme=0):
+    lib.setEpairPowScheme(scheme)
+
+lib.setLinearEpairCutoff.argtypes = [c_double]
+lib.setLinearEpairCutoff.restype = None
+def setLinearEpairCutoff(rc):
+    lib.setLinearEpairCutoff(rc)
+
+lib.setLinearEpairSR.argtypes = [c_int, c_double, c_double, c_int, c_int]
+lib.setLinearEpairSR.restype = None
+def setLinearEpairSR(sr, r0, rc, sr4m=2, sr4n=2):
+    lib.setLinearEpairSR(sr, r0, rc, sr4m, sr4n)
+
+lib.getNLinearCols.argtypes = []
+lib.getNLinearCols.restype = c_int
+def getNLinearCols():
+    return lib.getNLinearCols()
+
+lib.evalSampleBaseMorseCoul.argtypes = [c_int]
+lib.evalSampleBaseMorseCoul.restype = c_double
+def evalSampleBaseMorseCoul(isamp):
+    return lib.evalSampleBaseMorseCoul(isamp)
+
+lib.evalSamplePhi_HcorrEpair.argtypes = [c_int, c_int, c_int, c_double_p]
+lib.evalSamplePhi_HcorrEpair.restype = None
+def evalSamplePhi_HcorrEpair(isamp, hkind=1, npar=None):
+    if npar is None: npar = getNLinearCols()
+    phi = np.zeros(npar)
+    lib.evalSamplePhi_HcorrEpair(isamp, hkind, npar, _np_as(phi, c_double_p))
+    return phi
+
+lib.buildNormalEqs_HcorrEpair.argtypes = [c_int, c_int, c_double_p, c_double_p]
+lib.buildNormalEqs_HcorrEpair.restype = c_double
+def buildNormalEqs_HcorrEpair(hkind=1):
+    npar = getNLinearCols()
+    ATWA = np.zeros((npar, npar))
+    ATWb = np.zeros(npar)
+    sumWB2 = lib.buildNormalEqs_HcorrEpair(hkind, npar, _np_as(ATWA, c_double_p), _np_as(ATWb, c_double_p))
+    return ATWA, ATWb, sumWB2
+
+lib.getLinearFitsMapping.argtypes = [c_int_p, c_int_p, c_int_p, c_int_p]
+lib.getLinearFitsMapping.restype = c_int
+def getLinearFitsMapping():
+    n = lib.getLinearFitsMapping(None, None, None, None)
+    if n <= 0: return []
+    kind = np.zeros(n, dtype=np.int32)
+    type1 = np.zeros(n, dtype=np.int32)
+    type2 = np.zeros(n, dtype=np.int32)
+    col = np.zeros(n, dtype=np.int32)
+    lib.getLinearFitsMapping(_np_as(kind, c_int_p), _np_as(type1, c_int_p), _np_as(type2, c_int_p), _np_as(col, c_int_p))
+    return list(zip(kind.tolist(), type1.tolist(), type2.tolist(), col.tolist()))
+
 lib.setPenalty.argtypes  = [c_int, c_int, c_int, c_int, c_int, c_double, c_double]
 lib.setPenalty.restype   =  None
 def setPenalty(Clamp=1, Regularize=0, AddRegError=0, RegCountWeight=0, SoftClamp=0, softClamp_start=0.17, softClamp_max=0.26):
@@ -639,10 +726,39 @@ def exp_weight_func(Erefs, a=1.0, alpha=3.0, Emin0=0.1 ):
     Emin = np.min(Erefs)
     return np.exp( -alpha*(Erefs-Emin)/( np.abs(Emin) + Emin0 ) )*a
 
-def exp_weight_func_new(Erefs, a=1.0, alpha=3.0 ):
-    Emin = np.min(Erefs)
+def exp_weight_func_new(Erefs, a=1.0, alpha=4.0 ):
+    Emin = np.nanmin(Erefs)
     arg = -alpha * (Erefs - Emin) / np.abs(Emin)
     return a * np.exp(np.clip(arg, -700, 700))
+
+
+def make_reference_weights(Erefs, pairs, energy_cut=5.0, weight_alpha=4.0,
+                           weight_amplitude=1.0, ev_to_kcal=23.060547831):
+    """Return FireCore's reference-energy weights for labelled scan sections.
+
+    ``energy_cut`` is in kcal/mol.  It selects finite reference samples before
+    the per-section exponential weighting is applied. ``weight_amplitude``
+    blends uniform selected weights (0) with the full exponential weights (1).
+    """
+    if weight_alpha < 0.0:
+        raise ValueError("weight_alpha must be non-negative")
+    if not 0.0 <= weight_amplitude <= 1.0:
+        raise ValueError("weight_amplitude must be between 0 and 1")
+
+    Erefs = np.asarray(Erefs)
+    selected = np.isfinite(Erefs) & (Erefs * ev_to_kcal <= energy_cut)
+    weights = selected.astype(float)
+    if weight_amplitude == 0.0 or weight_alpha == 0.0:
+        return weights
+
+    exponential = split_and_weight_curves_new(
+        Erefs, pairs,
+        weight_func=lambda energies: exp_weight_func_new(energies, alpha=weight_alpha),
+    )
+    # Missing references never participate and must not poison the remaining
+    # samples of their section through a NaN exponential factor.
+    exponential[~np.isfinite(exponential)] = 1.0
+    return weights * (1.0 + weight_amplitude * (exponential - 1.0))
 
 def split_and_weight_curves(Erefs, x0s, n_before_min=4, weight_func=None, EminMin=-0.02 ):
     """
