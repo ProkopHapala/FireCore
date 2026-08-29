@@ -15,10 +15,10 @@ evalfile = "EMolecules/CH3/.mol2"
 fileToSaveProcess = "processMol2.xyz"
 
 if __name__ == "__main__":
-    end = 0.25
-    _start = 0.2
-    iterations = 200
-    
+    end = 0.180
+    _start = 0.178
+    iterations = 100
+    eff.setVerbosity(0,0)
     if os.path.exists(fileToSaveProcess):
         os.remove(fileToSaveProcess) # deleting useless information
     #eff.setFixedAtoms(True)
@@ -44,21 +44,23 @@ if __name__ == "__main__":
         eff.setAtomParams( atomParams , mode=2)
         if (i == iterations): 
             eff.setTrjName(fileToSaveProcess, savePerNsteps=1)
-        eff.processMol2(evalfile, nstepMax=100000, dt=0.001, Fconv=1e-7, ialg=2, aforce=aforce, apos=apos)
-        #fsum = np.sum(np.abs(aforce))
-        #outf = np.append(outf, fsum)
+        eff.processMol2(evalfile, nstepMax=170000, dt=0.00002, Fconv=1e-7, ialg=2, aforce=aforce, apos=apos)
+        fsum = np.sum(np.abs(aforce))
+        outf = np.append(outf, fsum)
         dif  =  apos[0] - apos[4]  
         outpos = np.append(outpos, np.sqrt(dif.dot(dif)))
 
         
     #print("H1", H2[1])
+    fig, axs = plt.subplots(2)
     x = np.linspace(_start, end, iterations)
-    plt.plot(  x, outpos, label="Force" )
-    #plt.plot( x, H2[1], label="e1" )
+    axs[0].plot(  x, outpos, label="Distance" )
+    axs[1].plot(  x, outf, label="Force" )
+    #plt.plot( x, H2[1], label="e1" )   
     #plt.plot( x, H2[2], label = "e2" )
-    plt.xlabel("Aparam")
-    plt.ylabel("Force")
-    plt.axhline(y=1.0925, color='r', linestyle='--')
+    axs[0].set(xlabel='R_eff', ylabel='distance')
+    axs[1].set(xlabel='R_eff', ylabel='force')
+    axs[0].axhline(y=1.0925, color='r', linestyle='--')
     plt.grid() 
     plt.legend()
     plt.show()

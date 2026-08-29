@@ -560,7 +560,7 @@ int builder2EFFstatic( EFF* ff, MM::Builder& builder, bool bCoreElectrons=true, 
             }
         }else if(bCore){ ie+=2; }
         int nei = builder.addEpairsByPi(ia, le, epos, false );
-        //printf( "builder2EFFstatic() ia=%i nei=%i \n", ia, nei );
+        printf( "builder2EFFstatic() ia=%i nei=%i \n", ia, nei );
         for(int i=0; i<nei; i++){
             if( ff ){
                 ff->epos[ie]=epos[i]; ff->espin[ie]= 1; if(bChangeEsize){ff->esize[ie]=esize0;}; ie++;
@@ -768,7 +768,7 @@ int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* f
                 //opt.bindOrAlloc(ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses);
                 //if (optAlg == -1)initOpt( dt, 0.0, 100.0, true );
                 //else initOpt(dt, 0.1, 100, false);
-                initOpt(dt, 0.1, 100.0, false);
+                initOpt(dt, 0, 100.0, false);
             }
         }else{
             // printf( "particle_line[%i]: %s ", il, line );

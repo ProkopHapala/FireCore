@@ -7,7 +7,7 @@
 
 #include "math.h"
 #include "fastmath.h"
-double rho2 = 0.1203361; //< This is a parameter same as rho but It is going to be changed for better performance, it is only used for different spin "attraction"
+double rho2 = 0.18;//0.1203361; //< This is a parameter same as rho but It is going to be changed for better performance, it is only used for different spin "attraction"
 /*!  
 eFF : Electron Force Field
 ---------------------------
@@ -650,7 +650,7 @@ inline double addPauliGauss_New( const Vec3d& dR, double si, double sj, Vec3d& f
         //double invS22m1 = 1/( S22+1 );  // original formula from the paper
         E       += - rho2*DT*S22  *invS22m1;
         dE_dDT  += -(rho2*   S22 )*invS22m1;
-        dE_dS22 +=  (rho2*DT     )*invS22m1*invS22m1;  // minus sign in the original
+        dE_dS22 += (rho2*DT     )*invS22m1*invS22m1;  // minus sign in the original
     }
     if(spin>=0){
         double invS222m1 = 1/( S22*S22-1 );

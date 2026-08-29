@@ -804,8 +804,8 @@ def processMol2( fname, outEs=None, apos=None, aforce=None, epos=None, nstepMax=
     if bOutputs[1] and apos  is None: apos  = np.zeros( (na_, 3) )
     if bOutputs[2] and aforce is None: aforce = np.zeros( (na_, 3) )
     if bOutputs[3] and epos  is None: epos  = np.zeros( (ne_, 4) )
-    print("processMol2() xyz_out ", xyz_out )
-    print("processMol2() fgo_out ", fgo_out )
+    #print("processMol2() xyz_out ", xyz_out )
+    #print("processMol2() fgo_out ", fgo_out )
     convSumC = ctypes.c_int(0)
     lib.processMol2( cstr(fname), _np_as(outEs, c_double_p), _np_as(apos, c_double_p), _np_as(aforce, c_double_p), _np_as(epos, c_double_p), nstepMax, dt, Fconv, ialg, bCoreElectrons, bChangeCore, bChangeEsize, cstr(xyz_out), cstr(fgo_out), ctypes.byref(convSumC) )
     convSum[0] = convSumC.value

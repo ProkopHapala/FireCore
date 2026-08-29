@@ -3226,12 +3226,15 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
                 if(it != atomTypeDict->end()){
                     int ityp = it->second;
                     if(verbosity>2)printf( " %s -> %i \n", atom_type, ityp );
+                    int npi = -1;
+                    int ne = 0;
                     if(params){
                         params->assignRE(ityp, REQ);
-                        //ne = params->atypes[ityp].nepair;
+                        ne  = params->atypes[ityp].nepair;
+                        npi = params->atypes[ityp].npi;
                     }
                     Vec3d p; rot.dot_to(pos,p); p.add( pos0 ); //p.sub(cog);
-                    int ia = insertAtom(ityp, p, &REQ, -1, 0 );
+                    int ia = insertAtom(ityp, p, &REQ, npi, ne );
                     tryAddConfToAtom( ia );
                 }else{
                     printf( "ERROR in MM::Builder::load_mol2(): unknown atom type `%s` for atom(%i) line(%i): %s \n", atom_type, atom_id, iline, buff );
