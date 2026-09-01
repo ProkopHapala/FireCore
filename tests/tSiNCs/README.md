@@ -5,8 +5,9 @@
 | Location | Role |
 |----------|------|
 | **This file** (`tests/tSiNCs/`) | **Working hub** — quick start, scripts, fixtures, viewers |
+| [`doc/topical_audit/SiNCs.md`](../../doc/topical_audit/SiNCs.md) | **Project briefing** — FTIR + XRD + FFfit (ChatGPT-ready) |
 | [`doc/Topics/FTIR_Nanocrystals/README.md`](../../doc/Topics/FTIR_Nanocrystals/README.md) | Topic docs index (guides, chats, progress logs) |
-| [`doc/topical_audit/Nanocrystal_Vibrations.md`](../../doc/topical_audit/Nanocrystal_Vibrations.md) | Topical audit — code inventory, APIs, test matrix |
+| [`doc/topical_audit/Nanocrystal_Vibrations.md`](../../doc/topical_audit/Nanocrystal_Vibrations.md) | Vibration API inventory |
 
 Keep these in sync when adding files or changing the canonical workflow.
 

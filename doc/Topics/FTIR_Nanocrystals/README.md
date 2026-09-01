@@ -10,7 +10,8 @@ Design notes, guides, and progress logs for Si / diamond nanocrystal generation,
 | [`tests/tSiNCs/AGENTS.md`](../../../tests/tSiNCs/AGENTS.md) | **DOX contract** — ownership, paths, verification |
 | [`Nanocrystal_NPZ_Pipeline.guide.md`](Nanocrystal_NPZ_Pipeline.guide.md) | **NPZ workflow** — stages 01→05, consumers |
 | [`NPZ_Crystal_Schema.md`](NPZ_Crystal_Schema.md) | **Schema contract** — per-key dtype/shape tables |
-| [`doc/topical_audit/Nanocrystal_Vibrations.md`](../../topical_audit/Nanocrystal_Vibrations.md) | **Audit** — code inventory, APIs, test matrix |
+| [`doc/topical_audit/SiNCs.md`](../../topical_audit/SiNCs.md) | **Project briefing** — FTIR + XRD + FFfit (ChatGPT-ready) |
+| [`doc/topical_audit/Nanocrystal_Vibrations.md`](../../topical_audit/Nanocrystal_Vibrations.md) | **Audit** — vibration API inventory, test matrix |
 | [`tests/tSiNCs/ToDo_Nanocrystal.md`](../../../tests/tSiNCs/ToDo_Nanocrystal.md) | Open items and open questions |
 
 When filenames disagree, prefer **schema + pipeline guide** and on-disk paths.

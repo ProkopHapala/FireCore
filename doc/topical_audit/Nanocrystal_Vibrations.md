@@ -2,7 +2,7 @@
 type: TopicalAudit
 title: Nanocrystal Vibrations
 tags: [nanocrystal, ftir, phonon, mmff]
-timestamp: 2026-07-08
+timestamp: 2026-09-01
 ---
 
 # Nanocrystal Vibrations: Generation, Force Fields, and Spectroscopy
@@ -13,6 +13,7 @@ This file is the **topical audit** (code inventory and status). It is maintained
 
 | Location | Role |
 |----------|------|
+| [`SiNCs.md`](SiNCs.md) | **Project briefing** (FTIR + XRD + FFfit) — paste into ChatGPT |
 | **This file** | APIs, implementations, test matrix, limitations |
 | [`tests/tSiNCs/AGENTS.md`](../../tests/tSiNCs/AGENTS.md) | DOX contract — script ownership, `REPO`/`TEST_DIR` paths |
 | [`doc/Topics/FTIR_Nanocrystals/README.md`](../Topics/FTIR_Nanocrystals/README.md) | Topic docs index (guides, chats, progress logs) |
@@ -171,7 +172,17 @@ Guides: [`CPP_MolecularBrowser_NPZ.md`](../Topics/FTIR_Nanocrystals/CPP_Molecula
 
 #### 3h. XRD (`pyBall/XRD/`, `tests/tXRD/`)
 
-Thermal broadening from vibration Hessian — [`XRD_progress.md`](../Topics/FTIR_Nanocrystals/XRD_progress.md).
+Powder Debye scattering on finite H-capped clusters; pair-distance histogram on GPU; thermal \(\sigma_{ij}\) from Hessian blocks. Full project context (experiment + FTIR): [`SiNCs.md`](SiNCs.md). Implementation: [`XRD_progress.md`](../Topics/FTIR_Nanocrystals/XRD_progress.md).
+
+| File | Status | Description |
+|------|--------|-------------|
+| `pyBall/XRD/debye_histogram.py` | **Active** | `XRDDebye` OpenCL; ensemble histogram accumulate; Hessian \(\sigma\) |
+| `pyBall/XRD/form_factors.py` | **Active** | Cromer–Mann H, C, Si |
+| `cpp/common_resources/cl/XRDDebye.cl` | **Active** | Histogram + Gaussian smear + Debye transform |
+| `tests/tXRD/test_debye_histogram.py` | **Active** | Static / constant-σ / Hessian-σ |
+| `tests/tXRD/test_ensemble_exact.py` | **Active** | Multi-crystal histogram sum |
+| `tests/tXRD/test_large_crystal.py` | **Active** | Larger C diamond NCs |
+| `scripts/generate_xrd_webgl.py` | **Active** | Single-crystal 2D diffraction HTML |
 
 ---
 

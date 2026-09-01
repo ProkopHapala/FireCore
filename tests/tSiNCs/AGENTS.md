@@ -49,7 +49,8 @@ python3 -m pyBall.nanocrystal_pipeline relax --init-npz …
 |-----|------|
 | [`README.md`](README.md) | Folder index + run commands |
 | [`doc/Topics/FTIR_Nanocrystals/README.md`](../../doc/Topics/FTIR_Nanocrystals/README.md) | Topic guides and progress logs |
-| [`doc/topical_audit/Nanocrystal_Vibrations.md`](../../doc/topical_audit/Nanocrystal_Vibrations.md) | Cross-implementation audit |
+| [`doc/topical_audit/SiNCs.md`](../../doc/topical_audit/SiNCs.md) | Project briefing (FTIR + XRD + FFfit) |
+| [`doc/topical_audit/Nanocrystal_Vibrations.md`](../../doc/topical_audit/Nanocrystal_Vibrations.md) | Vibration API inventory |
 
 Open work: [`ToDo_Nanocrystal.md`](ToDo_Nanocrystal.md).
 

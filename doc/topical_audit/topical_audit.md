@@ -168,11 +168,12 @@ Topics are ranked by **consolidation priority** — how much duplicate/scattered
 
 **Why medium:** Niche functionality but important for surface science workflows.
 
-Silicon / diamond nanocrystal generation, force fields, vibration spectroscopy (FTIR, phonons), ensemble pipeline.
+Silicon / diamond nanocrystal generation, force fields, vibration spectroscopy (FTIR, phonons), powder XRD, ensemble pipeline.
 
 | Doc | Role |
 |-----|------|
-| [`Nanocrystal_Vibrations.md`](Nanocrystal_Vibrations.md) | Topical audit — code inventory, APIs, tests |
+| [`SiNCs.md`](SiNCs.md) | **Project briefing** — FTIR + XRD + FFfit, solvers, tests, docs (ChatGPT-ready) |
+| [`Nanocrystal_Vibrations.md`](Nanocrystal_Vibrations.md) | Vibration/phonon API inventory |
 | [`../Topics/FTIR_Nanocrystals/README.md`](../Topics/FTIR_Nanocrystals/README.md) | Topic guides, chats, progress logs |
 | [`../../tests/tSiNCs/README.md`](../../tests/tSiNCs/README.md) | Folder index + run commands |
 | [`../../tests/tSiNCs/AGENTS.md`](../../tests/tSiNCs/AGENTS.md) | DOX contract — ownership, paths, verification |
