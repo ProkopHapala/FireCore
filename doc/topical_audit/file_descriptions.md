@@ -37,7 +37,16 @@ One sentence per file, added as files are read.
 
 ## FTIR_Nanocrystals
 
-Topic index: `doc/Topics/FTIR_Nanocrystals/README.md`. Audit: `doc/topical_audit/Nanocrystal_Vibrations.md`. Hub: `tests/tSiNCs/README.md`. Open items: `tests/tSiNCs/ToDo_Nanocrystal.md`.
+Topic index: `doc/Topics/FTIR_Nanocrystals/README.md`. Audits: `doc/topical_audit/Nanocrystal_Vibrations.md`, `doc/topical_audit/Hessian_fitting.md`, `doc/topical_audit/XRD.md`. Hub: `tests/tSiNCs/README.md`. Open items: `tests/tSiNCs/ToDo_Nanocrystal.md`.
+
+- `doc/topical_audit/XRD.md` — Powder Debye / pair-distribution inventory; Kusová strain-gradient checklist (effective crystalline size vs \(a(\mathbf{r})\)).
+- `doc/Topics/FTIR_Nanocrystals/XRD_progress.md` — 2026-06 GPU Debye engine, Hessian \(\sigma\), WebGL 2D viewer.
+- `doc/Topics/FTIR_Nanocrystals/XrayDiffraction.chat.md` — Design roundtable: Debye vs grid-FFT vs single-crystal 2D.
+- `pyBall/XRD/debye_histogram.py` — pyOpenCL Debye host (histogram, Gaussian smear, ensemble accumulate).
+- `pyBall/XRD/form_factors.py` — Cromer–Mann \(f(Q)\) for H, C, Si.
+- `cpp/common_resources/cl/XRDDebye.cl` — Canonical OpenCL kernels `pair_histogram`, `pair_histogram_gaussian`, `debye_transform_q`.
+- `scripts/generate_xrd_webgl.py` — Standalone HTML; GLSL structure-factor shader (single-crystal, not powder).
+- `tests/tXRD/` — Engine demos on C diamond spheres (`README.md`).
 
 - `doc/Topics/FTIR_Nanocrystals/Nanocrystal_NPZ_Pipeline.guide.md` — NPZ stages 01→05, relax/Hessian/spectrum consumers.
 - `doc/Topics/FTIR_Nanocrystals/NPZ_Crystal_Schema.md` — Per-key NPZ contract (v1.2).
@@ -53,6 +62,14 @@ Topic index: `doc/Topics/FTIR_Nanocrystals/README.md`. Audit: `doc/topical_audit
 - `tests/tSiNCs/gen_nanocrystals.mjs` — Deprecated single-crystal wrapper; use `nanocrystals.mjs generate`.
 - `tests/tSiNCs/export_nanocrystal_bundle.mjs` — Crystal + topology NPZ bundle for viewer fixtures.
 - `doc/Topics/FTIR_Nanocrystals/Phonon_testing.guide.md` — Phonon testing with MMFF; PBC/ASR pitfalls.
+- `doc/Topics/FTIR_Nanocrystals/HydrideMotif_spectra.md` — L2 DFTB+ vs MMFF neighborhood PDOS (same stacker as PySCF L1).
+- `doc/Topics/FTIR_Nanocrystals/PySCF_L1_neighborhood_PDOS.md` — PySCF PBE L1 stacked PDOS: plot **template**; vs DFTB+ L1 SK sets; 10/12 0-imag in `pyscf_vib_results`.
+- `doc/topical_audit/Hessian_fitting.md` — Hessian / Wilson FFfit inventory, method checklist, planned restricted-\(B_H\) work.
+- `doc/Topics/FFfit/HessianFitting_Theory.md` — Wilson vs row-space derivation; hybrid LS.
+- `doc/Topics/FTIR_Nanocrystals/Hessian_fitting.chat.md` — GPT 5.6 sol (2026-09-03) on locality and restricted Wilson.
+- `doc/Topics/FTIR_Nanocrystals/MMFF_stiffness_scaling.md` — MMFF `bKs` / `apars[:,2]` k-fit; adamantane vs CH₄ vs 3ob L2 vs PBE L1.
+- `doc/Topics/FTIR_Nanocrystals/MMFF_C_CH_vs_CH2_kfit.md` — C L1 cube vs octahedron: surface Morse/LJ, split angles, SA; not a shared FTIR pack.
+- `tests/tSiNCs/fit_mmff_kss_pyscf.py` — Own-min stretch RMSE vs PySCF (`--mol pyscf_nc --ref joint|nbscan|morse2d|anneal`).
 - `pyBall/FTIR.py` — Linear response vibration spectroscopy: Green's function probing, topology-linear Hessian, rigid mode projection.
 - `pyBall/MMFF.py` — Python bindings for MMFF/UFF force fields with `getHessian3Nx3N`, `getPhononPhiBlocks`, and generalized `setBondParamsByType`/`setAngleParamsByType`.
 - `cpp/libs/Molecular/MMFF_lib.cpp` — C++ implementation of Hessian and phonon block computation via central finite differences, plus Python buffer exposure.

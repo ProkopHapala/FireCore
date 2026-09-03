@@ -18,13 +18,14 @@ import {
     loadMMParams, buildCrystalFromCIFText, getHeavyZ, generateNanocrystal, mulberry32, defaultArgs,
     auditGeometry, oneLineSummary, buildSiH4, isBulkSi,
     sampleValue, sampleCutSpec, crystalId, appendManifest, runCmd, runPy, writeTimingReport,
-    genArgsFromConfig, genParamsFromAtlasEntry,
+    genParamsFromAtlasEntry, genArgsFromConfig, expandAtlasEntries,
 } from '../../web/molgui_webgpu/Nanocrystals.js';
-import { loadMMParamsFromDir, loadMolFromMol2, loadMol, applyPositions, bondsForVisualization, getCrystalBondsFromFiles } from '../../web/common_js/MolIO.js';
+import { loadMMParamsFromDir, loadMolFromMol2, loadMol, applyPositions, bondsForVisualization, getCrystalBondsFromFiles, stripHHBonds } from '../../web/common_js/MolIO.js';
 import { molToCrystalArrays, writeCrystalNpz, crystalToXYZ, readXyzPositions, crystalToJson, writeCrystalJson, readNpzFile } from '../../web/common_js/npzIO.js';
-import { exportCrystalSvg, exportCrystalCompareSvgViews, bondsForSvgMol, atlasIndexHtml, writeCrystalCompareSvgs, writeCrystalViewerJson, enrichViewerJsonWithTopology, installViewer } from '../../web/common_js/nanocrystalSvg.js';
+import { exportCrystalSvg, exportCrystalCompareSvgViews, bondsForSvgMol, atlasIndexHtml, writeCrystalCompareSvgs, writeCrystalRingSvgs, writeCrystalViewerJson, enrichViewerJsonWithTopology, installViewer } from '../../web/common_js/nanocrystalSvg.js';
 import { buildTopologyNpz, buildTopologyFull } from '../../web/common_js/exportFF.js';
 import { runRingsOnMol } from '../../web/common_js/Graph.js';
+import { heavyPosFingerprint } from '../../web/molgui_webgpu/CrystalUtils.js';
 import { buildCollisionWorkgroups, buildExclIcol_1_2_3 } from '../../web/common_js/CollisionWorkgroups.js';
 import { computeNonbondBruteForceKernelStyle, computeNonbondByGroups, maxAbsDiff } from '../../web/common_js/Nonbonded.js';
  
@@ -198,11 +199,12 @@ Options:
   --python PATH          Python executable (default: python3 or $PYTHON)
   --force                re-run all stages
   --no-debug             skip per-crystal SVG debug plots
-  --atlas PATH           shape showcase atlas (JSON entries, no full ensemble)`;
+  --atlas PATH           shape showcase atlas (JSON entries, no full ensemble)
+  --only SUBSTR[,...]    atlas only: keep existing tree, regenerate entries whose id contains any substring (e.g. 5ring,7ring)`;
 }
  
 async function cmdEnsemble(argv) {
-    const cfg = { config: path.join(REPO, 'tests/tSiNCs/ensemble.example.json'), dataDir: path.join(TEST_DIR, 'OUT_nc_ensemble_v2/data'), outputDir: path.join(TEST_DIR, 'OUT_nc_ensemble_v2/out'), workDir: path.join(TEST_DIR, 'OUT_nc_ensemble_v2/work'), nCrystals: null, python: process.env.PYTHON || 'python3', force: false, debug: null, atlas: null };
+    const cfg = { config: path.join(REPO, 'tests/tSiNCs/ensemble.example.json'), dataDir: path.join(TEST_DIR, 'OUT_nc_ensemble_v2/data'), outputDir: path.join(TEST_DIR, 'OUT_nc_ensemble_v2/out'), workDir: path.join(TEST_DIR, 'OUT_nc_ensemble_v2/work'), nCrystals: null, python: process.env.PYTHON || 'python3', force: false, debug: null, atlas: null, only: null };
     for (let i = 0; i < argv.length; i++) {
         const a = String(argv[i]);
         const nxt = () => { if (i + 1 >= argv.length) throw new Error(`Missing value after ${a}`); return String(argv[++i]); };
@@ -216,6 +218,7 @@ async function cmdEnsemble(argv) {
         else if (a === '--force') cfg.force = true;
         else if (a === '--no-debug') cfg.debug = false;
         else if (a === '--atlas') cfg.atlas = nxt();
+        else if (a === '--only') cfg.only = nxt();
         else throw new Error(`Unknown arg: ${a}\n\n${ensembleUsage()}`);
     }
     const paths = { python: cfg.python, force: cfg.force, repoRoot: REPO };
@@ -223,7 +226,7 @@ async function cmdEnsemble(argv) {
     if (cfg.atlas) {
         const outputDir = path.resolve(cfg.outputDir);
         fs.mkdirSync(outputDir, { recursive: true });
-        await runAtlas(cfg.atlas, outputDir, paths);
+        await runAtlas(cfg.atlas, outputDir, paths, cfg.only);
         return;
     }
  
@@ -297,7 +300,7 @@ async function processCrystal(index, cfg, paths, stageTimings, manifestPath, doD
         metaObj.bonds_ij = bondsVis ? Array.from(bondsVis) : null;
         fs.writeFileSync(path.join(cdir, 'meta.json'), JSON.stringify(metaObj, null, 2));
         writeCrystalNpz(fs, p01, { ...arrays, gen_params: genJson, timing_ms: performance.now() - t0 });
-        fs.writeFileSync(pInitXyz, crystalToXYZ(arrays.pos, arrays.Z));
+        fs.writeFileSync(pInitXyz, crystalToXYZ(arrays.pos, arrays.Z, arrays.bonds_ij));
         appendManifest(manifestPath, { crystal_id: id, stage: 'generate', natoms: arrays.natoms, status: 'ok' });
     }
     if (!fs.existsSync(path.join(cdir, 'meta.json'))) {
@@ -309,7 +312,7 @@ async function processCrystal(index, cfg, paths, stageTimings, manifestPath, doD
     const { Z: Zinit, pos: posInit } = readXyzPositions(fs, pInitXyz);
  
     if (!fs.existsSync(p02) || paths.force) {
-        const r = runPy('relax', ['--init-xyz', pInitXyz, '--out-npz', p02, '--out-xyz', pRelaxedXyz, '--allow-unconverged'], { label: 'relax', statusPath: p02.replace(/\.npz$/, '.status.json'), python: paths.python, cwd: REPO, repoRoot: REPO });
+        const r = runPy('relax', ['--init-mol2', pInitMol2, '--out-npz', p02, '--out-xyz', pRelaxedXyz, '--allow-unconverged'], { label: 'relax', statusPath: p02.replace(/\.npz$/, '.status.json'), python: paths.python, cwd: REPO, repoRoot: REPO });
         stageTimings.relax.push(r.timing_ms);
         appendManifest(manifestPath, { crystal_id: id, stage: 'relax', ...r.info });
     }
@@ -344,49 +347,128 @@ async function processCrystal(index, cfg, paths, stageTimings, manifestPath, doD
     return p05;
 }
 
-async function runAtlas(atlasPath, outputDir, paths) {
+async function runAtlas(atlasPath, outputDir, paths, onlySubstr = null) {
     const atlas = loadJSON(path.resolve(atlasPath));
     const atlasDir = path.join(outputDir, 'atlas');
+    let entries = expandAtlasEntries(atlas);
+    if (onlySubstr) {
+        const keys = String(onlySubstr).split(',').map(s => s.trim()).filter(s => s.length > 0);
+        if (keys.length === 0) throw new Error('atlas --only: empty filter');
+        entries = entries.filter(e => keys.some(k => String(e.id).includes(k)));
+        if (entries.length === 0) throw new Error(`atlas --only '${onlySubstr}' matched 0 entries`);
+        console.log(`[atlas] --only ${keys.join(',')} → ${entries.length} entries (keep existing atlas tree)`);
+    } else {
+        fs.rmSync(atlasDir, { recursive: true, force: true });
+    }
     fs.mkdirSync(atlasDir, { recursive: true });
     const views = atlas.views || ['111'];
     const rows = [];
     const viewerCrystals = [];
-    console.log(`[atlas] ${atlas.entries.length} shape entries → ${atlasDir}`);
-    for (const entry of atlas.entries) {
+    const mmFiles = loadMMParamsFromDir(RES);
+    const wulffFp = new Map();
+    console.log(`[atlas] ${entries.length} shape entries → ${atlasDir}`);
+    for (const entry of entries) {
         const id = entry.id;
-        const edir = path.join(atlasDir, id);
+        const tier = entry.tier || '';
+        const edir = path.join(atlasDir, tier, id);
         fs.mkdirSync(edir, { recursive: true });
-        const genParams = genParamsFromAtlasEntry(atlas, entry);
-        const seed = entry.seed | 0;
-        const args = genArgsFromConfig(genParams, RES, { seed, samples: 1, maxFiles: 1 });
-        if (args.seed !== 0) { const r = mulberry32(args.seed); Math.random = r; }
-        const cifText = fs.readFileSync(args.cif, 'utf8');
-        const cell = buildCrystalFromCIFText(cifText, args);
-        const heavyZ = getHeavyZ(cell);
-        const mm = loadMMParams(args);
-        console.log(`  [atlas] ${id}: ${entry.label}`);
-        const result = generateNanocrystal(args, cell, mm, heavyZ, 1);
-        const { mol } = result;
+        const rel = path.posix.join(...(tier ? [tier, id] : [id]));
+        console.log(`  [atlas] ${rel}: ${entry.label}`);
+        let mol, genParams;
+        if (entry.file) {
+            const src = path.isAbsolute(entry.file) ? entry.file : path.join(REPO, entry.file);
+            if (!fs.existsSync(src)) throw new Error(`atlas file not found: ${src}`);
+            mol = loadMol(src, mmFiles);
+            genParams = { file: entry.file, tier, id, label: entry.label };
+        } else {
+            genParams = { ...genParamsFromAtlasEntry(atlas, entry), tier, id, label: entry.label };
+            const seed = entry.seed | 0;
+            const args = genArgsFromConfig(genParams, RES, { seed, samples: 1, maxFiles: 1 });
+            if (args.seed !== 0) { const r = mulberry32(args.seed); Math.random = r; }
+            const cifText = fs.readFileSync(args.cif, 'utf8');
+            const cell = buildCrystalFromCIFText(cifText, args);
+            mol = generateNanocrystal(args, cell, loadMMParams(args), getHeavyZ(cell), 1).mol;
+            if (args.cutMode === 'wulff' && !args.defectKind) {
+                const fp = heavyPosFingerprint(mol);
+                const mat = String(id).split('/').pop();
+                const k = `${tier}|${mat}|${fp}`;
+                const shape = args.wulffShape;
+                if (wulffFp.has(k)) {
+                    throw new Error(`Wulff ${shape} nLat=${args.wulffNLat} at ${tier} is identical to ${wulffFp.get(k)} (${mat}, N=${mol.atoms.length}). Extra Miller planes cut no diamond sites at this nLat. Drop the alias from this tier or raise nLat (≥1.35 for distinct trunc/rhomb, N≳160).`);
+                }
+                wulffFp.set(k, shape);
+            }
+        }
+        stripHHBonds(mol);
+        mol.packHeaviesThenH();
+        mol.assertBondTopology(`atlas:${id}`);
         const pInitMol2 = path.join(edir, 'init.mol2');
-        fs.writeFileSync(pInitMol2, toMol2String(mol, { name: id }));
+        fs.writeFileSync(pInitMol2, toMol2String(mol, { name: id, lvec: null }));
+        // Flat copy in the tier folder so MolecularBrowser sees .mol2 immediately (nested shape/C dirs have 0 images).
+        const flatName = String(id).split('/').join('_') + '.mol2';
+        fs.copyFileSync(pInitMol2, path.join(atlasDir, tier || '', flatName));
         const arrays = molToCrystalArrays(mol);
         const pInitXyz = path.join(edir, 'init.xyz');
-        fs.writeFileSync(pInitXyz, crystalToXYZ(arrays.pos, arrays.Z));
+        fs.writeFileSync(pInitXyz, crystalToXYZ(arrays.pos, arrays.Z, arrays.bonds_ij));
+        fs.copyFileSync(pInitXyz, path.join(atlasDir, tier || '', String(id).split('/').join('_') + '.xyz'));
+        writeCrystalNpz(fs, path.join(edir, '01_init.npz'), { ...arrays, gen_params: JSON.stringify(genParams) });
         fs.writeFileSync(path.join(edir, 'gen_params.json'), JSON.stringify(genParams, null, 2));
-        const pRelaxedXyz = path.join(edir, 'relaxed.xyz');
-        runPy('relax', ['--init-xyz', pInitXyz, '--out-npz', path.join(edir, '02_relaxed.npz'), '--out-xyz', pRelaxedXyz, '--allow-unconverged'], { label: `atlas-relax-${id}`, python: paths.python, cwd: REPO, repoRoot: REPO });
         const bondsInit = bondsForVisualization(mol);
-        const bondsRel = getCrystalBondsFromFiles(pInitMol2, pRelaxedXyz);
-        const { pos: posRel } = readXyzPositions(fs, pRelaxedXyz);
-        writeCrystalCompareSvgs(edir, { posInit: arrays.pos, Zinit: arrays.Z, bondsInit, posRel, bondsRel, title: `${id}: ${entry.label}`, views });
-        writeCrystalViewerJson(edir, { id, label: entry.label, posInit: arrays.pos, Zinit: arrays.Z, bondsInit, posRel, bondsRel });
-        viewerCrystals.push({ id, label: entry.label, init: `${id}/crystal_init.json`, relaxed: `${id}/crystal_relaxed.json` });
-        const compareSvg = fs.existsSync(path.join(edir, 'compare_111.svg')) ? `${id}/compare_111.svg` : `${id}/compare.svg`;
-        rows.push({ id, label: entry.label, genParams, svgRel: compareSvg, natoms: arrays.natoms });
+        const ringData = runRingsOnMol(mol, { lMax: 4.0, kMin: 3, kMax: 8 });
+        fs.writeFileSync(path.join(edir, 'rings.json'), JSON.stringify({ hist: ringData.cls.hist, summary: ringData.cls.summary, nRings: ringData.cls.nRings, nHeavy: ringData.nHeavy }, null, 2) + '\n');
+        const relaxTiers = atlas.relax_tiers;
+        const tierOk = !relaxTiers || relaxTiers.includes(tier);
+        const doRelax = (atlas.relax !== 0 && atlas.relax !== false) && tierOk;
+        const nonbond = atlas.relax_nonbond || 'off';
+        let posRel = arrays.pos, bondsRel = bondsInit;
+        if (doRelax) {
+            const pRelaxedXyz = path.join(edir, 'relaxed.xyz');
+            const pRelaxedNpz = path.join(edir, '02_relaxed.npz');
+            const fconv = (atlas.relax_fconv !== undefined) ? atlas.relax_fconv : 1e-2;
+            const nstep = (atlas.relax_nstep !== undefined) ? atlas.relax_nstep : 8000;
+            runPy('relax', ['--init-mol2', pInitMol2, '--out-npz', pRelaxedNpz, '--out-xyz', pRelaxedXyz, '--nonbond', String(nonbond), '--fconv', String(fconv), '--nstep-max', String(nstep)], { label: `atlas-relax-${id}`, python: paths.python, cwd: REPO, repoRoot: REPO });
+            const relXyz = readXyzPositions(fs, pRelaxedXyz);
+            applyPositions(mol, relXyz.pos);
+            const pRelaxedMol2 = path.join(edir, 'relaxed.mol2');
+            fs.writeFileSync(pRelaxedMol2, toMol2String(mol, { name: id + '_rel', lvec: null }));
+            const flatRel = String(id).split('/').join('_') + '_relaxed.mol2';
+            fs.copyFileSync(pRelaxedMol2, path.join(atlasDir, tier || '', flatRel));
+            const arrRel = molToCrystalArrays(mol);
+            fs.writeFileSync(pRelaxedXyz, crystalToXYZ(arrRel.pos, arrRel.Z, arrRel.bonds_ij));
+            fs.copyFileSync(pRelaxedXyz, path.join(atlasDir, tier || '', String(id).split('/').join('_') + '_relaxed.xyz'));
+            bondsRel = bondsInit;
+            posRel = arrRel.pos;
+            genParams.relax = { nonbond, fconv, nstep, npz: '02_relaxed.npz' };
+            fs.writeFileSync(path.join(edir, 'gen_params.json'), JSON.stringify(genParams, null, 2));
+        }
+        writeCrystalCompareSvgs(edir, { posInit: arrays.pos, Zinit: arrays.Z, bondsInit, posRel, bondsRel, title: `${rel}: ${entry.label}`, views });
+        if (entry.defects?.kind) {
+            writeCrystalRingSvgs(edir, { pos: posRel, Z: arrays.Z, bonds_ij: bondsRel || bondsInit, rings: ringData.ringsMol, ringOfBond: ringData.ringOfBondMol, title: `${rel}: ${entry.label}`, views });
+        }
+        writeCrystalViewerJson(edir, { id: rel, label: entry.label, posInit: arrays.pos, Zinit: arrays.Z, bondsInit, posRel, bondsRel });
+        viewerCrystals.push({ id: rel, label: `[${tier || 'atlas'}] ${entry.label}`, init: `${rel}/crystal_init.json`, relaxed: `${rel}/crystal_relaxed.json` });
+        const previewName = (entry.defects?.kind
+            ? ['rings_iso.svg', 'rings_111.svg', 'compare_iso.svg', 'compare_001.svg']
+            : ['compare_001.svg', 'compare_iso.svg', 'compare_111.svg', 'compare.svg']
+        ).find((n) => fs.existsSync(path.join(edir, n)));
+        if (!previewName) throw new Error(`atlas: no compare SVG written in ${edir}`);
+        const compareSvg = `${rel}/${previewName}`;
+        rows.push({ id: rel, label: entry.label, tier, genParams, svgRel: compareSvg, natoms: arrays.natoms });
     }
-    const html = atlasIndexHtml(rows, 'C diamond nanocrystal shape atlas');
-    fs.writeFileSync(path.join(atlasDir, 'index.html'), html);
-    installViewer(atlasDir, viewerCrystals, VIEWER_TPL, 'C diamond shape atlas');
+    if (onlySubstr) {
+        console.log(`[atlas] --only done; index/viewer left in place (${entries.length} crystals rewritten)`);
+        return;
+    }
+    const title = atlas.title || 'Nanocrystal shape atlas';
+    fs.writeFileSync(path.join(atlasDir, 'index.html'), atlasIndexHtml(rows, title));
+    installViewer(atlasDir, viewerCrystals, VIEWER_TPL, title);
+    const md = [`# ${title}`, '', '[HTML index](index.html) · [3D viewer](viewer.html)', ''];
+    let lastTier = null;
+    for (const r of rows) {
+        if (r.tier !== lastTier) { md.push(`## ${r.tier || 'atlas'}`, '', '| id | atoms | preview |', '|---|---:|---|'); lastTier = r.tier; }
+        md.push(`| \`${r.id}\` | ${r.natoms} | [svg](${r.svgRel}) |`);
+    }
+    fs.writeFileSync(path.join(atlasDir, 'index.md'), md.join('\n') + '\n');
     console.log(`[atlas] index: ${path.join(atlasDir, 'index.html')}`);
 }
 

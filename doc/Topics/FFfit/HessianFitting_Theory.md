@@ -353,6 +353,10 @@ degrees of freedom; it is then complementary to, but not statistically
 independent from, the mode objective. The separate weights should therefore be
 chosen by validation, not interpreted as independent experimental data.
 
+For FTIR hydride bands, restrict $B$ to the relevant stretch (and maybe
+HXH/XXH) rows rather than all bonds+angles — checklist:
+[`../../topical_audit/Hessian_fitting.md`](../../topical_audit/Hessian_fitting.md).
+
 **Implementation**: `internal_hessian_projection()` remains the diagnostic
 projection; `internal_coordinate_basis()` and
 `assemble_hybrid_hessian_system()` implement the fitted row-space residual in

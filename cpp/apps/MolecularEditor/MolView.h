@@ -249,7 +249,7 @@ class MolView { public:
         Draw::setRGB( 0xFFFFFF );
         char str[512];
         if(mol){
-            sprintf( str, "Mol: %s  |  atoms: %i  bonds: %i  |  [l] labels [t] types [b] bond# [i] len [c] bond color [g] AABB %s  |  [Enter] back  [Esc] quit", molName.c_str(), mol->natoms, mol->nbonds, bViewAabbOverlay?"on":"off" );
+            sprintf( str, "Mol: %s  |  atoms: %i  bonds: %i  |  [l] labels [t] types [b] bond# [i] len [c] bond color [g] AABB %s  |  [Esc] back  [Ctrl+Q] quit", molName.c_str(), mol->natoms, mol->nbonds, bViewAabbOverlay?"on":"off" );
         }else{
             sprintf( str, "No molecule loaded  |  [Enter] back to browser" );
         }

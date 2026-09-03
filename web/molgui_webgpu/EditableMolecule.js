@@ -260,7 +260,10 @@ export class Bond {
     other(ai) { return (ai === this.a) ? this.b : this.a; }
 
     ensureIndices(mol) {
-        if (this.topoVersionCached === mol.topoVersion) return;
+        if (this.topoVersionCached === mol.topoVersion) {
+            const aa = mol.atoms[this.a], bb = mol.atoms[this.b];
+            if (aa && bb && aa.id === this.aId && bb.id === this.bId) return;
+        }
         const a = mol.getAtomIndex(this.aId);
         const b = mol.getAtomIndex(this.bId);
         if (a < 0 || b < 0) throw new Error(`Bond.ensureIndices(): atom missing for bond id=${this.id} aId=${this.aId} bId=${this.bId}`);
@@ -755,10 +758,12 @@ export class EditableMolecule {
     }
 
     _replaceBondIndexInAtom(ai, fromIb, toIb) {
+        if (fromIb === toIb) return;
         const bs = this.atoms[ai].bonds;
         for (let k = 0; k < bs.length; k++) {
             if (bs[k] === fromIb) { bs[k] = toIb; return; }
         }
+        throw new Error(`_replaceBondIndexInAtom: atom[${ai}] id=${this.atoms[ai].id} has no bond index ${fromIb} (to ${toIb}) bonds=${JSON.stringify(bs)}`);
     }
 
     removeBondById(id) {
@@ -782,11 +787,97 @@ export class EditableMolecule {
             this.atoms[i] = moved;
             moved.i = i;
             this.id2atom.set(moved.id, i);
+            for (const ib of moved.bonds) {
+                const b = this.bonds[ib];
+                if (!b) throw new Error(`removeAtomByIndex: moved atom id=${moved.id} dangling bond index ${ib}`);
+                if (b.a === last) b.a = i;
+                else if (b.b === last) b.b = i;
+                else {
+                    b.topoVersionCached = -1;
+                    b.ensureIndices(this);
+                }
+                if (b.a !== i && b.b !== i) throw new Error(`removeAtomByIndex: moved atom id=${moved.id} not endpoint of bond[${ib}] a=${b.a} b=${b.b}`);
+            }
         }
         this.atoms.pop();
         this.id2atom.delete(a.id);
         this.selection.delete(a.id);
         this._touchTopo();
+    }
+
+    /// Rebuild atom.i / id maps / Bond.a,b / atom.bonds from stable ids. Call after any atom reorder.
+    rebuildBondIndices() {
+        this._assertUnlocked('rebuildBondIndices');
+        this.id2atom.clear();
+        this.id2bond.clear();
+        for (let i = 0; i < this.atoms.length; i++) {
+            const at = this.atoms[i];
+            if (!at) throw new Error(`rebuildBondIndices: hole at atom ${i}`);
+            at.i = i;
+            this.id2atom.set(at.id, i);
+        }
+        for (let i = 0; i < this.bonds.length; i++) {
+            const b = this.bonds[i];
+            if (!b) throw new Error(`rebuildBondIndices: hole at bond ${i}`);
+            b.i = i;
+            this.id2bond.set(b.id, i);
+            b.topoVersionCached = -1;
+        }
+        this._touchTopo();
+        this.updateNeighborList();
+    }
+
+    /// MMFF / mol2 convention: all non-H, then all H. Remaps every Bond.a/b from stable ids.
+    packHeaviesThenH() {
+        this._assertUnlocked('packHeaviesThenH');
+        const heavy = [], hyd = [];
+        for (let i = 0; i < this.atoms.length; i++) {
+            const at = this.atoms[i];
+            if ((at.Z | 0) === 1) hyd.push(at);
+            else heavy.push(at);
+        }
+        for (let i = 0; i < heavy.length; i++) this.atoms[i] = heavy[i];
+        for (let i = 0; i < hyd.length; i++) this.atoms[heavy.length + i] = hyd[i];
+        this.rebuildBondIndices();
+    }
+
+    assertBondTopology(tag = 'assertBondTopology') {
+        const na = this.atoms.length, nb = this.bonds.length;
+        if (this.id2atom.size !== na) throw new Error(`${tag}: id2atom size ${this.id2atom.size} != nAtoms ${na}`);
+        if (this.id2bond.size !== nb) throw new Error(`${tag}: id2bond size ${this.id2bond.size} != nBonds ${nb}`);
+        for (let i = 0; i < na; i++) {
+            const at = this.atoms[i];
+            if (at.i !== i) throw new Error(`${tag}: atom[${i}].i=${at.i}`);
+            if (this.id2atom.get(at.id) !== i) throw new Error(`${tag}: id2atom[${at.id}]=${this.id2atom.get(at.id)} != ${i}`);
+        }
+        const seen = new Set();
+        for (let i = 0; i < nb; i++) {
+            const b = this.bonds[i];
+            if (b.i !== i) throw new Error(`${tag}: bond[${i}].i=${b.i}`);
+            if (this.id2bond.get(b.id) !== i) throw new Error(`${tag}: id2bond[${b.id}]=${this.id2bond.get(b.id)} != ${i}`);
+            b.topoVersionCached = -1;
+            b.ensureIndices(this);
+            if (this.atoms[b.a].id !== b.aId || this.atoms[b.b].id !== b.bId) throw new Error(`${tag}: bond[${i}] index/id mismatch a=${b.a}/${b.aId} b=${b.b}/${b.bId}`);
+            const lo = Math.min(b.a, b.b), hi = Math.max(b.a, b.b);
+            const key = `${lo}-${hi}`;
+            if (seen.has(key)) throw new Error(`${tag}: duplicate bond ${key}`);
+            seen.add(key);
+        }
+        for (let i = 0; i < na; i++) {
+            const expect = [];
+            for (let ib = 0; ib < nb; ib++) {
+                const b = this.bonds[ib];
+                if (b.a === i || b.b === i) expect.push(ib);
+            }
+            const got = this.atoms[i].bonds.slice().sort((x, y) => x - y);
+            const exp = expect.slice().sort((x, y) => x - y);
+            if (got.length !== exp.length || got.some((v, k) => v !== exp[k])) throw new Error(`${tag}: atom[${i}] id=${this.atoms[i].id} bonds ${JSON.stringify(got)} != ${JSON.stringify(exp)}`);
+            for (const ib of this.atoms[i].bonds) {
+                if (ib < 0 || ib >= nb) throw new Error(`${tag}: atom[${i}] dangling bond index ${ib}`);
+                const b = this.bonds[ib];
+                if (b.a !== i && b.b !== i) throw new Error(`${tag}: atom[${i}] listed on bond[${ib}] which is ${b.a}-${b.b}`);
+            }
+        }
     }
 
     removeAtomById(id) {
@@ -1003,6 +1094,7 @@ export class EditableMolecule {
             const xi = ai.pos.x, yi = ai.pos.y, zi0 = ai.pos.z;
             for (let j = i + 1; j < n; j++) {
                 const aj = this.atoms[j];
+                if ((ai.Z | 0) === 1 && (aj.Z | 0) === 1) continue; // H···H is steric (collision/NB), never covalent; capHHBonds is the opt-in
                 const rCut2 = mmParams.bondCutoff2(ai.Z, aj.Z, defaultRcut2, bondFactor, stats);
                 if (stats) stats.nAtomPairs = (stats.nAtomPairs | 0) + 1;
                 const dx = xi - aj.pos.x;
@@ -1050,6 +1142,7 @@ export class EditableMolecule {
                     for (let jb0 = j0; jb0 < bsj.length; jb0++) {
                         const ja = bsj[jb0] | 0;
                         const aj = this.atoms[ja];
+                        if ((ai.Z | 0) === 1 && (aj.Z | 0) === 1) continue;
                         const rCut2 = mmParams.bondCutoff2(ai.Z, aj.Z, defaultRcut2, bondFactor, stats);
                         if (stats) stats.nAtomPairs = (stats.nAtomPairs | 0) + 1;
                         const dx = xi - aj.pos.x;
@@ -1102,6 +1195,7 @@ export class EditableMolecule {
                     for (let jb0 = j0; jb0 < bsj.length; jb0++) {
                         const ja = bsj[jb0] | 0;
                         const aj = this.atoms[ja];
+                        if ((ai.Z | 0) === 1 && (aj.Z | 0) === 1) continue;
                         const rCut2 = mmParams.bondCutoff2(ai.Z, aj.Z, defaultRcut2, bondFactor, stats);
                         if (stats) stats.nAtomPairs = (stats.nAtomPairs | 0) + 1;
                         const dx = xi - aj.pos.x;

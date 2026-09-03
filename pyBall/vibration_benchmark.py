@@ -62,7 +62,7 @@ def reconstruct_dense_from_blocks(neigh_idx: np.ndarray, neigh_count: np.ndarray
     return 0.5 * (H + H.T)
 
 
-def mass_weighted_spectrum(H: np.ndarray, M: np.ndarray, *, vib_floor: float = 1e-4):
+def mass_weighted_spectrum(H: np.ndarray, M: np.ndarray, *, vib_floor: float = 1e-4, check_minimum: bool = False):
     """Return (eigvals_mw, omegas, n_negative_raw, omega_min_vib)."""
     n_nodes = M.shape[0] // 3
     m = np.diag(M).reshape(n_nodes, 3)[:, 0]
@@ -71,6 +71,10 @@ def mass_weighted_spectrum(H: np.ndarray, M: np.ndarray, *, vib_floor: float = 1
     Hmw = (m_inv_sqrt[:, None] * H) * m_inv_sqrt[None, :]
     w = np.linalg.eigvalsh(Hmw)
     n_neg = int(np.sum(w < -1e-8))
+    if check_minimum:
+        from pyBall.FFfit_utils import assert_harmonic_spectrum_at_minimum
+        om_cm = np.sign(w) * 521.5 * np.sqrt(np.abs(w))
+        assert_harmonic_spectrum_at_minimum(om_cm, ctx="mass_weighted_spectrum: ")
     omegas = np.sqrt(np.maximum(w, 0.0))
     vib = omegas[omegas > vib_floor]
     omega_min_vib = float(vib.min()) if vib.size else 0.0
@@ -133,7 +137,7 @@ def compute_mmff_hessian_bundle(
         H_proj = FTIR.project_rigid_modes(H_full, M, pos, shift=rigid_shift)
         H_sparse_raw = FTIR.build_sparse_hessian_from_blocks(neigh_idx, neigh_count, blocks, symmetrize=True)
         H_sparse_proj = FTIR.prepare_sparse_hessian(neigh_idx, neigh_count, blocks, M, pos, shift=rigid_shift)
-        w_raw, om_raw, n_neg_raw, _ = mass_weighted_spectrum(H_full, M, vib_floor=vib_floor)
+        w_raw, om_raw, n_neg_raw, _ = mass_weighted_spectrum(H_full, M, vib_floor=vib_floor, check_minimum=True)
         w_proj, om_proj, n_neg_proj, om_min_vib = mass_weighted_spectrum(H_proj, M, vib_floor=vib_floor)
         elements = []
         for i in range(natoms):

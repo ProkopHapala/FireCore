@@ -744,6 +744,59 @@ def internal_hessian_projection(H, B, masses, coordinate_scale=None, rtol=1e-10)
     return F, {"rank": rank, "singular_values": s[:rank], "scaled_wilson_matrix": Bs, "pseudoinverse": Cplus}
 
 
+def select_wilson_rows(labels, symbols, mode="hydride"):
+    """Which Wilson rows enter raw K_ab. 'hydride' = X–H bonds and any angle with ≥1 H (HXH, XXH)."""
+    if mode not in ("hydride", "bonds", "all"):
+        raise ValueError("wilson row mode must be 'hydride', 'bonds', or 'all'")
+    keep = []
+    for iq, lab in enumerate(labels):
+        kind = lab[0]
+        if kind == "bond":
+            i, j = int(lab[1]), int(lab[2])
+            hyd = symbols[i] == "H" or symbols[j] == "H"
+            if mode == "all" or mode == "bonds" or hyd:
+                keep.append(iq)
+        elif kind == "angle":
+            i, j, k = int(lab[1]), int(lab[2]), int(lab[3])
+            nH = int(symbols[i] == "H") + int(symbols[j] == "H") + int(symbols[k] == "H")
+            if mode == "all" or (mode == "hydride" and nH >= 1):
+                keep.append(iq)
+        else:
+            raise ValueError(f"unknown Wilson label {lab}")
+    if not keep:
+        raise ValueError(f"no Wilson rows selected by mode={mode!r}")
+    return np.asarray(keep, dtype=int)
+
+
+def wilson_kab_design(A, H_ref, B, row_idx):
+    """Linear map k → K_ab = g_a^T H g_b for raw (non-Löwdin) Wilson rows. No C^+, no PDP."""
+    g = np.asarray(B, dtype=np.float64)[np.asarray(row_idx, dtype=int)]
+    A = np.asarray(A, dtype=np.float64)
+    H_ref = np.asarray(H_ref, dtype=np.float64)
+    Kp = np.einsum("ai,pij,bj->pab", g, A, g, optimize=True)
+    Kref = g @ H_ref @ g.T
+    iu = np.triu_indices(g.shape[0])
+    return Kp[:, iu[0], iu[1]].T, Kref[iu]
+
+
+def apply_parameter_freeze(X, y, freeze):
+    """Remove frozen columns: y ← y - X_f k_f. freeze maps global index → value."""
+    X = np.asarray(X, dtype=np.float64)
+    y = np.asarray(y, dtype=np.float64)
+    npar = X.shape[1]
+    idx = np.fromiter(freeze.keys(), dtype=int)
+    val = np.array([freeze[int(i)] for i in idx], dtype=np.float64)
+    if np.any(idx < 0) or np.any(idx >= npar):
+        raise IndexError(f"freeze indices {idx.tolist()} outside [0,{npar})")
+    if np.any(~np.isfinite(val)):
+        raise ValueError("freeze values must be finite")
+    free = np.ones(npar, dtype=bool)
+    free[idx] = False
+    if not np.any(free):
+        raise ValueError("all parameters frozen; nothing to fit")
+    return X[:, free], y - X[:, idx] @ val, free, idx, val
+
+
 def local_hessian_mask(natoms, bonds, max_graph_distance=2):
     """Cartesian mask for atom blocks separated by at most a bond-graph distance.
 
@@ -801,7 +854,8 @@ def _normalized_component(X, b, weight, name):
 def assemble_hybrid_hessian_system(A, H_ref, positions, masses, bonds, angles,
                                    mode_weight=1.0, local_weight=1.0, internal_weight=1.0,
                                    mode_balance="frequency", mode_mixing=0.1, frequency_floor_cm1=50.0,
-                                   local_graph_distance=2):
+                                   local_graph_distance=2, wilson_kab_weight=0.0, wilson_rows="hydride",
+                                   symbols=None):
     """Assemble direct linear residuals for an all-mode/local/internal hybrid fit.
 
     HYBRID OBJECTIVE DERIVATION:
@@ -849,10 +903,10 @@ def assemble_hybrid_hessian_system(A, H_ref, positions, masses, bonds, angles,
         raise ValueError("sensitivities or reference Hessian contain NaN or infinity")
     Dp = mass_weight_hessian(A, masses)
     Dref = mass_weight_hessian(H_ref, masses)
-    V, lam = reference_vibrational_modes(H_ref, positions, masses)
     parts, targets, slices = [], [], {}
-
+    V = lam = None
     if mode_weight > 0.0:
+        V, lam = reference_vibrational_modes(H_ref, positions, masses)
         if mode_balance == "equal":
             w = np.ones_like(lam)
         elif mode_balance == "frequency":
@@ -890,8 +944,9 @@ def assemble_hybrid_hessian_system(A, H_ref, positions, masses, bonds, angles,
 
     B, labels = build_wilson_matrix(positions, bonds, angles)
     coordinate_scale = dimensionless_wilson_scale(positions, labels)
-    Qint, sint = internal_coordinate_basis(B * coordinate_scale[:, None], masses)
+    Qint = sint = None
     if internal_weight > 0.0:
+        Qint, sint = internal_coordinate_basis(B * coordinate_scale[:, None], masses)
         Kref = (Qint.T @ Dref) @ Qint
         Kp = (Qint.T @ Dp) @ Qint
         iu = np.triu_indices(Qint.shape[1])
@@ -899,10 +954,20 @@ def assemble_hybrid_hessian_system(A, H_ref, positions, masses, bonds, angles,
         component = _normalized_component(Kp[:, iu[0], iu[1]].T * sym_weight[:, None], Kref[iu] * sym_weight, internal_weight, "internal Hessian")
         parts.append(component[0]); targets.append(component[1]); slices["internal"] = parts[-1].shape[0]
 
+    if wilson_kab_weight > 0.0:
+        if symbols is None:
+            raise ValueError("wilson_kab_weight>0 requires symbols for row selection")
+        row_idx = select_wilson_rows(labels, list(symbols), wilson_rows)
+        Xkab, bkab = wilson_kab_design(A, H_ref, B, row_idx)
+        component = _normalized_component(Xkab, bkab, wilson_kab_weight, "Wilson K_ab")
+        parts.append(component[0]); targets.append(component[1]); slices["wilson_kab"] = parts[-1].shape[0]
+        slices["wilson_kab_nrows"] = int(row_idx.size)
+
     if not parts:
         raise ValueError("at least one hybrid objective weight must be positive")
     return np.vstack(parts), np.concatenate(targets), {
-        "n_modes": V.shape[1], "mode_eigenvalues": lam, "internal_rank": Qint.shape[1],
+        "n_modes": 0 if V is None else V.shape[1], "mode_eigenvalues": lam,
+        "internal_rank": 0 if Qint is None else Qint.shape[1],
         "n_internal_coordinates": B.shape[0], "wilson_singular_values": sint,
         "wilson_matrix": B, "coordinate_scale": coordinate_scale, "coordinate_labels": labels,
         "component_rows": slices,
@@ -1012,7 +1077,8 @@ def solve_regularized_lsq(X, y, prior=None, regularization=0.0, parameter_scale=
 def fit_hybrid_hessian(systems, mode_weight=1.0, local_weight=1.0, internal_weight=1.0,
                        mode_balance="frequency", mode_mixing=0.1, frequency_floor_cm1=50.0, local_graph_distance=2,
                        prior=None, regularization=1e-2, parameter_scale=None,
-                       coupling_matrix=None, coupling_target=None, bounds=(0.0, np.inf)):
+                       coupling_matrix=None, coupling_target=None, bounds=(0.0, np.inf),
+                       wilson_kab_weight=0.0, wilson_rows="hydride", freeze=None):
     """Fit shared linear FF parameters to one or more hybrid Hessian objectives.
 
     MULTI-SYSTEM ACCUMULATION:
@@ -1025,6 +1091,7 @@ def fit_hybrid_hessian(systems, mode_weight=1.0, local_weight=1.0, internal_weig
     The combined stacked system is then solved by solve_regularized_lsq with
     column scaling, Tikhonov regularization toward physical priors, and
     non-negative bounds (k_p >= 0 for physical stiffnesses).
+    freeze: optional {param_index: value} — those k are subtracted from the RHS and not fitted.
     """
     Xs, ys, system_info = [], [], []
     npar = None
@@ -1032,7 +1099,9 @@ def fit_hybrid_hessian(systems, mode_weight=1.0, local_weight=1.0, internal_weig
         X, y, info = assemble_hybrid_hessian_system(
             system["A"], system["H_ref"], system["positions"], system["masses"], system["bonds"], system["angles"],
             mode_weight=mode_weight, local_weight=local_weight, internal_weight=internal_weight,
-            mode_balance=mode_balance, mode_mixing=mode_mixing, frequency_floor_cm1=frequency_floor_cm1, local_graph_distance=local_graph_distance)
+            mode_balance=mode_balance, mode_mixing=mode_mixing, frequency_floor_cm1=frequency_floor_cm1,
+            local_graph_distance=local_graph_distance, wilson_kab_weight=wilson_kab_weight, wilson_rows=wilson_rows,
+            symbols=system.get("symbols"))
         if npar is None:
             npar = X.shape[1]
         elif X.shape[1] != npar:
@@ -1042,7 +1111,24 @@ def fit_hybrid_hessian(systems, mode_weight=1.0, local_weight=1.0, internal_weig
         system_info.append(info)
     if not Xs:
         raise ValueError("no systems supplied")
-    k, diagnostics = solve_regularized_lsq(np.vstack(Xs), np.concatenate(ys), prior=prior, regularization=regularization, parameter_scale=parameter_scale,
-                                           coupling_matrix=coupling_matrix, coupling_target=coupling_target, bounds=bounds)
+    X, y = np.vstack(Xs), np.concatenate(ys)
+    if freeze:
+        X, y, free, idx, val = apply_parameter_freeze(X, y, freeze)
+        prior_f = None if prior is None else np.asarray(prior, dtype=np.float64)[free]
+        scale_f = None if parameter_scale is None else np.asarray(parameter_scale, dtype=np.float64)[free]
+        lo, hi = bounds
+        lo = np.broadcast_to(np.asarray(lo, dtype=np.float64), (npar,))[free]
+        hi = np.broadcast_to(np.asarray(hi, dtype=np.float64), (npar,))[free]
+        kf, diagnostics = solve_regularized_lsq(X, y, prior=prior_f, regularization=regularization, parameter_scale=scale_f,
+                                                   coupling_matrix=None if coupling_matrix is None else np.asarray(coupling_matrix)[:, free],
+                                                   coupling_target=coupling_target, bounds=(lo, hi))
+        k = np.zeros(npar)
+        k[idx] = val
+        k[free] = kf
+        diagnostics["frozen"] = {int(i): float(v) for i, v in zip(idx, val)}
+    else:
+        k, diagnostics = solve_regularized_lsq(X, y, prior=prior, regularization=regularization, parameter_scale=parameter_scale,
+                                               coupling_matrix=coupling_matrix, coupling_target=coupling_target, bounds=bounds)
     diagnostics["systems"] = system_info
     return k, diagnostics
+

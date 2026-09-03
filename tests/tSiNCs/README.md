@@ -6,7 +6,14 @@
 |----------|------|
 | **This file** (`tests/tSiNCs/`) | **Working hub** — quick start, scripts, fixtures, viewers |
 | [`doc/topical_audit/SiNCs.md`](../../doc/topical_audit/SiNCs.md) | **Project briefing** — FTIR + XRD + FFfit (ChatGPT-ready) |
+| [`doc/topical_audit/XRD.md`](../../doc/topical_audit/XRD.md) | Powder XRD / PDF — Kusová strain-gradient checklist |
+| [`doc/topical_audit/Hessian_fitting.md`](../../doc/topical_audit/Hessian_fitting.md) | Hessian / Wilson FFfit inventory + method checklist |
 | [`doc/Topics/FTIR_Nanocrystals/README.md`](../../doc/Topics/FTIR_Nanocrystals/README.md) | Topic docs index (guides, chats, progress logs) |
+| [`doc/Topics/FTIR_Nanocrystals/ChemAtlas_status.md`](../../doc/Topics/FTIR_Nanocrystals/ChemAtlas_status.md) | Checklist + image browse bank (Katerina pack) |
+| [`doc/Topics/FTIR_Nanocrystals/HydrideMotif_spectra.md`](../../doc/Topics/FTIR_Nanocrystals/HydrideMotif_spectra.md) | {100}/{111}, XH/XH₂, 5/7-ring spectra |
+| [`doc/Topics/FTIR_Nanocrystals/PySCF_L1_neighborhood_PDOS.md`](../../doc/Topics/FTIR_Nanocrystals/PySCF_L1_neighborhood_PDOS.md) | PySCF PBE L1 stacked PDOS — **plot template**; vs DFTB+ L1; Si PySCF not a minimum |
+| [`doc/Topics/FTIR_Nanocrystals/ChemAtlas_MMFF_relax.md`](../../doc/Topics/FTIR_Nanocrystals/ChemAtlas_MMFF_relax.md) | Atlas output paths + MMFF surface-NB |
+| [`doc/Topics/FTIR_Nanocrystals/MMFF_C_CH_vs_CH2_kfit.md`](../../doc/Topics/FTIR_Nanocrystals/MMFF_C_CH_vs_CH2_kfit.md) | C PBE L1 MMFF k-fit: CH vs CH₂; Morse + split angles; SA ~72 cm⁻¹ (not a shared FF) |
 | [`doc/topical_audit/Nanocrystal_Vibrations.md`](../../doc/topical_audit/Nanocrystal_Vibrations.md) | Vibration API inventory |
 
 Keep these in sync when adding files or changing the canonical workflow.
@@ -61,19 +68,23 @@ flowchart LR
 | `test_mol_browser_plugins.py` | Plugin registry, NPZ grid filter, vibration panel tests |
 | `plot_pyscf_vib_results.py` | Plot PySCF vibration results (Hessian in atomic blocks + spectra + size series) |
 | `run_small_np_pyscf_vib.py` | PySCF workflow: relax → Hessian → harmonic analysis → loose .npy output |
-| `test_FFfit.py` | **QM-Hessian FF fitting CLI** — hybrid mode/local/Wilson-row-space fit, Si subtype hierarchy, and optional local stretch--stretch/stretch--bend terms; outputs tables and spectrum overlays. |
+| `test_FFfit.py` | **QM-Hessian FF fitting CLI** — `--ladder si` pin-ladder (local \(K_{ab}\)); default still hybrid mode/local/Wilson-row-space. |
+| `fit_mmff_kss_pyscf.py` | Own-min stretch RMSE vs PySCF (`--mol pyscf_nc --ref joint\|nbscan\|morse2d\|anneal`). Report: [`MMFF_C_CH_vs_CH2_kfit.md`](../../doc/Topics/FTIR_Nanocrystals/MMFF_C_CH_vs_CH2_kfit.md). |
 | `test_fffit_hybrid.py` | Regression tests for Wilson scaling/gauge invariance, hierarchy rows, cross sensitivities, bounded fitting, and torsion gradients. |
 | `test_parity_py_cpp.py` | Python vs C++ FFfit sensitivity matrix parity tests |
 | `test_parity_graph_cpp.py` | Graph algorithm + dihedral batch parity tests (14 tests): BFS distances, local Hessian mask, 1-4 neighbor finding, dihedral enumeration, Wilson matrix, dihedral Hessian FD, batch vs single dihedral sensitivity |
 | `SiNCs_FFfit_summary.md` | Results report: typing strategies, fitted parameters, model comparisons for 6 Si nanocrystals |
 | `FFfit_python_to_cpp_port.plan.md` | Porting plan for migrating FFfit Python hotspots to C++ |
+| [`chem_atlas.json`](chem_atlas.json) | Wulff atlas config (Si ≡ C, L0–L3, L1 ring defects, `relax_nonbond: surface`) |
+| [`chem_atlas_report.py`](chem_atlas_report.py) | Fail-loud hydride / Td / ring / H···H checks; writes `OUT_chem_atlas/atlas/hydride_report.md` |
+| [`plot_hydride_motif_spectra.py`](plot_hydride_motif_spectra.py) | Neighborhood PDOS: L1/L2 MMFF+DFTB (`OUT_motif_spectra/`), **PySCF L1** (`--pyscf` → `OUT_pyscf_jobs/`), **PySCF vs DFTB+ L1** (`--dftb-l1` → `OUT_dftb_vs_pyscf_l1/`). Stacked plot is the Si-NC template. |
 | [`ToDo_Nanocrystal.md`](ToDo_Nanocrystal.md) | Open items and open questions |
 
 ---
 
 ### FFfit: PySCF Hessian to transferable valence model
 
-The authoritative theory is [`doc/Topics/FFfit/HessianFitting_Theory.md`](../../doc/Topics/FFfit/HessianFitting_Theory.md). The Wilson least-norm diagonal is a diagnostic indicator, not a per-bond DFT stiffness; transferable parameters come from the regularized hybrid fit.
+The authoritative theory is [`doc/Topics/FFfit/HessianFitting_Theory.md`](../../doc/Topics/FFfit/HessianFitting_Theory.md). Method checklist (tried / rejected / next): [`doc/topical_audit/Hessian_fitting.md`](../../doc/topical_audit/Hessian_fitting.md). The Wilson least-norm diagonal is a diagnostic indicator, not a per-bond DFT stiffness; transferable parameters come from the regularized hybrid fit.
 
 ```bash
 # Elemental versus hierarchical Si/SiH/SiH2/SiH3 typing; tables + six spectrum overlays
@@ -94,11 +105,31 @@ CPP_BUILD_PATH=$PWD/cpp/Build-opt/libs python3 -m pytest -q \
 
 The cross terms are signed, zero-centered, and bounded; they are intentionally rejected for `--equilibrium type-average` because their prestress Hessian is not yet implemented.
 
+Own-min \(k_{\mathrm{XH}}\) vs PBE L1 C (FIRE then Hessian, not frozen-geom FFfit): [`MMFF_C_CH_vs_CH2_kfit.md`](../../doc/Topics/FTIR_Nanocrystals/MMFF_C_CH_vs_CH2_kfit.md). Cube CH₂ vs octahedron CH did not share one pack.
+
+```bash
+cd tests/tMMFF
+python3 ../tSiNCs/fit_mmff_kss_pyscf.py --mol pyscf_nc --ref joint
+python3 ../tSiNCs/fit_mmff_kss_pyscf.py --mol pyscf_nc --ref anneal_plot
+```
+
 ---
 
 ## Quick start
 
 All commands assume repo root `FireCore/` unless noted.
+
+### Chemical motif atlas (Wulff Si ≡ C + L0/L1 MMFF surface relax)
+
+Plan: [`ChemAtlas.plan.md`](../../doc/Topics/FTIR_Nanocrystals/ChemAtlas.plan.md). Relax report (where files are): [`ChemAtlas_MMFF_relax.md`](../../doc/Topics/FTIR_Nanocrystals/ChemAtlas_MMFF_relax.md). QM jobs: CompChemUtils `examples/tSiNCs/HANDOUT_chem_atlas.md`.
+
+```bash
+node tests/tSiNCs/nanocrystals.mjs ensemble --atlas tests/tSiNCs/chem_atlas.json \
+  --output-dir tests/tSiNCs/OUT_chem_atlas
+PYTHONPATH=. python3 tests/tSiNCs/chem_atlas_report.py
+# results: tests/tSiNCs/OUT_chem_atlas/atlas/{index.html,hydride_report.md,L1_dft/*_relaxed.mol2}
+./tests/tSiNCs/run_cpp_mol_browser.sh tests/tSiNCs/OUT_chem_atlas/atlas/L1_dft
+```
 
 ### QM reference spectra (this folder)
 
@@ -144,8 +175,9 @@ Batch all nine gallery crystals: see [`fixtures/si_1nm_passivation/README.md`](f
 ### NPZ pipeline viewers (C++ / Python)
 
 ```bash
-# C++ SDL browser — thumbnails + 3D VIEW ([c] bond color, [g] AABB)
+# C++ SDL browser — from repo root. Esc=up, Ctrl+Q=quit.
 ./tests/tSiNCs/run_cpp_mol_browser.sh
+./tests/tSiNCs/run_cpp_mol_browser.sh tests/tSiNCs/OUT_chem_atlas/atlas
 ./tests/tSiNCs/run_cpp_mol_browser.sh tests/tSiNCs/fixtures/si_1nm_passivation/09_sphere_13A_H_fuse
 
 # Headless C++ NPZ parse
@@ -175,6 +207,19 @@ PySCF vibration data uses loose `.npy` files per case directory, not the NPZ pip
 ```bash
 # Plot all cases (Hessian in atomic 3×3 blocks + spectra)
 python3 tests/tSiNCs/plot_pyscf_vib_results.py /path/to/results --noshow
+
+# Neighborhood PDOS (plot template): stacked chemistry colors + xy inset
+python3 tests/tSiNCs/plot_hydride_motif_spectra.py \
+  --pyscf /home/prokop/SIMULATIONS/SiNCs/pyscf_vib_results \
+  --pyscf-out tests/tSiNCs/OUT_pyscf_jobs
+# Lead figures: OUT_pyscf_jobs/stacked_{C,Si}.png
+# Same 12 crystals vs DFTB+ (C: 3ob/mio; Si: pbc/matsci):
+python3 tests/tSiNCs/plot_hydride_motif_spectra.py \
+  --pyscf /home/prokop/SIMULATIONS/SiNCs/pyscf_vib_results \
+  --dftb-l1 /home/prokop/SIMULATIONS/SiNCs/DFTB/L1
+# Lead: OUT_dftb_vs_pyscf_l1/index.html
+# Report: doc/Topics/FTIR_Nanocrystals/PySCF_L1_neighborhood_PDOS.md
+# Si PySCF (and cube_C) have imaginaries — not FTIR peak positions. DFTB L1 is 0 imag.
 
 # Launch Vispy browser on PySCF results (auto-detects .npy format)
 python3 -m pyBall.GUI.VispyMolBrowser --dir /path/to/results
@@ -242,7 +287,7 @@ JS is the feature-complete path (plane cuts, defects, bridges). Python does sphe
 | Folder | Key scripts |
 |--------|-------------|
 | [`tests/tMMFF/`](../tMMFF/) | `test_vibration_spectra.py`, `test_diamond_phonon_bands.py`, `test_nanocrystal_sparse_hessian.py`, solver ladder |
-| [`tests/tXRD/`](../tXRD/) | `test_debye_histogram.py`, `test_large_crystal.py` — thermal broadening from vibration Hessian |
+| [`tests/tXRD/`](../tXRD/) | `test_debye_histogram.py`, `test_large_crystal.py` — Debye powder (C spheres). Science: [`XRD.md`](../../doc/topical_audit/XRD.md) |
 
 ---
 

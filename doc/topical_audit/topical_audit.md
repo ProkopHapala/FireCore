@@ -122,17 +122,11 @@ Topics are ranked by **consolidation priority** — how much duplicate/scattered
 - **Audit Document:** [forcefields_web_implementation.md](forcefields_web_implementation.md)
 
 ### 2d. Parameter Fitting
-- FitREQ: H-bond parameter fitting, Monte Carlo optimization, GPU-accelerated
-- FFfit: Force-field stiffness fitting to vibrational Hessians via Wilson GF projection — type system, topology, dihedral physics, sensitivity matrices, gradient descent, frequency analysis, C++ bridge (`libFFfit_lib.so`)
-- **C++ graph algorithms** (CSR bond-graph, bounded BFS, batch dihedral sensitivity): see [molecular_topology.md](molecular_topology.md) § Bond-Graph Topology Queries
-- **Module split (refactored from monolithic `test_FFfit.py`):**
-  - `pyBall/FFfit.py` — C++ ctypes wrapper (Wilson B matrix, internal Hessian projection, graph algorithms, batch dihedral sensitivity)
-  - `pyBall/FFfit_utils.py` — High-level Python fitting pipeline (type system, topology, sensitivity, fitting, frequency analysis)
-  - `pyBall/FFfit_plots.py` — Visualization (spectra, equilibrium distributions, stiffness HTML maps)
-  - `tests/tSiNCs/test_FFfit.py` — Thin CLI wrapper importing from both modules
-  - `tests/tSiNCs/test_fffit_hybrid.py` — Hybrid Hessian+mode fitting tests (5 cases)
-  - `tests/tSiNCs/test_parity_graph_cpp.py` — Graph algorithm + batch dihedral parity tests (14 tests)
-- **Related:** `FitREQ.md`, `FitREQ_CPU_Tutorial.guide.md` in `doc/DevNotes/`, `tests/tSiNCs/SiNCs_FFfit_summary.md`, `tests/tSiNCs/FFfit_python_to_cpp_port.plan.md`
+- FitREQ: H-bond parameter fitting, Monte Carlo, GPU — **not** vibration Hessian fitting
+- **Audit (bonded Hessian / Wilson / own-min \(k\)):** [`Hessian_fitting.md`](Hessian_fitting.md) — implementations, method checklist, GPT 5.6 next sequence
+- Theory: [`../Topics/FFfit/HessianFitting_Theory.md`](../Topics/FFfit/HessianFitting_Theory.md)
+- Graph/Wilson C++: [molecular_topology.md](molecular_topology.md) § Bond-Graph Topology Queries
+- **Related:** `FitREQ.md` in `doc/DevNotes/`; results `tests/tSiNCs/SiNCs_FFfit_summary.md`
 
 ## Priority 3 (High) — Surface Interactions & GridFF
 
@@ -173,8 +167,12 @@ Silicon / diamond nanocrystal generation, force fields, vibration spectroscopy (
 | Doc | Role |
 |-----|------|
 | [`SiNCs.md`](SiNCs.md) | **Project briefing** — FTIR + XRD + FFfit, solvers, tests, docs (ChatGPT-ready) |
-| [`Nanocrystal_Vibrations.md`](Nanocrystal_Vibrations.md) | Vibration/phonon API inventory |
+| [`XRD.md`](XRD.md) | **Powder XRD / PDF audit** — Debye engine inventory, Kusová strain-gradient checklist |
+| [`Hessian_fitting.md`](Hessian_fitting.md) | **Hessian / Wilson FFfit audit** — method checklist, GPT 5.6 next steps |
 | [`../Topics/FTIR_Nanocrystals/README.md`](../Topics/FTIR_Nanocrystals/README.md) | Topic guides, chats, progress logs |
+| [`../Topics/FTIR_Nanocrystals/ChemAtlas_MMFF_relax.md`](../Topics/FTIR_Nanocrystals/ChemAtlas_MMFF_relax.md) | Wulff atlas outputs + MMFF surface-NB |
+| [`../Topics/FTIR_Nanocrystals/PySCF_L1_neighborhood_PDOS.md`](../Topics/FTIR_Nanocrystals/PySCF_L1_neighborhood_PDOS.md) | PySCF L1 stacked neighborhood PDOS — **plot template**; vs DFTB+ L1; Si imaginaries unresolved |
+| [`../Topics/FTIR_Nanocrystals/MMFF_C_CH_vs_CH2_kfit.md`](../Topics/FTIR_Nanocrystals/MMFF_C_CH_vs_CH2_kfit.md) | C PBE L1 MMFF k-fit: CH vs CH₂ + surface Morse; SA did not unify (~72 cm⁻¹) |
 | [`../../tests/tSiNCs/README.md`](../../tests/tSiNCs/README.md) | Folder index + run commands |
 | [`../../tests/tSiNCs/AGENTS.md`](../../tests/tSiNCs/AGENTS.md) | DOX contract — ownership, paths, verification |
 | [`../../tests/tSiNCs/ToDo_Nanocrystal.md`](../../tests/tSiNCs/ToDo_Nanocrystal.md) | Open items |

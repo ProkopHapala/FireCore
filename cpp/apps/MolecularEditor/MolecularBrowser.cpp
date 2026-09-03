@@ -6,7 +6,7 @@
 /// - BROWSE: thumbnail grid view (delegates to BrowserView)
 /// - VIEW:   interactive 3D molecule view (delegates to MolView)
 /// Press Enter to toggle between modes. Click thumbnails to view molecules.
-/// Click subdirectory buttons or press Backspace to navigate directories.
+/// Esc: VIEW→BROWSE, then parent folder. Backspace: parent folder. Ctrl+Q / Ctrl+D: quit.
 ///
 /// NPZ: loads crystal/relaxed/topology stages; `--verify-npz` for headless parse.
 /// Must call params.makeIdDicts() after loadBondTypes() so bond-length color uses real l0.
@@ -21,6 +21,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
+#include <limits.h>
+#include <sys/stat.h>
 #include <vector>
 #include <math.h>
 #include <string>
@@ -80,6 +83,21 @@ void loadIniFile( const char* fname ){
     }
     fclose(f);
     printf("Ini loaded: res_dir='%s' work_dir='%s'\n", g_res_dir.c_str(), g_work_dir.c_str());
+}
+
+static std::string mustRealpathDir(const char* label, const std::string& p){
+    char resolved[PATH_MAX];
+    if(!realpath(p.c_str(), resolved)){
+        char cwd[PATH_MAX]; cwd[0]=0; getcwd(cwd, sizeof(cwd));
+        printf("ERROR MolecularBrowser: %s '%s' not found (errno=%i %s). cwd='%s'\n", label, p.c_str(), errno, strerror(errno), cwd);
+        exit(1);
+    }
+    struct stat st;
+    if(stat(resolved, &st)!=0 || !S_ISDIR(st.st_mode)){
+        printf("ERROR MolecularBrowser: %s '%s' is not a directory\n", label, resolved);
+        exit(1);
+    }
+    return std::string(resolved);
 }
 
 // ===========================================
@@ -178,8 +196,12 @@ void TestAppMolecularBrowser::eventHandling( const SDL_Event& event ){
             if     (event.wheel.y > 0){ zoom/=1.2; }
             else if(event.wheel.y < 0){ zoom*=1.2; }}break;
         case SDL_KEYDOWN:
+            if( (event.key.keysym.mod & KMOD_CTRL) && (event.key.keysym.sym==SDLK_q || event.key.keysym.sym==SDLK_d) ){ quit(); break; }
             switch( event.key.keysym.sym ){
-                case SDLK_ESCAPE:   quit(); break;
+                case SDLK_ESCAPE:
+                    if(mode == VIEW){ mode = BROWSE; printf("Esc: VIEW -> BROWSE\n"); }
+                    else{ browser.navigateToDir(".."); }
+                    break;
                 case SDLK_RETURN:
                 case SDLK_KP_ENTER:
                     if(mode == BROWSE){
@@ -317,7 +339,8 @@ int main(int argc, char *argv[]){
     funcs["-dir"]={1,[&](const char** ss){ g_work_dir = ss[0]; printf("ARG -dir  '%s'\n", g_work_dir.c_str()); }};
     funcs["-ini"]={1,[&](const char** ss){ printf("ARG -ini  '%s'\n", ss[0]); loadIniFile(ss[0]); }};
     process_args( argc, argv, funcs, false );
-
+    g_res_dir  = mustRealpathDir("-res", g_res_dir);
+    g_work_dir = mustRealpathDir("-dir", g_work_dir);
     printf("MolecularBrowser: res_dir='%s' work_dir='%s'\n", g_res_dir.c_str(), g_work_dir.c_str());
 
     thisApp = new TestAppMolecularBrowser( junk, DM.w-100, DM.h-100 );

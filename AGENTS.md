@@ -73,3 +73,4 @@ This repo uses a **hierarchical DOX** system: `AGENTS.md` files act as local con
 
 - **Force Fields** — `forcefields_overview.md` | `intramolecular_forcefields.md` | `nonbonding_forcefields.md` | `surface_interactions.md` | `RigidSurfPotential_GridFF.md` | `forcefields_web_implementation.md`
 - **Molecular Topology** — `molecular_topology.md` | `molecular_topology_types.md` | `molecular_topology_editors.md`
+- **Nanocrystals / FTIR** — `SiNCs.md` | `XRD.md` | `Nanocrystal_Vibrations.md` | `Hessian_fitting.md` | `doc/Topics/FTIR_Nanocrystals/`

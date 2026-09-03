@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 from pyBall import FFfit as FFfit_cpp
 from pyBall.FFfit_utils import (
     BOHR_TO_ANG, HARTREE_TO_EV, BOHR_TO_ANG_INV, HARTREE_PER_BOHR2_TO_EV_PER_ANG2,
-    hessian_ha_bohr_to_ev_ang2,
+    hessian_ha_bohr_to_ev_ang2, flatten_cartesian_hessian, load_pyscf_hessian_case, run_si_pbe_pin_ladder, load_joint_si_systems, run_si_two_phase_fit,
     angle_type_key, dihedral_type_key, assign_si_environment_types,
     interaction_type_counts, print_interaction_type_counts, parent_parameter_name, subtype_shrinkage_rows, family_mean_prior_rows,
     build_cross_param_maps, compute_cross_sensitivity, add_linear_hessian,
@@ -45,35 +45,8 @@ from pyBall.FFfit_plots import (
 RESULTS_DIR = "/home/prokop/SIMULATIONS/jobs_pyscf_vib_OUT_small_nc/results"
 
 def load_pyscf_case(case_dir, geometry_only=False):
-    """Load PySCF results for a case.
-
-    If geometry_only=True, skip loading hessian.npy, modes.npy, and frequencies
-    (the large/expensive files) — only load relaxed geometry and masses.
-    """
-    d = {}
-    if not geometry_only:
-        d['hessian'] = np.load(os.path.join(case_dir, 'hessian.npy'))      # (natoms,3,natoms,3) in Ha/Bohr^2
-        d['modes']   = np.load(os.path.join(case_dir, 'modes.npy'))         # (nmodes, natoms, 3)
-        d['freqs']   = np.load(os.path.join(case_dir, 'frequencies_cm1.npy'))
-    d['masses']  = np.load(os.path.join(case_dir, 'masses.npy'))        # (natoms,)
-    # Load relaxed geometry
-    xyz_path = os.path.join(case_dir, 'relaxed.xyz')
-    with open(xyz_path) as f:
-        lines = f.readlines()
-    natoms = int(lines[0].strip())
-    symbols = []
-    positions = np.zeros((natoms, 3))
-    for i in range(natoms):
-        parts = lines[2 + i].split()
-        symbols.append(parts[0])
-        positions[i] = [float(parts[1]), float(parts[2]), float(parts[3])]
-    d['symbols'] = symbols
-    d['positions'] = positions  # in Angstrom
-    d['natoms'] = natoms
-    # Load status
-    with open(os.path.join(case_dir, 'status.json')) as f:
-        d['status'] = json.load(f)
-    return d
+    """Load PySCF results for a case. Wrapper around load_pyscf_hessian_case (masses.npy optional)."""
+    return load_pyscf_hessian_case(case_dir, geometry_only=geometry_only)
 
 
 def fit_comparison_variant(base_systems, use_third, use_dihedrals, args, parent_prior=None):
@@ -303,6 +276,12 @@ def main():
     parser.add_argument('--mode-mixing', type=float, default=0.1, help='Relative penalty for off-diagonal mixing of reference modes')
     parser.add_argument('--local-graph-distance', type=int, default=2, help='Maximum bond-graph distance included in local Hessian blocks')
     parser.add_argument('--frequency-floor', type=float, default=50.0, help='Frequency floor (cm^-1) for stable mode weighting')
+    parser.add_argument('--ladder', choices=['si'], default=None, help='Run the small→large pin-ladder (si = PBE SiH4→Si10H16→octa→cube). Skips Method 1/2 GD.')
+    parser.add_argument('--joint-si', action='store_true', help='Joint fit: SiH4 + all 0-imag L1 Si crystals share ONE parameter set.')
+    parser.add_argument('--two-phase-si', action='store_true', help='Two-phase: Phase1=SiH4 pins hydride k; Phase2=crystals fit Si-Si with hydride frozen.')
+    parser.add_argument('--include-13', action='store_true', help='Add H..H 1-3 spring to split T2/A1 bends in SiH4.')
+    parser.add_argument('--hybrid-only', action='store_true', help='Skip Method 1 LSQ and Method 2 GD; hybrid / local-K_ab only')
+    parser.add_argument('--pin-tol', type=float, default=0.05, help='Fail-loud relative shift for D vs E unfrozen k (ladder)')
     parser.add_argument('--reg', type=float, default=2e-3, help='Dimensionless per-parameter prior regularization weight')
     parser.add_argument('--use-nnls', action='store_true', help='Deprecated compatibility flag; hybrid fitting is non-negative by default')
     parser.add_argument('--allow-negative', action='store_true', help='Allow unphysical negative stiffnesses for diagnostic comparison only')
@@ -317,6 +296,63 @@ def main():
             parser.error("--stretch-stretch/--stretch-bend are currently supported by --compare-typing or --compare-models")
         if args.cross_regularization < 0.0 or args.cross_scale <= 0.0 or args.cross_bound <= 0.0:
             parser.error("cross regularization must be non-negative; cross scale and bound must be positive")
+    if args.ladder == 'si':
+        out = os.path.join(args.plot_dir, 'ladder_si_pbe')
+        run_si_pbe_pin_ladder(out, regularization=args.reg, pin_tol=args.pin_tol, bond_cutoff=args.bond_cutoff)
+        return
+
+    if args.two_phase_si:
+        out = os.path.join(args.plot_dir, 'two_phase_si')
+        run_si_two_phase_fit(out, reg_phase1=0.0, reg_phase2=args.reg, bond_cutoff=args.bond_cutoff, include_13=args.include_13, si_subtypes=args.si_subtypes)
+        return
+
+    if args.joint_si:
+        from pyBall.FFfit_utils import build_global_param_map, assign_si_environment_types
+        import os as _os
+        joint_systems = load_joint_si_systems(bond_cutoff=args.bond_cutoff, si_subtypes=args.si_subtypes)
+        _all_bonds = [s['bonds'] for s in joint_systems]; _all_angles = [s['angles'] for s in joint_systems]
+        _all_bonds3 = [s['bonds3'] for s in joint_systems]; _all_dihedrals = [[] for _ in joint_systems]
+        _all_symbols = [s.get('atom_types', s['symbols']) for s in joint_systems]
+        _all_elements = [s['symbols'] for s in joint_systems]
+        bmap, b3map, amap, dmap, npar = build_global_param_map(_all_bonds, _all_angles, _all_symbols, _all_bonds3, _all_dihedrals, _all_elements, False)
+        print(f"\n=== Joint-Si global param map: bond={len(bmap)} angle={len(amap)} total={npar} ===")
+        for k, t in bmap.items(): print(f"  bond:{'-'.join(k)} -> idx {t}")
+        for k, t in amap.items(): print(f"  angle:{'-'.join(k)} -> idx {t}")
+        fitters = [make_cpp_fitter(sys, (bmap, b3map, amap), npar) for sys in joint_systems]
+        prior = np.ones(npar)
+        for t in bmap.values(): prior[t] = 5.0
+        for t in amap.values(): prior[t] = 1.0
+        hybrid_systems = []
+        for f, sys in zip(fitters, joint_systems):
+            A = FFfit_cpp.collect_sensitivity_matrices(f, extra={})
+            hybrid_systems.append({'A': A, 'H_ref': sys['H_ref'], 'positions': sys['positions'],
+                                   'masses': sys['masses'], 'bonds': sys['bonds'], 'angles': sys['angles'], 'symbols': sys['symbols']})
+        bounds = (-np.inf, np.inf) if args.allow_negative else (0.0, np.inf)
+        k, fit_diag = FFfit_cpp.fit_hybrid_hessian(
+            hybrid_systems, mode_weight=args.hybrid_mode, local_weight=args.hybrid_local, internal_weight=args.hybrid_internal,
+            mode_balance=args.mode_weight, mode_mixing=args.mode_mixing, frequency_floor_cm1=args.frequency_floor,
+            local_graph_distance=args.local_graph_distance, prior=prior, regularization=args.reg,
+            parameter_scale=prior, bounds=bounds)
+        print(f"\n  solver={fit_diag['solver']} residual={fit_diag['relative_residual']:.6e} rank={fit_diag['rank']}/{npar} condition={fit_diag['condition']:.6e}")
+        print("\n=== Joint-Si fitted parameters ===")
+        for key, t in bmap.items(): print(f"  k_bond[{'-'.join(key)}] = {k[t]:.6f} eV/A^2")
+        for key, t in amap.items(): print(f"  k_angle[{'-'.join(key)}] = {k[t]:.6f} eV/rad^2")
+        print("\n=== Per-system frequency RMSE ===")
+        _os.makedirs(args.plot_dir, exist_ok=True)
+        for f, sys in zip(fitters, joint_systems):
+            f.set_params(k)
+            H_model = f.compute_model_hessian()
+            freqs_ref = get_frequencies_cm1(sys['H_ref'], sys['masses'], freq_floor=10.0, positions=sys['positions'], project_acoustic=True)
+            freqs_mod = get_frequencies_cm1(H_model, sys['masses'], freq_floor=10.0, positions=sys['positions'], project_acoustic=True)
+            rmse, mae, _ = one_to_one_frequency_metrics(freqs_ref, freqs_mod)
+            relF = 100.0*np.linalg.norm(H_model - sys['H_ref'])/np.linalg.norm(sys['H_ref'])
+            print(f"  {sys['name']:30s}: freq RMSE={rmse:.1f} cm-1  MAE={mae:.1f} cm-1  relFrob={relF:.2f}%")
+            if args.plot:
+                out_png = _os.path.join(args.plot_dir, f"joint_si_{sys['name']}_spectrum.png")
+                from pyBall.FFfit_plots import plot_spectrum
+                plot_spectrum(freqs_ref, freqs_mod, sys['name'], outdir=args.plot_dir, xmax=args.spectrum_xmax, width=args.spectrum_width)
+                print(f"    Saved: {out_png}")
+        return
     
     # Determine case list
     if args.cases == 'all_Si':
@@ -343,8 +379,7 @@ def main():
             H_ref_w = H_ref
             weight = None
         else:
-            H_ref = hessian_ha_bohr_to_ev_ang2(
-                data['hessian'].transpose(0, 2, 1, 3).reshape(natoms*3, natoms*3))
+            H_ref = hessian_ha_bohr_to_ev_ang2(flatten_cartesian_hessian(data['hessian']))
             if args.mass_weight:
                 masses = data['masses']
                 inv_sqrt_m = 1.0 / np.sqrt(np.repeat(masses, 3))
@@ -454,48 +489,43 @@ def main():
     # C++ fitting knows only bond/angle/3rd-bond parameters; switch to n_cpp for Methods 1 and 2
     for f in fitters: f.set_n_free(n_cpp)
 
-    # === Method 1: Multi-system linear least-squares (C++) ===
-    print(f"\n=== Method 1: Multi-System Linear Least-Squares (C++) ===")
-    G = np.zeros((n_cpp, n_cpp))
-    y = np.zeros(n_cpp)
-    for f, sys in zip(fitters, systems):
-        f.accumulate_normal_equations(G, y, sys['H_ref_w'].ravel(), weight=sys.get('weight'))
-    k_lsq = FFfit_cpp.FFfit.solve_normal_equations(G, y)
-    for key, t in global_bond_map.items():
-        print(f"  k_bond[{key}] = {k_lsq[t]:.6e} eV/A^2")
-    for key, t in global_bond3_map.items():
-        print(f"  k_bond3[{key}] = {k_lsq[t]:.6e} eV/A^2")
-    for key, t in global_angle_map.items():
-        print(f"  k_angle[{key}] = {k_lsq[t]:.6e} eV/rad^2")
+    if not args.hybrid_only:
+        print(f"\n=== Method 1: Multi-System Linear Least-Squares (C++) ===")
+        G = np.zeros((n_cpp, n_cpp))
+        y = np.zeros(n_cpp)
+        for f, sys in zip(fitters, systems):
+            f.accumulate_normal_equations(G, y, sys['H_ref_w'].ravel(), weight=sys.get('weight'))
+        k_lsq = FFfit_cpp.FFfit.solve_normal_equations(G, y)
+        for key, t in global_bond_map.items():
+            print(f"  k_bond[{key}] = {k_lsq[t]:.6e} eV/A^2")
+        for key, t in global_bond3_map.items():
+            print(f"  k_bond3[{key}] = {k_lsq[t]:.6e} eV/A^2")
+        for key, t in global_angle_map.items():
+            print(f"  k_angle[{key}] = {k_lsq[t]:.6e} eV/rad^2")
+        print(f"\n=== Method 2: Multi-System Gradient Descent (C++) ===")
+        k_gd = fit_gradient_descent_multi_cpp(fitters, systems, n_cpp, lr=1e-4, momentum=0.9, max_iter=5000, tol=1e-10, verbose=True)
+        for key, t in global_bond_map.items():
+            print(f"  k_bond[{key}] = {k_gd[t]:.6e} eV/A^2")
+        for key, t in global_bond3_map.items():
+            print(f"  k_bond3[{key}] = {k_gd[t]:.6e} eV/A^2")
+        for key, t in global_angle_map.items():
+            print(f"  k_angle[{key}] = {k_gd[t]:.6e} eV/rad^2")
+        print(f"\n=== Method Comparison ===")
+        print(f"  LSQ vs GD max |diff|: {np.max(np.abs(k_lsq - k_gd)):.6e}")
+        print(f"\n=== Per-System Hessian Comparison ===")
+        k = k_lsq
+        for f, sys in zip(fitters, systems):
+            f.set_params(k)
+            H_model = f.compute_model_hessian()
+            H_diff = H_model - sys['H_ref']
+            rmsd = np.sqrt(np.mean(H_diff**2))
+            nref = np.linalg.norm(sys['H_ref'])
+            ndiff = np.linalg.norm(H_diff)
+            nmodel = np.linalg.norm(H_model)
+            rel_frob = ndiff / nref * 100
+            print(f"  {sys['name']:12s}: RMSD={rmsd:.4e} eV/A^2  relFrob={rel_frob:.2f}%  "
+                  f"||H_ref||={nref:.4e}  ||H_model||={nmodel:.4e}  ||diff||={ndiff:.4e}")
 
-    # === Method 2: Multi-system gradient descent (C++) ===
-    print(f"\n=== Method 2: Multi-System Gradient Descent (C++) ===")
-    k_gd = fit_gradient_descent_multi_cpp(fitters, systems, n_cpp, lr=1e-4, momentum=0.9, max_iter=5000, tol=1e-10, verbose=True)
-    for key, t in global_bond_map.items():
-        print(f"  k_bond[{key}] = {k_gd[t]:.6e} eV/A^2")
-    for key, t in global_bond3_map.items():
-        print(f"  k_bond3[{key}] = {k_gd[t]:.6e} eV/A^2")
-    for key, t in global_angle_map.items():
-        print(f"  k_angle[{key}] = {k_gd[t]:.6e} eV/rad^2")
-
-    print(f"\n=== Method Comparison ===")
-    print(f"  LSQ vs GD max |diff|: {np.max(np.abs(k_lsq - k_gd)):.6e}")
-    
-    # === Per-system Hessian comparison (C++) ===
-    print(f"\n=== Per-System Hessian Comparison ===")
-    k = k_lsq
-    for f, sys in zip(fitters, systems):
-        f.set_params(k)
-        H_model = f.compute_model_hessian()
-        H_diff = H_model - sys['H_ref']
-        rmsd = np.sqrt(np.mean(H_diff**2))
-        nref = np.linalg.norm(sys['H_ref'])
-        ndiff = np.linalg.norm(H_diff)
-        nmodel = np.linalg.norm(H_model)
-        rel_frob = ndiff / nref * 100
-        print(f"  {sys['name']:12s}: RMSD={rmsd:.4e} eV/A^2  relFrob={rel_frob:.2f}%  "
-              f"||H_ref||={nref:.4e}  ||H_model||={nmodel:.4e}  ||diff||={ndiff:.4e}")
-    
     # === Method 3: robust hybrid all-mode/local/internal fit (Python) ===
     print(f"\n=== Method 3: Hybrid All-Mode + Local + Internal-Coordinate Fit ===")
     for f in fitters: f.set_n_free(n_total)

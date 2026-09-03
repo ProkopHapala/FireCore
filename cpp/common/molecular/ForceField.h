@@ -178,7 +178,7 @@ class ForceField: public Atoms{ public:
             bSubtractBondNonBond  = true;
             bClampNonBonded       = true;
         }
-        if(bExclude2){ bSubtractAngleNonBond = false; bSubtractBondNonBond=false; }
+        if(bExclude2){ bSubtractAngleNonBond = false; bSubtractBondNonBond=false; bClampNonBonded=true; }
         //printf( "ForceField::setNonBondStrategy() imode=%i bNonBonded=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i\n", imode, bNonBonded, bNonBondNeighs, bSubtractBondNonBond, bSubtractAngleNonBond, bClampNonBonded );
     }
 

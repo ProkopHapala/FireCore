@@ -745,10 +745,10 @@ def vibration_spectrum_from_modes(K, M, omegas, eta=1e-3, direction_vec=None, ch
 
     # Diagonalize
     w, v = np.linalg.eigh(K_mw)
-    # Project force onto modes
+    from pyBall.FFfit_utils import assert_harmonic_spectrum_at_minimum
+    om_cm = np.sign(w) * 521.5 * np.sqrt(np.abs(w))
+    assert_harmonic_spectrum_at_minimum(om_cm, ctx="vibration_spectrum_from_modes: ")
     f_tilde = v.T @ (f * m_inv_sqrt)
-
-    # Frequencies
     omegas_modes = np.sqrt(np.maximum(w, 0.0))
 
     spectrum_energy = np.zeros(len(omegas), dtype=np.float64)

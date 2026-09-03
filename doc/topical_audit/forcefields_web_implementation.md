@@ -135,6 +135,7 @@ This matches the OpenCL `basis()` function in `GridFF.cl:66` exactly.
   - `surfaceAtomIndices(mol)` — selects H atoms + undercoordinated heavy atoms (<4 heavy-atom neighbors)
   - `buildCollisionWorkgroups({ pos, mol, radius, groupCap })` — farthest-pivot clustering into bounded-size groups; AABB bounds computed via radius-aware `Bucket.addAtomIndex`; exports flat typed arrays via `BucketGraph.exportFlat()`
   - `buildExclIcol_1_2_3(...)` — sorted 1-2/1-3 exclusion lists in icol space (matches `getNonBond_ex2` kernel pattern)
+  - **CPU analog (atlas relax):** `pyBall.nanocrystal_pipeline.mask_bulk_nonbond` zeros `REQs` of 4-coordinated heavies (same atom set). Spatial AABB groups are for sparse GPU eval; L0/L1 is O(N²) with that mask. See [`ChemAtlas_MMFF_relax.md`](../Topics/FTIR_Nanocrystals/ChemAtlas_MMFF_relax.md).
 
 - **`web/common_js/Nonbonded.js`** — CPU nonbonded force evaluation with workgroup acceleration (imports `aabbOverlap3D`, `dist2ToAabb` from `Buckets.js`):
   - `collisionPair(dp, R_min, E_min, R_cut, R_cut2)` — JS port of `getSR_x2_smooth` parabolic collision potential (harmonic repulsive + quadratic smoothing), designed for Projective Dynamics integration
@@ -149,7 +150,7 @@ This matches the OpenCL `basis()` function in `GridFF.cl:66` exactly.
 
 ### Topology Export Pipeline
 
-- **`web/common_js/MolIO.js`** — Generic molecule I/O: `loadMMParamsFromDir()`, `loadMolFromMol2()`, `applyPositions()`, `bondsForVisualization()`, `getCrystalBondsFromFiles()`
+- **`web/common_js/MolIO.js`** — Generic molecule I/O: `loadMMParamsFromDir()`, `loadMolFromMol2()`, `applyPositions()`, `stripHHBonds()` (H···H is steric, not covalent), `bondsForVisualization()`, `getCrystalBondsFromFiles()`
 - **`web/common_js/exportFF.js`** — Topology NPZ builder: orchestrates MMFFL topology + collision workgroups + exclusions, writes enriched NPZ with group arrays via `LinearizedTopologyNpz.js`
 - **`web/molgui_webgpu/LinearizedTopologyNpz.js`** — Packs typed arrays into numpy `.npz` format
 

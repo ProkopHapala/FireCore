@@ -44,7 +44,6 @@ export function loadMol(inputPath, mm) {
         mol.appendParsedSystem(EditableMolecule.parseMol2(text));
     } else if (ext === '.xyz') {
         mol.appendParsedSystem(EditableMolecule.parseXYZ(text));
-        mol.recalculateBonds(mm);
     } else {
         throw new Error(`loadMol: unsupported extension '${ext}' (use .mol2 or .xyz)`);
     }
@@ -60,6 +59,16 @@ export function applyPositions(mol, pos) {
         a.pos.x = pos[i * 3];
         a.pos.y = pos[i * 3 + 1];
         a.pos.z = pos[i * 3 + 2];
+    }
+}
+
+/// Drop H–H topology bonds. Geminal CH₂ H···H is ~1.78 Å and hits bond cutoffs; C++ MMFF treats H as a cap (1 bond). Steric goes through surface NB / collision groups.
+export function stripHHBonds(mol) {
+    if (!mol || !mol.bonds) throw new Error('stripHHBonds: mol required');
+    for (let i = mol.bonds.length - 1; i >= 0; i--) {
+        const b = mol.bonds[i];
+        b.ensureIndices(mol);
+        if ((mol.atoms[b.a].Z | 0) === 1 && (mol.atoms[b.b].Z | 0) === 1) mol.removeBondByIndex(i);
     }
 }
 

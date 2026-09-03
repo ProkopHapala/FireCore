@@ -1,3 +1,7 @@
+https://chatgpt.com/share/6a99534d-a650-83eb-bde4-012800ed5980
+
+---
+
 # USER
 
 Consider following physical problem - fitting parameters of classical forcefield to reproduce vibration Spectra resp Hessian. For simplicity consider first Hessian of small molecule e.g. water, CH4, adamantan. We have bond stiffness (1-2), angle stiffness (1-3), and maybe digedrals and torsions (1-4). By evaluating energy or force changes by small displacement around minimum we get Hessian matrix, and the same Hessian matrix we can get from ab initio method (e.g. DFT).nthinknabout numerically robust way how to vary parameters of the forcefield to reproduce the Hessian. Perhaps we should compute variational derivatives of the Hessian wrt the forcefield parameters and do gradient descent (maybe with some regularization). What is normally used for that? Or we can do gradient less optimization. We can also fit the whole energy profile sampled around minimum. Now brainstorm and analyse different options how difficult and robust it is , give explicitly equations and derivations. It should be a well studied problem with off-the shelf solutions.
@@ -997,3 +1001,3055 @@ On H2O (3 atoms, 2 bonds, 1 angle):
 - `pyBall/FTIR.py` - Added `fit_hessian_parameters_ctx()` convenience wrapper
 - `tests/tMMFF/test_hessian_fitting.py` - Complete workflow test with rich debug output
 - `tests/tMMFF/run.sh` - Added test_hessian_fitting.py to run script
+
+
+
+
+
+---
+
+# USER
+
+I'm thinking how to improve our forcefield. Currently we are starting from UFF and refit stiffness constants to fit vibration spectrum from DFT reference.
+
+In fact I simplify UFF, I have 2 bond length stiffness konstants (Si-Si, Si-H) and 3 angles (Si-Si-Si, Si-Si-H, H-Si-H). Do you think I should ad something more? But I don't want to overcomplicate it as fitting is badly conditioned. I'm considering adding 3rd neighbors Si-Si-Si-Si or H-Si-Si-H but as distance rathe than dihedral. Another option is care about non covalent interactions mostly steric hindrance (Pauli repulsion) between surface hydrogen atoms which often bump to each other and which is perhaps critical for vibration spectrum of surface Si-H groups at 2000 cm-1.
+
+Question is how to fit it well, I cannot do linear fit or even compute variational derivatives. I currently just randomly aneal the stiffens constants until I get close results.
+
+Can you figure out better way how to do that fit?
+
+I was thinking to fit directly local elements of the hessian rather than fit resulting vibration frequency. But the DFT hessian looks qualitatively very different it is much deneser (atoms far apart interact) while in my forcefield only the nearest and next nearest neighbors have nonzero elements.
+
+Does it make sense if I compare just the nearest neighbors and neglected the rest? (This will also save me time computing the reference.
+
+---
+
+# Chat GPT 5.6 sol
+
+Yes. I think you can improve both the **force field itself** and, more importantly, the **fitting procedure** quite substantially without adding many parameters.
+
+The biggest point is this:
+
+> **For your present harmonic bond/angle force field, fitting the Hessian can actually be made a linear least-squares problem.**
+
+You do not need random annealing, and you do not need analytic derivatives with respect to the parameters.
+
+Your current FF is already close to the ideal case for this.
+
+## 1. Your current five parameters are a reasonable minimal basis
+
+You have
+
+$$
+k_{\rm SiSi},\quad k_{\rm SiH}
+$$
+
+and
+
+$$
+k_{\rm SiSiSi},\quad
+k_{\rm SiSiH},\quad
+k_{\rm HSiH}.
+$$
+
+I would **not immediately add generic 1–4 springs**. First I would determine exactly what part of the DFT Hessian these five terms fail to reproduce.
+
+In fact, your previous fitting work already suggests something interesting: environment typing improved the spectra substantially, while generic stretch–stretch terms in the Si network did little; the largest useful extra couplings were associated with H–Si–H stretch/bend physics. 
+
+For the specific problem you care about now—**splitting and dispersion of the ~2000 cm\(^{-1}\) surface Si–H band**—I think there is one addition more natural than a generic 1–4 distance spring:
+
+$$
+\boxed{
+E_{\rm SS}
+=
+\sum_{\langle a,b\rangle}
+J_{ab}\,q_aq_b
+}
+$$
+
+where \(q_a=\Delta r_{\rm SiH,a}\) is the stretch of one Si–H bond and \(q_b\) the stretch of a neighboring Si–H bond.
+
+This is literally the mechanical analogue of a vibrational tight-binding hopping.
+
+For a pair,
+
+$$
+E=
+\frac12 k(q_1^2+q_2^2)+Jq_1q_2
+$$
+
+gives symmetric/antisymmetric eigenvalues
+
+$$
+\lambda_\pm=k\pm J.
+$$
+
+So **\(J\) controls the splitting directly**.
+
+You might need only two such couplings:
+
+* \(J_{\rm sameSi}\): between the two H bonds of SiH\(_2\);
+* \(J_{\rm neighSi}\): between Si–H groups on neighboring surface Si atoms.
+
+That is much more directly related to the band dispersion you want to describe than `Si-Si-Si-Si` 1–4 distance springs.
+
+---
+
+# 2. Separate two different pieces of physics
+
+I think there are actually two effects hiding in your question.
+
+### A. Harmonic electronic/mechanical coupling
+
+One Si–H oscillator changes the force constant felt by the neighboring Si–H oscillator.
+
+That is naturally described by
+
+$$
+J q_i q_j.
+$$
+
+It produces splitting even in a perfectly relaxed structure and costs only one or two parameters.
+
+### B. Steric H···H interaction
+
+Two surface hydrogens get close and repel each other.
+
+That is different physics and should ideally be represented as an actual nonbonded potential,
+
+$$
+V_{\rm HH}(r).
+$$
+
+For example, even just
+
+$$
+V_{\rm HH}(r)=A e^{-br}
+$$
+
+could be enough.
+
+This can be extremely relevant on SiH\(_2\)-rich {100}, edges, corners, etc. because an Si–H stretch changes H···H distances. Its Hessian therefore creates an **environment-dependent coupling automatically**.
+
+And unlike a constant \(J\), it gets stronger when hydrogens are crowded.
+
+I would probably fix \(b\) initially to a plausible value and fit only \(A\). Otherwise \(A,b\) will be strongly correlated.
+
+So my minimal extension would be:
+
+$$
+\boxed{
+5\ {\rm existing}
++
+1\ {\rm SiH\!-\!SiH\ coupling}
++
+1\ {\rm H-H\ repulsion\ amplitude}
+}
+$$
+
+before adding generic 1–4 springs.
+
+---
+
+# 3. I would postpone the Si–Si–Si–Si 1–4 distance
+
+It may eventually be useful, particularly because your simple bond+angle model is known to miss some soft/cage modes. But mechanically a 1–4 distance spring is mostly acting as an indirect torsion/longitudinal constraint.
+
+It will mostly help:
+
+* cage rigidity;
+* torsional/shear modes;
+* lower frequencies.
+
+It seems less likely to be the missing physics behind the **Si–H stretching manifold**.
+
+Likewise an H–Si–Si–H 1–4 spring might work empirically, but I would rather model the actual H···H distance directly if sterics is the intended physics.
+
+---
+
+# 4. The crucial fitting trick: your Hessian is linear in stiffness parameters
+
+Suppose
+
+$$
+E(\mathbf R)
+=
+\sum_p k_p\,E_p(\mathbf R).
+$$
+
+Then at a fixed geometry,
+
+$$
+H^{FF}
+=
+\frac{\partial^2E}{\partial \mathbf R^2}
+=
+\sum_p k_p H_p
+$$
+
+where
+
+$$
+H_p =
+\frac{\partial^2E_p}{\partial \mathbf R^2}.
+$$
+
+Therefore
+
+$$
+\boxed{
+H^{FF}(\mathbf k)
+=
+\sum_p k_p H_p
+}
+$$
+
+is linear in the parameters.
+
+You don't even have to derive \(H_p\).
+
+Just calculate the FF Hessian with:
+
+```text
+k1=1, all others=0 -> H1
+k2=1, all others=0 -> H2
+...
+```
+
+or finite-difference an existing Hessian implementation with respect to each parameter.
+
+With only 5–10 parameters this cost is negligible.
+
+Then the fit is simply
+
+$$
+\min_{\mathbf k}
+\left\|
+\sum_p k_p H_p-H^{DFT}
+\right\|^2.
+$$
+
+This is ordinary linear least squares.
+
+And you immediately get something random annealing cannot give you: the **singular values of the fitting matrix**, which tell you whether the parameters are actually identifiable.
+
+---
+
+# 5. But I would NOT fit the entire Cartesian DFT Hessian
+
+Your observation is exactly correct.
+
+The DFT Hessian is dense:
+
+$$
+H_{ij}^{DFT}\ne0
+$$
+
+even for relatively distant atoms, whereas your local FF has
+
+$$
+H_{ij}^{FF}=0
+$$
+
+outside its interaction graph.
+
+If you minimize the Frobenius norm of the complete matrices,
+
+$$
+\|H^{FF}-H^{DFT}\|_F^2,
+$$
+
+you punish the FF for not representing physics it **by construction cannot represent**.
+
+That can distort the local parameters.
+
+But I also would **not simply delete all distant DFT matrix elements**. There is a better solution.
+
+---
+
+# 6. Fit a physically selected **projection of the Hessian**
+
+This is, I think, the key idea.
+
+Construct displacement vectors representing the coordinates your model is supposed to reproduce:
+
+$$
+Q=
+[
+q_{\rm SiH},
+q_{\rm SiSi},
+q_{\rm angle},
+\ldots
+].
+$$
+
+After suitable orthonormalization, compare
+
+$$
+\boxed{
+K_Q = Q^T D Q
+}
+$$
+
+where
+
+$$
+D=M^{-1/2}HM^{-1/2}.
+$$
+
+Do this for DFT and FF:
+
+$$
+K_Q^{DFT}=Q^T D^{DFT}Q,
+$$
+
+$$
+K_Q^{FF}
+=
+\sum_p k_p Q^TD_pQ.
+$$
+
+Then solve
+
+$$
+\min_{\mathbf k}
+\left\|
+K_Q^{FF}-K_Q^{DFT}
+\right\|_F^2.
+$$
+
+Still completely linear.
+
+And now the dense DFT Hessian is **not a problem at all**: its long-range electronic response is integrated into the effective force constants within the coordinate subspace you care about.
+
+This is very close conceptually to the Wilson-coordinate fitting machinery you already developed in the project.
+
+---
+
+# 7. For the Si–H problem specifically, use the **Si–H stretch subspace**
+
+This gives a particularly elegant fit.
+
+For every Si–H bond define a normalized local stretch coordinate
+
+$$
+g_a.
+$$
+
+Collect them into \(G\), orthogonalize them, and calculate
+
+$$
+K_{\rm H}^{DFT}=G^T D^{DFT}G.
+$$
+
+This matrix itself is scientifically interesting.
+
+Its diagonal
+
+$$
+(K_H)_{aa}
+$$
+
+tells you the effective local Si–H stiffness.
+
+Its off-diagonal terms
+
+$$
+(K_H)_{ab}
+$$
+
+measure coupling between Si–H oscillators.
+
+So before fitting anything, plot
+
+$$
+(K_H^{DFT})_{ab}
+$$
+
+against:
+
+* SiH–SiH graph distance;
+* H···H distance;
+* Si···Si distance;
+* whether they share the same Si;
+* same facet / across edge;
+* relative bond orientation.
+
+That tells you what additional FF term nature is asking for.
+
+For example, if you discover
+
+$$
+K_{ab}^{DFT}\approx J_0
+$$
+
+for adjacent hydrides regardless of H···H distance, add \(Jq_aq_b\).
+
+If instead you see something like
+
+$$
+K_{ab}^{DFT}
+\sim e^{-b r_{HH}},
+$$
+
+then H···H Pauli repulsion is clearly the relevant model.
+
+This is much better than guessing which 1–4 spring to add.
+
+---
+
+# 8. There is another extremely useful Hessian fitting objective: fit in the **DFT eigenmode basis**
+
+Suppose \(U\) contains the DFT modes in the region you care about, say the Si–H modes around 1800–2200 cm\(^{-1}\).
+
+DFT satisfies
+
+$$
+U^T D^{DFT} U
+=
+\mathrm{diag}(\omega_1^2,\ldots,\omega_m^2).
+$$
+
+Evaluate your FF in *the same fixed DFT basis*:
+
+$$
+K^{FF}_{mn}
+=
+u_m^TD^{FF}u_n.
+$$
+
+Then fit
+
+$$
+\boxed{
+\min_{\mathbf k}
+\left\|
+U^TD^{FF}(\mathbf k)U
+-
+\mathrm{diag}(\omega_{DFT}^2)
+\right\|^2
+}
+$$
+
+Again, this is linear in \(\mathbf k\).
+
+This has several advantages over fitting frequencies:
+
+* no diagonalization inside the optimizer;
+* no mode crossing problem;
+* no Hungarian assignment every iteration;
+* off-diagonal elements penalize wrong mode mixing;
+* you can select exactly the spectral region important experimentally.
+
+This may actually be the easiest first implementation.
+
+---
+
+# 9. I would combine several targets
+
+For example,
+
+$$
+L =
+w_H L_{\rm SiH}
++
+w_{\rm loc}L_{\rm local}
++
+w_{\rm mode}L_{\rm modes}
++
+\lambda L_{\rm reg}.
+$$
+
+Where:
+
+### Surface stretch matrix
+
+$$
+L_{\rm SiH}
+=
+\|G_H^T(D^{FF}-D^{DFT})G_H\|_F^2.
+$$
+
+This strongly constrains the experimental 2000 cm\(^{-1}\) problem.
+
+### General local valence space
+
+Include Si–Si stretches and angle bends:
+
+$$
+L_{\rm local}
+=
+\|Q^T(D^{FF}-D^{DFT})Q\|_F^2.
+$$
+
+### Selected DFT modes
+
+$$
+L_{\rm modes}
+=
+\|U^TD^{FF}U-\Omega_{DFT}^2\|_F^2.
+$$
+
+### Regularization
+
+Keep parameters near sensible UFF/previous-fit values:
+
+$$
+L_{\rm reg}
+=
+\sum_p
+\left(
+\frac{k_p-k_p^0}{\sigma_p}
+\right)^2.
+$$
+
+All of these remain a **quadratic linear least-squares problem**.
+
+---
+
+# 10. Use bounded / regularized least squares, not unconstrained inversion
+
+Your conditioning concern is very real.
+
+Build
+
+$$
+A\mathbf k\simeq\mathbf b
+$$
+
+and inspect the SVD:
+
+$$
+A=U\Sigma V^T.
+$$
+
+If two parameters give almost the same Hessian change, a small singular value will expose it immediately.
+
+Then either:
+
+* merge the parameters;
+* fix one;
+* or regularize them toward common values.
+
+For ordinary positive stiffnesses use bounds
+
+$$
+k_p\ge0.
+$$
+
+Cross-couplings \(J\) can be signed.
+
+In Python, `scipy.optimize.lsq_linear()` is already enough.
+
+For ridge regularization just augment
+
+$$
+A'=
+\begin{bmatrix}
+A\\
+\sqrt{\lambda}L
+\end{bmatrix},
+\qquad
+b'=
+\begin{bmatrix}
+b\\
+\sqrt{\lambda}Lk_0
+\end{bmatrix}.
+$$
+
+No nonlinear optimizer is needed.
+
+---
+
+# 11. Should you compute only nearest-neighbor pieces of the DFT Hessian?
+
+**Yes, potentially—but I would change exactly what you compute.**
+
+Simply calculating only Cartesian blocks
+
+$$
+H_{ij}
+$$
+
+for bonded neighbors is useful, but it is not the most efficient target.
+
+Instead compute the **directional Hessian matrix elements that correspond to your internal coordinates**:
+
+$$
+K_{ab}
+=
+g_a^T H g_b.
+$$
+
+You do **not need the full Hessian** to obtain these.
+
+If \(g_a\) is one local displacement pattern, displace the molecule by
+
+$$
+\mathbf R_\pm
+=
+\mathbf R_0\pm\delta g_a
+$$
+
+and calculate the forces.
+
+Then
+
+$$
+Hg_a
+\simeq
+-\frac{
+F(\mathbf R_+)-F(\mathbf R_-)
+}{2\delta}.
+$$
+
+From that one pair of DFT force calculations you obtain
+
+$$
+K_{ba}
+=
+g_b^T H g_a
+$$
+
+for **every** \(b\).
+
+So if you have \(m\) selected internal coordinates, you need approximately
+
+$$
+2m
+$$
+
+DFT force calculations rather than
+
+$$
+6N
+$$
+
+Cartesian force calculations.
+
+That is particularly attractive for larger PySCF/GPAW references.
+
+For example, if your main question is the surface Si–H manifold and there are 20 surface Si–H bonds, 40 DFT force calculations give the complete
+
+$$
+20\times20
+$$
+
+coupling matrix between them.
+
+That is much more useful than a sparse subset of arbitrary Cartesian Hessian entries.
+
+---
+
+# 12. There is one subtle point: local terms vs prestress
+
+For the cleanest Hessian fit, I would initially evaluate all methods at **one common DFT geometry** and set the harmonic FF equilibrium values to that geometry:
+
+$$
+r_0=r^{DFT},\qquad
+\theta_0=\theta^{DFT}.
+$$
+
+Then bond/angle terms have zero force individually and the Hessian reflects pure stiffness.
+
+This makes the fit almost perfectly linear and interpretable.
+
+Nonbonded H···H repulsion is different: it is nonzero-force at the DFT geometry, and the equilibrium comes from cancellation with the covalent forces.
+
+So I would fit in two stages:
+
+**Stage 1: harmonic model**
+
+Fit the five valence parameters + perhaps \(J_{\rm SiH-SiH}\) to projected DFT Hessians.
+
+**Stage 2: sterics/geometry**
+
+Fit H···H repulsion using DFT forces/energies from geometries where neighboring hydrides are pushed toward one another.
+
+Then recompute the Hessian and see how much the surface-band prediction improves.
+
+That prevents the H···H repulsion from destabilizing the otherwise well-conditioned harmonic fit.
+
+---
+
+# 13. A very concrete development sequence
+
+I would do the following before adding much more physics:
+
+1. Take **SiH\(_4\), Si\(_2\)H\(_6\), Si\(_{10}\)H\(_{16}\)** and one small motif-complete NC.
+
+2. Put all Hessians at the same DFT geometry.
+
+3. Generate the five unit-parameter Hessians
+
+$$
+H_p.
+$$
+
+4. Fit the five existing parameters by projected linear least squares.
+
+5. Examine residual
+
+$$
+R=D^{DFT}-D^{FF}.
+$$
+
+6. Project the residual onto the Si–H stretch basis:
+
+$$
+R_H=G_H^TRG_H.
+$$
+
+7. Plot off-diagonal residuals against H···H distance and surface topology.
+
+This one plot will tell you what to add.
+
+I predict there are three plausible outcomes:
+
+* systematic nearest-neighbor Si–H coupling → add \(Jq_iq_j\);
+* strong exponential dependence on H···H distance → add H–H repulsion;
+* residual correlates mainly with stretch/bend coordinates on SiH\(_2\) → add one \(r\)-\(\theta\) cross term.
+
+Only if the residual instead lives mostly in the Si backbone and soft modes would I add a Si–Si–Si–Si 1–4/torsion term.
+
+That gives you a disciplined **one-extra-parameter-at-a-time model selection procedure**, rather than guessing more UFF terms.
+
+And because every candidate term contributes another known basis Hessian \(H_p\), you can immediately see from the SVD whether the new parameter is independently identifiable before accepting it.
+
+
+---
+
+# USER
+
+OK, I remember we were already doing some of these things, also I remember we made some localized hessian basis called 
+ **Wilson B-matrix / GF method** 
+can you review it ? Is it usefull? there were some problems, can we overcome it? Or should we pursure fundamentally different apporach like what you just proposed?
+
+more is here
+https://github.com/ProkopHapala/FireCore/tree/prokop
+
+\---
+
+From my coding agent
+
+\---
+
+# USER
+
+OK, about the fitting - I remember we were doing some special ftiing of hessian in local frame (like bonds and angles, it was named after some guy, I do not remember can you find it)?
+
+---
+
+# Cursor Grok 4.6
+
+Yes — that’s **Wilson** (E. Bright Wilson): the **Wilson B-matrix / GF method**. Internal coordinates are bonds and angles; each has a Wilson vector \(b = \partial q / \partial r\).
+
+SSOT: [`doc/Topics/FFfit/HessianFitting_Theory.md`](doc/Topics/FFfit/HessianFitting_Theory.md)
+
+Two different uses, don’t mix them:
+
+1. **Least-norm Wilson \(F = C^{+T} D C^+\)** — diagnostic only. The diagonal is **not** a unique per-bond DFT stiffness (redundant bonds+angles). That was the “central Si–Si looks soft” artifact.
+2. **Gauge-invariant Wilson row-space residual** — the actual fit, together with modes + graph-local Hessian. That is `fit_hybrid_hessian()` in `pyBall/FFfit.py` / `FFfit_utils.py`, CLI `tests/tSiNCs/test_FFfit.py`.
+
+That is **not** the recent own-min stretch RMSE (`fit_mmff_kss_pyscf.py`). Wilson fitting is frozen-geometry Hessian matching (FFfit). Own-min stretch RMSE is FIRE then spectrum.
+
+The recent C cube vs octahedron anneal never used this Wilson machinery.
+
+---
+
+# USER
+
+OK, do we have some report of the results we get from it I remmber we had some rpoblems. Do we have some topical audit of this hessian fitting ?
+
+---
+
+# Cursor Grok 4.6
+
+Yes on the **results**, no on a **dedicated FFfit topical audit**.
+
+**Results report:** [`tests/tSiNCs/SiNCs_FFfit_summary.md`](tests/tSiNCs/SiNCs_FFfit_summary.md) (2026-07-10). Six PySCF systems: `SiH4` + `Si_R3p8`…`Si_R6p0`. Hybrid objective (modes + local Hessian + Wilson row-space).
+
+| Model | Mean freq RMSE |
+|-------|----------------|
+| Elemental bond+angle | 41 cm⁻¹ |
+| Hierarchical Si / SiH / SiH₂ / SiH₃ | **32 cm⁻¹** |
+| + stretch–bend | Hessian relFrob 6.9% → 5.9%; spectrum barely better |
+
+Fitted Si–Si \(k\) stayed ~**9.2–9.8 eV/Å²**. That is frozen-geometry Hessian matching, **not** an own-min FTIR spectrum.
+
+**The problem you remember:** Wilson least-norm \(F\) made **central Si–Si look soft**. That diagonal is gauge-dependent in a redundant bond/angle basis. It is **diagnostic only**. Hierarchy regularization was the fix so bulk bonds are not dumped into acoustic modes. Theory: [`doc/Topics/FFfit/HessianFitting_Theory.md`](doc/Topics/FFfit/HessianFitting_Theory.md) §6.3–6.4. Chat log of the artifact: [`HessianFit.chat.md`](doc/Topics/FFfit/HessianFit.chat.md).
+
+**Other recorded limits:** UFF torsions **exist but are not recommended** (indefinite prestress) — [`Dihedral_Torsion.md`](doc/Topics/FFfit/Dihedral_Torsion.md). Cross terms only with `--equilibrium local`. This benchmark is **small all-Si spheres**, not the L1 cube/octa PBE set.
+
+**Audit status:** there is **no** `doc/topical_audit/FFfit.md`. FFfit is a subsection of [`topical_audit.md`](doc/topical_audit/topical_audit.md) §2d, plus [`SiNCs.md`](doc/topical_audit/SiNCs.md) §3.4 and graph/Wilson inventory in [`molecular_topology.md`](doc/topical_audit/molecular_topology.md). `Dihedral_Torsion.md` is a TopicalAudit, but only for dihedrals.
+
+---
+
+# Chat GPT 5.6 sol
+
+Yes. I reviewed the current Wilson/GF machinery, the fitting code, the results report, and the current theory document in `prokop`. My conclusion is:
+
+> **Do not abandon the Wilson machinery. But change how we use it.**
+>
+> The old attempt to extract a “DFT spring constant for each bond” from the pseudoinverse Wilson \(F\)-matrix was fundamentally ambiguous. The current code already fixes that mathematical mistake. However, the present **full Wilson row-space objective is more global than it looks**, and for your new Si–H surface problem I would replace it by **restricted, chemically chosen Wilson subspaces**—especially the Si–H stretch manifold.
+>
+> In fact, what I proposed in the previous message is not a fundamentally different approach. It is essentially the **localized/restricted version of the Wilson approach you already implemented**.
+
+There is quite a lot worth reusing.
+
+## What you already have is better than I realized
+
+The underlying FFfit architecture is sound. At fixed geometry, it explicitly uses
+
+$$
+H^{FF}(\mathbf k)=\sum_p k_p A_p,
+$$
+
+with the exact sensitivity
+
+$$
+A_p=f''(q)\,bb^T+f'(q)\,C,
+$$
+
+where \(b=\partial q/\partial r\) is precisely the Wilson vector and the second term accounts for prestress. The code already solves the resulting problem with bounded linear least squares, column scaling and Tikhonov regularization. 
+
+So for stiffness constants, **the random annealing should no longer be the primary fitter**. It is useful for testing a nonlinear end-to-end model after relaxation, but not for the frozen-geometry stiffness fit.
+
+Your current production test actually combines three linear objectives: DFT normal modes, graph-local Cartesian Hessian blocks, and a Wilson internal-coordinate objective.  The graph-local part already implements exactly the idea we discussed before: ignore DFT Hessian blocks beyond the graph range that the local FF cannot represent. For bond+angle FF it uses graph distance \(\le2\); distance 3 is available when testing 1–4 interactions. 
+
+And numerically the present fit isn't actually terribly ill-conditioned after scaling and regularization: the reported conditions are only about 1.3–1.7. The 5-parameter elemental model gives ~41 cm\(^{-1}\) mean frequency RMSE; hierarchical environment typing lowers it to ~32 cm\(^{-1}\), whereas adding many cross terms gives relatively modest further spectral improvement. 
+
+That is a good starting point.
+
+---
+
+# The problem with the original Wilson \(F\)-matrix
+
+Suppose
+
+$$
+q=B x,
+$$
+
+and in mass-weighted coordinates
+
+$$
+C=B M^{-1/2}.
+$$
+
+If the harmonic internal-coordinate energy is
+
+$$
+E=\frac12 q^TFq,
+$$
+
+then
+
+$$
+D=C^TFC,
+\qquad
+D=M^{-1/2}HM^{-1/2}.
+$$
+
+You tried to invert this as
+
+$$
+F=C^{+T}DC^+.
+$$
+
+The code still provides this as `internal_hessian_projection()`, but now correctly warns that when bonds + angles form a **redundant internal-coordinate set**, the resulting \(F\) is merely the minimum-norm representative. Its individual diagonal entries depend on the coordinate gauge and SVD cutoff; they are not uniquely defined bond stiffnesses. 
+
+This explains the old phenomenon where a central Si–Si bond appeared strangely soft. The curvature wasn't necessarily physically soft; the pseudoinverse was free to distribute the same Cartesian curvature among many mutually redundant bond/angle coordinates.
+
+So:
+
+$$
+\boxed{\text{Do not fit or interpret }F_{ii}^{DFT}\text{ as individual spring constants.}}
+$$
+
+That problem cannot really be “fixed” because it is not primarily numerical. It is non-uniqueness.
+
+The current report correctly relegates this least-norm \(F\) to a diagnostic only. 
+
+---
+
+# The current row-space fix is mathematically correct — but there is another subtlety
+
+The new code does something much better.
+
+Take the SVD
+
+$$
+C=U\Sigma V^T,
+$$
+
+retain the independent directions, and define
+
+$$
+Q=V_r.
+$$
+
+Then fit
+
+$$
+L_W=
+\left\|
+Q^T(D^{FF}-D^{DFT})Q
+\right\|_F^2.
+$$
+
+That is invariant to rescaling or nonsingular recombination of your redundant internal coordinates. This is the “gauge-invariant Wilson row-space” fit now used in `assemble_hybrid_hessian_system()`.  
+
+That completely avoids the “central bond soft because of gauge” problem.
+
+However, I see an important conceptual issue that isn't emphasized in the existing documentation.
+
+For a normal connected nonlinear molecule, if the collection of all bonds + angles is sufficiently complete,
+
+$$
+\operatorname{rank}(B)=3N-6.
+$$
+
+Then \(Q\) spans essentially the **entire vibrational Cartesian space**.
+
+Define
+
+$$
+P_{\rm vib}=QQ^T.
+$$
+
+Then
+
+$$
+\left\|Q^T\Delta DQ\right\|_F
+=
+\left\|P_{\rm vib}\Delta D P_{\rm vib}\right\|_F.
+$$
+
+In other words, once the Wilson bond+angle set spans all \(3N-6\) vibrational DOFs, the “internal-coordinate objective” has **lost most of its chemical locality**. It is basically the full vibrational Hessian norm with translations/rotations removed.
+
+That is not bad—it is an excellent stable global Hessian objective—but it isn't really telling the fitter:
+
+> reproduce these bonds and these angles.
+
+It is saying:
+
+> reproduce all curvature within the vibrational subspace.
+
+And that makes it partly redundant with your **mode-space objective**.
+
+Indeed, your mode objective evaluates
+
+$$
+K=V^TDV
+$$
+
+in the DFT eigenmode basis. If you used all modes, equal weights, and full off-diagonal mixing weight 1, then
+
+$$
+\|V^T\Delta DV\|_F
+$$
+
+would be mathematically the same global vibrational Frobenius norm, merely expressed in another orthonormal basis.
+
+The current implementation differs because it deliberately frequency-weights the mode diagonals and uses only 0.1 by default for off-diagonal mode mixing. 
+
+So the three current objectives are really:
+
+$$
+\begin{array}{ll}
+\text{MODE} & \text{global vibrational Hessian, spectrally reweighted},\\
+\text{WILSON row space} & \text{global vibrational Hessian, essentially unweighted},\\
+\text{LOCAL} & \text{actually local Cartesian curvature}.
+\end{array}
+$$
+
+This is why I would **not throw Wilson away**, but I also wouldn't automatically give all three weight 1 as the current CLI does. The current defaults indeed set mode/local/internal all to 1. 
+
+For the new surface-FTIR fit, I think that is unnecessarily opaque.
+
+---
+
+# What I would do instead: **restricted Wilson spaces**
+
+This is where Wilson becomes extremely useful for your current physics.
+
+Instead of
+
+$$
+B=
+B_{\rm all\ bonds+angles},
+$$
+
+construct several chemically meaningful \(B\)'s.
+
+For example
+
+$$
+B_H =
+\begin{bmatrix}
+b_{\mathrm{SiH}_1}\\
+b_{\mathrm{SiH}_2}\\
+\vdots
+\end{bmatrix},
+$$
+
+containing **only Si–H stretches**.
+
+Or
+
+$$
+B_{\rm surf}
+=
+\begin{bmatrix}
+B_{\rm SiH}\\
+B_{\rm HSiH}\\
+B_{\rm SiSiH}
+\end{bmatrix}
+$$
+
+for the surface valence coordinates.
+
+Or separately
+
+$$
+B_{\rm core}=
+[B_{\rm SiSi},B_{\rm SiSiSi}].
+$$
+
+Now the row-space has dimension perhaps 20–100, rather than \(3N-6\), and
+
+$$
+Q_H^T D Q_H
+$$
+
+really does ask:
+
+> What is the curvature inside the Si–H stretching manifold?
+
+That is *exactly* what we need for Katerina's 2000–2200 cm\(^{-1}\) region.
+
+I would therefore change the fitting objective conceptually from
+
+$$
+L_{\rm internal(all)}
+$$
+
+to something like
+
+$$
+L=
+w_H L_{\rm SiH}
++
+w_{\rm surf}L_{\rm surf}
++
+w_{\rm local}L_{\rm Cartesian-local}
++
+w_{\rm mode}L_{\rm selected\ modes}.
+$$
+
+And initially I would probably make \(w_H\) dominant.
+
+---
+
+# Even better: use a **localized orthogonal Wilson basis**
+
+For fitting a subspace, arbitrary \(Q\) from the SVD is fine.
+
+For interpreting coupling between individual Si–H groups, however, SVD vectors become delocalized combinations. We want a basis that remains as close as possible to the physical bonds.
+
+For the Si–H Wilson matrix define
+
+$$
+C_H=B_HM^{-1/2}.
+$$
+
+Its row Gram matrix is
+
+$$
+G_H=C_HC_H^T.
+$$
+
+If the Si–H coordinates are linearly independent—which they almost certainly will be—perform symmetric/Löwdin orthogonalization:
+
+$$
+\boxed{
+R_H=G_H^{-1/2}C_H
+}
+$$
+
+so that
+
+$$
+R_HR_H^T=I.
+$$
+
+Unlike arbitrary SVD rotation, this produces orthogonal coordinates that remain maximally close to the original **individual local Si–H stretches**.
+
+Then calculate
+
+$$
+\boxed{
+K_H=R_HD R_H^T.
+}
+$$
+
+This gives exactly the matrix I wanted in our previous discussion:
+
+$$
+K_H=
+\begin{pmatrix}
+\epsilon_1 & J_{12} & J_{13}&\cdots\\
+J_{12}&\epsilon_2&J_{23}&\cdots\\
+\vdots&&&
+\end{pmatrix}.
+$$
+
+Now:
+
+$$
+\epsilon_i=(K_H)_{ii}
+$$
+
+is a meaningful effective local oscillator curvature, while
+
+$$
+J_{ij}=(K_H)_{ij}
+$$
+
+is the coupling between two local Si–H stretches.
+
+This is basically your **Wilson machinery turned into a vibrational tight-binding model**.
+
+And this is much closer to what we actually want to learn from DFT.
+
+---
+
+# This immediately helps decide what term your FF is missing
+
+After fitting your present five parameters, calculate
+
+$$
+\Delta K_H
+=
+K_H^{DFT}-K_H^{FF}.
+$$
+
+Then inspect its off-diagonal terms.
+
+Suppose two neighboring monohydride groups are
+
+$$
+H_i-\mathrm{Si}_i-\mathrm{Si}_j-H_j.
+$$
+
+Plot
+
+$$
+(\Delta K_H)_{ij}
+$$
+
+against H···H distance, Si···Si distance, bond orientations, facet identity and graph distance.
+
+Then we can distinguish very cleanly:
+
+$$
+\Delta K_{ij}\approx\mathrm{constant}
+$$
+
+for nearest-neighbour SiH groups → explicit mechanical coupling
+
+$$
+E=Jq_iq_j
+$$
+
+is appropriate.
+
+If instead
+
+$$
+\Delta K_{ij}
+$$
+
+strongly tracks \(r_{HH}\), that points toward the H···H Pauli/steric potential.
+
+If the residual is mostly inside SiH\(_2\), correlated with H–Si–H motion, then stretch–bend coupling is the missing term.
+
+This would make the **model design data-driven** instead of deciding beforehand between 1–4 springs, H–H repulsion and cross terms.
+
+---
+
+## One important detail about the cross term you already tested
+
+Your existing “stretch–stretch” implementation is **not quite the coupling I was suggesting for facet dispersion**.
+
+`compute_cross_sensitivity()` loops over angles \(i-j-k\) and couples the stretches of the two bonds sharing central atom \(j\):
+
+$$
+E_{rr}=K_{rr}\,q_{ij}q_{jk}.
+$$
+
+So for H–Si–H this couples the two hydrides on **one SiH\(_2\)** group. The implementation explicitly constructs the two bonds belonging to each angle and forms
+
+$$
+g_1g_2^T+g_2g_1^T.
+$$
+
+That is the cross term already tested. 
+
+But the coupling responsible for finite {111} SiH surface bands is more naturally
+
+$$
+\boxed{
+E_{\rm neigh}
+=
+J
+\,q_{\mathrm{Si_i-H_i}}
+\,q_{\mathrm{Si_j-H_j}}
+}
+$$
+
+across a **Si–Si bond**:
+
+$$
+H_i-\mathrm{Si}_i-\mathrm{Si}_j-H_j.
+$$
+
+That is a bond-pair coupling over an H–Si–Si–H topology and is *not* the same term.
+
+This matters because the current report says stretch–stretch coupling gave almost no improvement for the Si network, while the largest cross correction was H–Si–H stretch–bend.  But that result does **not** demonstrate that neighboring surface SiH oscillators are uncoupled; it tested a somewhat different coupling topology.
+
+I would explicitly add this H–Si–Si–H bond-pair coupling as a **diagnostic parameter**, not necessarily immediately as a permanent FF term.
+
+---
+
+# Wilson can also save you DFT reference cost
+
+And here the connection to our previous discussion becomes especially nice.
+
+The current `internal_hessian_projection()` requires the complete \(H\).
+
+But mathematically you do not need it.
+
+Choose one relevant normalized displacement \(g_a\), for example a localized Si–H stretch. Compute DFT forces at
+
+$$
+x_\pm=x_0\pm\delta g_a.
+$$
+
+Then
+
+$$
+H^{DFT}g_a
+\simeq
+-\frac{F(x_+)-F(x_-)}{2\delta}.
+$$
+
+One pair of DFT calculations therefore gives an entire **Hessian-vector product**.
+
+You can then calculate all selected couplings
+
+$$
+K_{ba}
+=
+g_b^T H g_a.
+$$
+
+If there are \(m\) Si–H stretch coordinates, the complete \(m\times m\) Si–H coupling matrix costs roughly
+
+$$
+2m
+$$
+
+DFT gradient calculations—not \(6N\).
+
+This partial-reference idea is already captured in your uploaded discussion: 20 selected surface Si–H coordinates would need about 40 force calculations to obtain the complete 20×20 coupling matrix. 
+
+There is an even stronger version for fitting.
+
+You do not actually need to reduce the reference to \(g_b^THg_a\). Fit the whole Hessian-vector response:
+
+$$
+\boxed{
+\sum_p k_p A_p g_a
+\approx
+H^{DFT}g_a.
+}
+$$
+
+Since you already have the analytic sensitivity matrices \(A_p\), this is still linear in \(k_p\).
+
+So each selected QM displacement gives \(3N\) fitting observations.
+
+I really like this formulation because it avoids:
+
+* computing the full QM Hessian;
+* pseudoinverting Wilson coordinates;
+* comparing irrelevant remote Hessian blocks;
+* diagonalizing during fitting.
+
+And the physical directions you probe are chosen deliberately.
+
+---
+
+# I would therefore simplify the existing hybrid fitter rather than replace it
+
+For the next generation I would make the following concrete changes:
+
+1. **Keep `FFfit` sensitivity matrices and bounded linear LSQ unchanged.** They are the valuable core.
+
+2. Keep the least-norm Wilson \(F=C^{+T}DC^+\) **only for visualization/diagnostics**, with the current warning. Never derive individual FF constants from its diagonals.
+
+3. Add `build_wilson_matrix(..., selection=...)`, or simpler specialist builders:
+   `SiH_stretches`, `surface_bends`, `core_valence`.
+
+4. Add a `lowdin_wilson_basis()` returning \(R=(CC^T)^{-1/2}C\), along with singular values/condition.
+
+5. Add a `projected_coupling_matrix()` returning
+
+   $$
+   K=RDR^T.
+   $$
+
+   This should become the primary diagnostic for surface Si–H coupling.
+
+6. Add a **directional/HVP fitting mode**:
+
+   $$
+   A_p g_a \rightarrow H_{\rm ref}g_a.
+   $$
+
+   It should accept either a stored complete Hessian or forces from ± directional displacements.
+
+7. Change the default new Si-H fit from today's `mode=1, local=1, internal=1` to a chemically targeted objective—roughly **SiH-subspace + graph-local**, with the full mode objective used mainly as validation.
+
+8. Add one candidate `H-Si-Si-H stretch–stretch` coupling parameter and separately an H···H repulsive potential; use \(\Delta K_H\) to decide which is justified.
+
+I would also keep your existing 16-parameter Si/SiH/SiH₂/SiH₃ hierarchy, but **as a diagnostic oracle rather than necessarily the production FF**. It already showed that environment dependence is real, lowering the spectral RMSE from ~41 to ~32 cm\(^{-1}\).  If a simple H···H repulsion or one neighbouring-SiH coupling can reproduce those environment-dependent shifts, you can collapse many empirical subtype parameters back into a much smaller physically motivated model.
+
+So conceptually I would aim for:
+
+$$
+\boxed{
+\text{DFT directional response}
+\;\rightarrow\;
+K_{\rm SiH}^{DFT}
+\;\rightarrow\;
+\text{5-param FF}
+\;\rightarrow\;
+\Delta K_{\rm SiH}
+\;\rightarrow\;
+\text{one physically motivated new term}
+}
+$$
+
+rather than continuing to make the global hybrid loss more sophisticated.
+
+The **Wilson B matrix absolutely remains central**, but mainly as the language for saying *which local displacement subspace we care about*. That is, I think, the clean resolution of the problems you encountered before.
+
+
+
+
+
+
+
+
+---
+
+# USER
+
+OK, thank you this is extremely valuable disicussionb and your undertaing and insight into the problem is obvious I learn a lot new. 
+
+I completely agree that point of Willson and orironal motivation is to make localized set of chemically meaningfull vibrations ivolving mostly just individual bonds/angles (pairs, triples max quadrupoles of atoms) not global eigenmobeds of whole system! we definitely should restrict it and focus on these. I also very much the odea to restrict the cost of DFT reference so that I can do finite differences just fro pairs of nearby atoms which is ~O(N) elements for large system instead of O(n^2)
+
+However some things are still not quite clear. You say I should simply compare just the nearest neighbor elements of the hessian between forcefield and DFT reference. But if other non-local element in DFT are large and non-zero and I will diagonalize that Hessian, I will get very different eigenfrequencies than form my forcefield even when all nearest neighbors ae exacly the same. Now my physical intuition a bit hit ist limit and I'm confused. If I imagine physically I'm bending the angle or streching the bond (basically holding the atoms) then I think the narest neighbor elements are all what matters. And the global deformation (like holed one side of the crystal or polymer) are just combination of these local which cna be obtained from the local by diagonalization/inversion (linear elestic response to external force RHS). This suggest intuitively I would expect that other than nearest neighbor elements would be near zero also in DFT (I should double check, but if I remember they were not), so why it is? Or how it should be? What should one expect? And how to reconsiliate these two views? Intuitivelly I would think that covalent crystal is relly just system of local springs (especially for large band gap like diamond, where the desity matrix decay very fast - exponentially with exponent being bandgap width). OK, there can be also some electrostatic and van-der-walls but those are like 2-3 orders of maginitude weaker than chemical bonds and we can neglect them.
+
+
+---
+
+
+
+
+
+
+
+
+# USER
+
+Yes — this is exactly the subtle point. Your intuition is mostly right, but there are **three different objects that are easy to mentally mix together**:
+
+$$
+\boxed{\text{local force constants }H}
+\qquad
+\boxed{\text{relaxed response }H^{-1}}
+\qquad
+\boxed{\text{effective Hessian after eliminating hidden DOFs}}
+$$
+
+The first can be very local while the latter two are dense.
+
+And I should slightly correct my previous wording: I would **not assume beforehand that matching only nearest-neighbor Cartesian Hessian blocks is sufficient**. I would first test whether the DFT Hessian is *effectively local* for the spectral subspace you care about. Your existing `local_hessian_mask()` already embodies this approximation: for bond+angle FF it keeps graph distance \(\le2\) because those are the blocks the model can actually generate, rather than penalizing the FF for missing longer-range QM blocks. 
+
+## A purely local spring network already has completely global vibrations
+
+Consider the simplest 1D chain with nearest-neighbor springs:
+
+$$
+E=\frac{k}{2}\sum_i(x_{i+1}-x_i)^2.
+$$
+
+Its Hessian is sparse,
+
+$$
+H=
+k\begin{pmatrix}
+1&-1&0&0&\cdots\\
+-1&2&-1&0&\cdots\\
+0&-1&2&-1&\cdots\\
+\vdots
+\end{pmatrix}.
+$$
+
+There is **zero direct force constant between distant atoms**.
+
+Nevertheless, diagonalizing it gives perfectly global phonons,
+
+$$
+u_j(q)\sim e^{iqj},
+$$
+
+with dispersion
+
+$$
+\omega^2(q)=\frac{4k}{m}\sin^2\frac q2.
+$$
+
+So you absolutely do **not** need long-range Hessian elements to obtain global elastic modes, long-wavelength bending, sound waves, etc.
+
+Likewise, applying a force at one end produces displacement everywhere because
+
+$$
+x=H^{-1}f,
+$$
+
+and although \(H\) is sparse,
+
+$$
+\boxed{H^{-1}\text{ is generally dense}.}
+$$
+
+That corresponds almost exactly to your intuition of holding/pushing one part of a crystal and seeing the deformation propagate through the local bonds.
+
+So far, you are completely right.
+
+---
+
+# Then why is a DFT Hessian dense?
+
+There are several reasons, and the first one is conceptually important.
+
+DFT does **not** give you a nuclear Hessian before the electrons respond. It gives you the Born–Oppenheimer energy
+
+$$
+E_{\rm BO}(R)=\min_{\psi}E(R,\psi).
+$$
+
+The electronic degrees of freedom have already been eliminated.
+
+Imagine schematically that near equilibrium the complete electron+nucleus problem had a Hessian
+
+$$
+K=
+\begin{pmatrix}
+K_{RR}&K_{Re}\\
+K_{eR}&K_{ee}
+\end{pmatrix}.
+$$
+
+When the nuclei move, the electrons relax:
+
+$$
+\delta e=-K_{ee}^{-1}K_{eR}\delta R.
+$$
+
+Substituting this back gives the nuclear Born–Oppenheimer Hessian
+
+$$
+\boxed{
+H_{\rm BO}
+=
+K_{RR}
+-
+K_{Re}K_{ee}^{-1}K_{eR}.
+}
+$$
+
+And \(K_{ee}^{-1}\), an electronic susceptibility/response function, need not be sparse.
+
+So even if the **underlying electronic Hamiltonian is local**, integrating out the electrons generates effective interactions between nuclear displacements at different positions.
+
+This is precisely analogous to eliminating intermediate atoms from a spring network.
+
+If
+
+$$
+H=
+\begin{pmatrix}
+H_{AA}&H_{AB}\\
+H_{BA}&H_{BB}
+\end{pmatrix}
+$$
+
+and you allow \(B\) to relax, the effective stiffness seen by \(A\) becomes
+
+$$
+\boxed{
+H_A^{\rm relaxed}
+=
+H_{AA}
+-
+H_{AB}H_{BB}^{-1}H_{BA}.
+}
+$$
+
+That second term is generally dense.
+
+So there are two distinct notions:
+
+**Clamped-ion coupling:** move atom \(j\), hold every other nucleus fixed, measure force on atom \(i\). This is the Cartesian Hessian element \(H_{ij}\).
+
+**Relaxed effective coupling:** move something and allow the rest of the crystal to respond. This involves inverses/Schur complements and is intrinsically nonlocal.
+
+---
+
+# But shouldn't the Born–Oppenheimer Hessian still become local in a wide-gap covalent material?
+
+Yes. This is where your density-matrix intuition is valuable.
+
+For a gapped insulator, electronic response is “nearsighted”: localized perturbations produce responses that decay rapidly with distance. Therefore the **short-range electronic contribution to interatomic force constants should also decay strongly**.
+
+This is why real-space phonon force constants are routinely truncated after a finite number of neighbor shells.
+
+For diamond in particular I would expect very strong locality.
+
+For Si it should be somewhat less local because the gap is much smaller, but still reasonably short-ranged.
+
+There is an important exception:
+
+$$
+\text{long-range electrostatics}.
+$$
+
+In polar crystals, displacement-induced dipoles give force constants behaving asymptotically like
+
+$$
+H_{ij}^{\rm dipole}\sim\frac{1}{r_{ij}^3}.
+$$
+
+This is the famous long-range dipole-dipole part of lattice dynamics.
+
+Bulk elemental diamond/Si has no ordinary polar optical coupling of that kind. But **your H-terminated surface does** have Si–H bond dipoles and dynamic dipoles. So surface Si–H modes can have a weak but genuinely long-range coupling.
+
+That is particularly relevant to exactly the feature you're interested in: **splitting of a nearly degenerate manifold of Si–H oscillators**.
+
+---
+
+# “Weak” interactions can matter surprisingly much for the 2000 cm⁻¹ fine structure
+
+Suppose two identical Si–H oscillators have stiffness \(k\) and coupling \(J\):
+
+$$
+K=
+\begin{pmatrix}
+k&J\\
+J&k
+\end{pmatrix}.
+$$
+
+Then
+
+$$
+\omega_\pm^2=\frac{k\pm J}{m}.
+$$
+
+For \(J\ll k\),
+
+$$
+\frac{\Delta\omega}{\omega}
+\sim
+\frac{J}{k}.
+$$
+
+More precisely each branch moves by approximately
+
+$$
+\frac{\delta\omega}{\omega}\simeq \frac{J}{2k}.
+$$
+
+So if
+
+$$
+J/k=0.01,
+$$
+
+only a **1% force-constant coupling**, the shift is roughly
+
+$$
+0.5\%\times2000\ {\rm cm^{-1}}
+\sim 10\ {\rm cm^{-1}}.
+$$
+
+That is already very visible in FTIR.
+
+Even
+
+$$
+J/k\sim10^{-3}
+$$
+
+can give order-one cm\(^{-1}\) shifts.
+
+Therefore something which is “100× weaker than a covalent bond” can safely be ignored for structural stability but **not necessarily for fine splitting of nearly resonant Si–H modes**.
+
+That distinction is important.
+
+---
+
+# So the first thing we should determine is whether the DFT Hessian is actually strongly nonlocal
+
+A color plot of a Hessian is misleading because analytic DFT will rarely give exact zeros.
+
+What matters is the magnitude of \(3\times3\) atom blocks
+
+$$
+h_{ij}=\|H_{ij}\|_F
+$$
+
+versus graph distance and physical distance.
+
+I would make one very simple diagnostic for Si\(_{10}\)H\(_{16}\) and the smallest NC:
+
+$$
+h(d)=
+\left\{
+\|H_{ij}\|_F:
+d_{\rm graph}(i,j)=d
+\right\}.
+$$
+
+Plot distributions for
+
+$$
+d=0,1,2,3,4,\ldots
+$$
+
+and separately classify
+
+$$
+\mathrm{Si-Si,\ Si-H,\ H-H,\ Si\cdots H}.
+$$
+
+That immediately tells us whether “dense” means
+
+> many matrix elements of \(10^{-5}\) alongside local elements of \(1\)
+
+or
+
+> genuine long-range blocks of 5–10% of nearest-neighbor strength.
+
+Those are completely different situations.
+
+---
+
+# Even more decisive: truncate the **DFT Hessian itself**
+
+This is the experiment I would trust most.
+
+Take the exact DFT Hessian and construct
+
+$$
+H^{(d)}
+$$
+
+by retaining only blocks with graph distance
+
+$$
+d_{\rm graph}(i,j)\le d.
+$$
+
+Test
+
+$$
+d=1,2,3,4,\ldots
+$$
+
+and diagonalize each one.
+
+There is one important technical condition: after truncation, restore the acoustic sum rule,
+
+$$
+H_{ii}
+=
+-\sum_{j\ne i}H_{ij},
+$$
+
+otherwise simply deleting off-diagonal blocks artificially breaks translation invariance.
+
+Then compare
+
+$$
+\omega^{(d)}
+$$
+
+with the complete DFT spectrum.
+
+This cleanly answers your question without any force-field fitting.
+
+If
+
+$$
+H^{(2)}
+$$
+
+already reproduces the relevant frequencies, then:
+
+$$
+\boxed{\text{a bond+angle local FF has enough spatial range.}}
+$$
+
+Its remaining errors come from the *form or parameterization* of those local interactions.
+
+If you need
+
+$$
+d=3,
+$$
+
+that gives a strong argument for one 1–4 / neighboring-stretch term.
+
+If convergence requires many shells, then a strictly local FF cannot reproduce DFT exactly and some explicit longer-range interaction is justified.
+
+---
+
+# And do this separately for the Si–H band and the complete spectrum
+
+This matters enormously.
+
+The low-frequency cage modes are likely to be much more sensitive to small errors spread through the entire Si network.
+
+Your experimental priority, however, is approximately
+
+$$
+1800-2200\ {\rm cm^{-1}}.
+$$
+
+For every truncated DFT Hessian I would therefore calculate not only overall RMSD but also
+
+$$
+\mathrm{RMSE}_{\rm SiH},
+$$
+
+and mode-overlap/projected Si–H DOS.
+
+It is entirely plausible that
+
+$$
+d=2
+$$
+
+is insufficient for 100 cm\(^{-1}\) cage modes but essentially exact for the Si–H stretches.
+
+Then we shouldn't complicate the FF merely to fix irrelevant low-frequency modes.
+
+---
+
+# There is also a beautiful Wilson version of the same experiment
+
+For the local Si–H stretch basis \(R_H\) we discussed, compute
+
+$$
+K_H^{DFT}
+=
+R_HD^{DFT}R_H^T.
+$$
+
+Now look directly at
+
+$$
+(K_H)_{ij}
+$$
+
+as a function of separation between hydrides.
+
+This answers:
+
+> Is the *Si–H oscillator Hamiltonian* local?
+
+This is actually more directly relevant than asking whether the entire Cartesian nuclear Hessian is local.
+
+You may find something like
+
+$$
+K_{ij}\approx
+\begin{cases}
+20 & \text{same Si}\\
+5 & \text{adjacent surface Si}\\
+0.8 & \text{second neighbor}\\
+0.2 & \text{far}
+\end{cases}
+$$
+
+in some consistent units.
+
+Then the effective model is obvious.
+
+The Wilson code you already have is well suited to constructing exactly these local stretch directions; the current generic implementation instead spans all bonds+angles and therefore tends toward the whole \(3N-6\) vibrational space. 
+
+---
+
+# One subtle correction about “only compute nearby Hessian elements”
+
+There are two different shortcuts.
+
+One is:
+
+$$
+\text{compute only }H_{ij}\text{ for nearby atom pairs}.
+$$
+
+The other is:
+
+$$
+\text{compute }Hg_a
+$$
+
+for selected **local physical displacement directions** \(g_a\).
+
+I now strongly prefer the second.
+
+Suppose \(g_a\) is a local Si–H stretch. Two DFT force calculations,
+
+$$
+x_\pm=x_0\pm\delta g_a,
+$$
+
+give
+
+$$
+Hg_a
+\simeq
+-\frac{F_+-F_-}{2\delta}.
+$$
+
+Although \(g_a\) itself involves only two atoms, the resulting force vector contains responses on **all atoms**.
+
+So you get to directly measure:
+
+> “If I stretch this particular Si–H bond, how local is the DFT response?”
+
+That is almost exactly your physical thought experiment.
+
+If the forces induced 10 Å away are negligible, wonderful: locality is directly demonstrated.
+
+If there is a visible response far away, we quantify it rather than assuming it away.
+
+And for \(m\) selected local coordinates it costs only \(2m\) DFT gradient evaluations. Your earlier discussion already identified this reduction from \(6N\) Cartesian displacements to \(2m\) chosen internal-coordinate displacements. 
+
+---
+
+## So I would run this locality experiment before changing the force field
+
+Concretely:
+
+1. On a small system where we already have the full DFT Hessian, plot \(\|H_{ij}\|\) versus graph/real-space distance.
+2. Truncate the **DFT** Hessian at graph ranges \(d=1,2,3,\ldots\), repair the acoustic sum rule, and see how rapidly the full and Si–H-only spectra converge.
+3. Build the localized Si–H Wilson matrix \(K_H\) and plot its off-diagonal couplings versus H···H distance and graph separation.
+4. Compare those couplings with the same quantities from the present FF.
+5. On larger crystals, stop calculating full DFT Hessians and instead perform ± local Si–H / angle displacements and save the full resulting force-response vectors.
+
+My expectation—not something I would assume without testing—is that **diamond-like Si should be predominantly local in the covalent backbone**, and that most of the interesting residual nonlocality for your high-frequency surface band will turn out to be either nearest-neighbor SiH–SiH mechanical coupling or H···H/dynamic-dipole coupling along the surface.
+
+If that is what the data show, then your original physical picture survives almost completely:
+
+$$
+\boxed{
+\text{local valence springs}
++
+\text{one weak surface coupling}
+}
+$$
+
+can generate very complicated, crystal-shape-dependent global spectra by diagonalization. The dense appearance of the raw DFT Hessian would then mostly be a combination of small electronic-response tails and the fact that “exactly zero” is not the same thing as “physically important.”
+
+
+
+
+
+
+
+
+---
+
+# USER
+
+On important question: you speak about 3N-6 modes after removing rigid translation and rotation. But I would like to ask about those, how to deal with them diring fitting. Thy can be removed there are rigorous wyas how to remove them from the spectrum. But when doing that we dipically densify the marixes and even originally localized hessian and Wilson localized modes become very non-local. I do not like that. Therefore I think it is better to fit in the basis of orginal cartesian hessian, respo transform it to lozalized willson, but not do this rigid-removal projection. We still want to make this rigid removal protiction when computing respose functon or maybe the spectrum (although having 6 modes at zero should not be problem if we know they come from the rigid translation/rotation we just ignore them), but for fitting we shoupd perhaps rather not do this removal. What you think ? Or are there any other issues we would face?
+
+small notes - you say 1% error due to electrosatics is alrady visible in the FTIR spectrum - maybe depends, but for these nanocrystal the accuracy is no so great and our fit is way to far from 1% accuracy, even DFT is like 10% from experimental resultls. So I do not care so much about his. But I care moe about qualitative features and relative shift resp. relative ordering like bondin (in pahse) lower frequecy than antibonding (counter phase)... somthing like that. I want to fit qualitatively robuts model, not necessarily 1% accurate.
+
+
+---
+
+# Chat GPT 5.6 sol
+
+Yes — I agree with your instinct here, and I would now make it an explicit principle of the fitting workflow:
+
+> **Do not rigid-mode-project the Hessian used for local force-field fitting.**
+>
+> Keep the original Cartesian Hessian/local Wilson directions intact. Rigid translations and rotations should disappear because of the physics of the force field, not because we multiply the matrix by a dense global projector.
+
+The current FireCore code does explicitly construct a mass-weighted rigid-body basis and uses \(PDP\) or a reduced basis \(Q^TDQ\) in parts of the spectral machinery.  The reference-mode fitter similarly diagonalizes \(D\) after restricting it to the complete non-rigid subspace.  I think that remains appropriate for **analysis**, but not for the new localized fitting objective.
+
+## The nice thing: Wilson coordinates already remove rigid motion automatically
+
+This is actually an important reason to like Wilson coordinates.
+
+Take a bond coordinate
+
+$$
+q_{ij}=|\mathbf r_j-\mathbf r_i|.
+$$
+
+Its Wilson vector is
+
+$$
+b_{ij}=\frac{\partial q_{ij}}{\partial \mathbf r}.
+$$
+
+For a rigid translation \(t\),
+
+$$
+\delta\mathbf r_i=\mathbf t
+$$
+
+for every atom, and therefore
+
+$$
+b_{ij}\cdot t=0.
+$$
+
+Likewise for an infinitesimal rigid rotation,
+
+$$
+\delta\mathbf r_i
+=
+\boldsymbol\omega\times(\mathbf r_i-\mathbf R_0),
+$$
+
+the bond length does not change to first order:
+
+$$
+b_{ij}\cdot r_{\rm rot}=0.
+$$
+
+The same is true for an angle Wilson coordinate.
+
+Therefore, ideally,
+
+$$
+\boxed{BR_{\rm rigid}=0.}
+$$
+
+So if we ask about local bond/angle response using \(B\), **the six rigid modes simply never enter the question**.
+
+There is no need for
+
+$$
+P=I-RR^T
+$$
+
+and therefore no reason to turn a beautifully local representation into a dense one.
+
+This is a major conceptual simplification.
+
+---
+
+## I would actually go one step further: don't orthogonalize the local Wilson vectors for fitting either
+
+My previous suggestion of Löwdin orthogonalization,
+
+$$
+R=(CC^T)^{-1/2}C,
+$$
+
+is mathematically elegant for defining a nice orthonormal vibrational tight-binding basis.
+
+But you have identified the same problem again:
+
+$$
+(CC^T)^{-1/2}
+$$
+
+is generally dense.
+
+So even if every original Si–H stretch \(b_i\) lives on only two atoms, the orthogonalized \(R_i\) can contain tails over many bonds.
+
+That is acceptable for **post-processing / visualization**, but it is contrary to the main philosophy of the fit.
+
+For the fit I would keep the raw local coordinates.
+
+---
+
+# The clean local fitting object is therefore simply \(Hg_a\)
+
+Let \(g_a\) be one local Cartesian displacement corresponding to:
+
+* one Si–H stretch,
+* one Si–Si stretch,
+* one H–Si–H bend,
+* one Si–Si–H bend, etc.
+
+It involves only 2 or 3 atoms.
+
+Then compare
+
+$$
+\boxed{
+H^{FF}g_a
+\quad\text{with}\quad
+H^{DFT}g_a
+}
+$$
+
+without any global projection.
+
+This is extremely physical:
+
+> “I impose this local bond stretch/bend. What force response does the system produce?”
+
+And because
+
+$$
+H^{FF}=\sum_p k_p A_p,
+$$
+
+we have
+
+$$
+H^{FF}g_a
+=
+\sum_p k_p(A_pg_a),
+$$
+
+so the fitting problem is still completely linear.
+
+Even better, you can choose how much of the resulting DFT force vector you want to fit.
+
+For example,
+
+$$
+M_aH^{FF}g_a
+\simeq
+M_aH^{DFT}g_a
+$$
+
+where \(M_a\) selects atoms within graph distance 2 or 3 of the locally distorted bond.
+
+That gives you a **strictly local-local fitting problem**:
+
+$$
+\boxed{\text{local displacement}\rightarrow\text{local force response}.}
+$$
+
+No eigenvectors.
+No \(3N-6\) basis.
+No dense projector.
+No pseudoinverse.
+
+I think this is probably the cleanest formulation of what you originally wanted from Wilson fitting.
+
+---
+
+# Alternatively use pairwise Wilson matrix elements directly
+
+If \(g_a,g_b\) are two local Wilson directions, calculate
+
+$$
+K_{ab}=g_a^THg_b.
+$$
+
+Again, no projection is necessary.
+
+This has a particularly intuitive interpretation:
+
+* \(K_{aa}\): stiffness when coordinate \(a\) is distorted;
+* \(K_{ab}\): direct harmonic coupling between local distortions \(a,b\).
+
+And we only have to compare \(K_{ab}\) for chemically meaningful nearby pairs.
+
+For example:
+
+$$
+K_{\rm SiH_i,SiH_i}
+$$
+
+for local stretch stiffness;
+
+$$
+K_{\rm SiH_1,SiH_2}
+$$
+
+for the two hydrides of one SiH\(_2\);
+
+$$
+K_{\rm SiH_i,SiH_j}
+$$
+
+for hydrides on adjacent surface Si atoms;
+
+$$
+K_{\rm SiH,angle}
+$$
+
+for stretch–bend coupling.
+
+That becomes almost a **local force-constant table extracted from DFT**, but unlike the pseudoinverse Wilson \(F\), there is no claim that we have uniquely decomposed the entire DFT Hessian into independent springs.
+
+We simply ask for the DFT curvature along two explicitly defined physical directions.
+
+That quantity is unambiguous.
+
+---
+
+# A subtle but important distinction from the problematic old Wilson \(F\)
+
+This is worth emphasizing.
+
+The troublesome quantity was
+
+$$
+F=C^{+T}DC^+.
+$$
+
+There we asked:
+
+> Find an internal-coordinate force matrix \(F\) whose transformation reproduces the complete DFT Hessian.
+
+Because the internal coordinates are redundant, there are infinitely many answers.
+
+Instead, now calculate
+
+$$
+\boxed{K_{ab}=g_a^TDg_b}
+$$
+
+directly.
+
+We are asking:
+
+> What curvature does the *actual DFT Hessian* have along these two particular displacement directions?
+
+There is no inversion and therefore no gauge ambiguity.
+
+So I would probably stop calling this quantity the Wilson \(F\) matrix at all.
+
+Wilson gives us the **directions** \(g_a\), but we simply project DFT curvature onto them.
+
+---
+
+# What about normalization?
+
+This is the only nuisance.
+
+A bond coordinate naturally has units of Å, whereas an angle has radians. So if you want to compare absolute entries between stretch and bend coordinates, choose a convention.
+
+For bonds, I like what the current code already does:
+
+$$
+q_r=\frac{\Delta r}{r_0}.
+$$
+
+Angles can use
+
+$$
+q_\theta=\Delta\theta.
+$$
+
+The existing code already scales bond Wilson rows by \(1/r_0\) for this reason. 
+
+But for fitting you don't actually have to normalize everything identically. You can simply define a physically meaningful finite perturbation:
+
+$$
+\Delta r = 0.01\ {\rm \AA}
+$$
+
+or
+
+$$
+\Delta\theta=0.01\ {\rm rad},
+$$
+
+and normalize the residual by the response magnitude of each coordinate class.
+
+That may actually be more transparent.
+
+---
+
+# Now the rigid modes themselves
+
+For an **exact molecular potential at a stationary geometry**, the Cartesian Hessian should already satisfy six null modes:
+
+$$
+HT_x=HT_y=HT_z=0
+$$
+
+and
+
+$$
+HR_x=HR_y=HR_z=0.
+$$
+
+So fundamentally we should not need to remove them.
+
+There are, however, two differences between translation and rotation.
+
+### Translation is especially clean
+
+For a potential depending only on relative coordinates,
+
+$$
+E(\{r_i+a\})=E(\{r_i\}),
+$$
+
+so
+
+$$
+H T=0
+$$
+
+exactly at **any geometry**, not just an equilibrium.
+
+Equivalently, the Cartesian Hessian obeys the acoustic sum rule
+
+$$
+\boxed{
+\sum_j H_{ij}=0.
+}
+$$
+
+Your local valence FF should satisfy this basically to machine precision if implemented correctly.
+
+This is also an excellent debugging invariant.
+
+### Rotation has a slight subtlety
+
+Rotational invariance means
+
+$$
+E(\{Rr_i\})=E(\{r_i\}).
+$$
+
+At a stationary geometry,
+
+$$
+\nabla E=0,
+$$
+
+this gives
+
+$$
+HR=0.
+$$
+
+But **away from a stationary point**, a rigid rotational path has a second-order geometrical contribution involving the existing forces. So simply applying the linear tangent vector \(\omega\times r_i\) to the Hessian does not necessarily give exactly zero unless the forces vanish.
+
+This matters when fitting all methods on a common DFT geometry that is *not* the FF's equilibrium.
+
+It is another reason I prefer fitting local Wilson responses rather than enforcing six zero eigenvalues during the fit.
+
+---
+
+# This connects to your prestress issue
+
+Your FF sensitivity implementation already knows about this:
+
+$$
+A
+=
+f''(q)\,bb^T
++
+f'(q)C.
+$$
+
+The second \(f'C\) term is exactly the geometric/prestress part. 
+
+If we set every FF equilibrium bond and angle to the DFT geometry,
+
+$$
+r_0=r_{\rm DFT},\qquad
+\theta_0=\theta_{\rm DFT},
+$$
+
+then
+
+$$
+f'=0
+$$
+
+term by term, and rotations become clean null directions.
+
+But if we fit transferable \(r_0,\theta_0\), individual terms are prestressed even though total force can cancel.
+
+So I would not use “how exactly zero are the six rigid eigenvalues?” as a primary fitting target.
+
+Use it as a **consistency diagnostic**.
+
+---
+
+# How I would compute the final spectrum
+
+Here too I agree with you: there is no fundamental need to project \(H\) first.
+
+Simply mass-weight:
+
+$$
+D=M^{-1/2}HM^{-1/2}
+$$
+
+and diagonalize the original matrix.
+
+If everything is good, the spectrum contains
+
+$$
+6
+$$
+
+very-low/zero eigenvalues followed by the physical modes.
+
+Rather than saying
+
+> “delete the lowest six”
+
+I would identify them by overlap with the known analytic rigid-body vectors.
+
+For each eigenvector \(v_n\),
+
+$$
+w_n^{rigid}
+=
+\sum_{\alpha=1}^{6}
+|R_\alpha^Tv_n|^2.
+$$
+
+Then modes with \(w_n^{rigid}\approx1\) are rigid.
+
+This is robust even if numerical noise gives them frequencies such as
+
+$$
+-3,\; 0.2,\; 1.7,\; 4\ {\rm cm^{-1}}
+$$
+
+rather than exact zeros.
+
+And it avoids altering the Hessian.
+
+Only if numerical contamination is so severe that rigid and genuine soft modes mix badly would I diagonalize in the explicitly projected \(3N-6\) subspace. That should be a **fallback analysis operation**, not something done to the stored/reference Hessian.
+
+The current code presently projects \(D\) before diagonalization when `project_acoustic=True`.  I would add the alternative “classify/ignore rigid eigenvectors after ordinary diagonalization” and make that preferable for locality-sensitive work.
+
+---
+
+# Response functions are slightly different
+
+For
+
+$$
+Hx=f
+$$
+
+there is a genuine mathematical problem: \(H\) has six zero modes, so it cannot be inverted.
+
+There we **must choose a gauge**.
+
+But again we don't have to densify \(H\).
+
+Instead solve the constrained problem
+
+$$
+Hx=f,
+$$
+
+subject to
+
+$$
+R^TM^{1/2}x=0.
+$$
+
+Equivalently remove net translation and rotation from the solution.
+
+A Krylov solver can implement projection matrix-free:
+
+$$
+v\rightarrow v-R(R^Tv)
+$$
+
+without ever constructing the dense
+
+$$
+P=I-RR^T.
+$$
+
+So even for response calculations, locality/sparsity of \(H\) itself can be preserved.
+
+---
+
+# And I agree with your accuracy correction
+
+My previous “1% coupling can give 10 cm\(^{-1}\)” example was mathematically true but misleading relative to **your actual objective**.
+
+You are not trying to build a spectroscopic force field accurate to 1%.
+
+Your much more important questions are things like:
+
+* does SiH lie below/above SiH\(_2\)?
+* do {111}, {100}, edge and corner environments produce the correct ordering?
+* does a patch of neighboring SiH groups form a band rather than independent identical oscillators?
+* does the in-phase combination go to the correct side of the antisymmetric combination?
+* does increasing facet size narrow/shift/converge the band sensibly?
+* do defects locally perturb rather than completely rearrange the spectrum?
+
+Those are **topological/qualitative properties of the effective dynamical matrix**.
+
+For that purpose I would willingly tolerate a systematic overall error of 5–10% if the coupling structure is correct.
+
+In fact, this suggests another useful fitting philosophy:
+
+$$
+D^{DFT}_{\rm local}
+\approx
+s\,D^{FF}_{\rm local}
+$$
+
+with one global frequency/stiffness scale \(s\), while giving more importance to the **dimensionless coupling ratios**
+
+$$
+\boxed{
+\eta_{ij}
+=
+\frac{K_{ij}}
+{\sqrt{K_{ii}K_{jj}}}.
+}
+$$
+
+This is interesting for you because \(\eta_{ij}\) directly measures how strongly two local oscillators are coupled relative to their individual stiffnesses.
+
+The **sign** of
+
+$$
+\eta_{ij}
+$$
+
+determines whether the symmetric/in-phase or antisymmetric/out-of-phase combination is softer.
+
+The magnitude determines the splitting.
+
+Thus, for your intended “qualitatively robust model,” I would inspect and perhaps partially fit
+
+$$
+K_{ii}
+$$
+
+for local chemistry,
+
+but especially
+
+$$
+\boxed{\eta_{ij}}
+$$
+
+for local coupling topology.
+
+That may ultimately be more informative than minimizing another global cm\(^{-1}\) RMSD.
+
+So I think the architecture is becoming quite clean:
+
+$$
+\boxed{
+\begin{array}{c}
+\text{raw sparse Cartesian }H\\[2mm]
+\downarrow\\
+\text{local Wilson directions }g_a\\[2mm]
+\downarrow\\
+Hg_a\quad\text{or}\quad K_{ab}=g_a^THg_b\\[2mm]
+\downarrow\\
+\text{fit local stiffness + coupling ratios}\\[2mm]
+\downarrow\\
+\text{diagonalize original }H\\
+\text{and merely identify/ignore 6 rigid modes}
+\end{array}}
+$$
+
+No rigid-body projection is needed anywhere in the actual fitting path, and that is probably much closer to the original spirit of what you wanted Wilson coordinates to accomplish.
+
+
+
+
+
+---
+
+# USER
+
+we are discussijg with coding agent the question of "Frozen Geometry Hessian", the thing is - we must be sure the Forcefield compute the frequencies in its stationdary point resp in its minimum so there are no imaginary frequencies. Can we ensure that in the fit - lake make such params which make sure the focefield have same minimum? But maybe not - especially for many different crystals if our forcefield is not able to reporcue equlibirum geometries from DFT exacly for all possible reference structures. Then it is still better to use relaxed geometry for given forcefield and just fit the elastic parameters around that minimum. This may mean that we canno direcly use the directions of eigenvectros from DFT or even cartesian Hessian, structli speaking if we want to be perfectly rigorous. But since the relaxatons are small (<0.1A) the direction of vectros are still more or lss same after this rectioxtions, so I would not be worid too much. What would you recomand? I would like to pretent the geometry is close engouh we can still use the same direction vectors (Wilson bonds and angles vectros, SVD eigenmodes ...) for both DFT-optimized and FF-optimized geometry and fit just the harmonic expansion around these to different minimum geometries pretentig like they are the same?
+
+---
+
+
+# CHAt GPT 5.6 sol
+
+Yes. I think there is a clean way to reconcile these requirements, and I would **not require the FF and DFT to have exactly the same minimum**. With only a few transferable parameters that is probably impossible across many different nanocrystals.
+
+The important distinction is:
+
+> **Frozen-geometry Hessian fitting is a parameter-identification tool. The physically predicted spectrum must be evaluated at the FF's own minimum.**
+
+Trying to force those two things to be identical creates unnecessary difficulty.
+
+## 1. First, we can partially enforce the same minimum — and it is cheap
+
+At the DFT minimum \(R_D\),
+
+$$
+F^{DFT}(R_D)=0.
+$$
+
+Ideally we would also like
+
+$$
+F^{FF}(R_D;k)=0.
+$$
+
+For fixed equilibrium parameters \(r_0,\theta_0\), the FF force is linear in the stiffnesses:
+
+$$
+F^{FF}(R_D;k)=\sum_p k_p f_p(R_D).
+$$
+
+So alongside the Hessian-fitting equations we can simply add **force-balance equations**
+
+$$
+\boxed{
+\sum_p k_p f_p(R_D)\simeq0
+}
+$$
+
+to the same linear least-squares problem.
+
+Something like
+
+$$
+L =
+L_{\rm local\,Hessian}
++
+\lambda_F
+\|F^{FF}(R_D)\|^2
++
+L_{\rm reg}.
+$$
+
+No nonlinear optimizer is required.
+
+This is very useful because it tells us whether our simple FF **can** have approximately the same equilibrium.
+
+If after fitting we have very small residual forces at all DFT geometries, excellent. If not, this is not a numerical failure: it tells us that the chosen transferable \(r_0,\theta_0\) + 5 stiffnesses simply cannot reproduce all those equilibrium structures simultaneously.
+
+The existing code already distinguishes `local` equilibrium coordinates from transferable `type-average` ones, and explicitly deals with prestress when the individual internal coordinates are not at their own minima.  The underlying theory likewise contains the \(f'(q)C\) prestress term rather than assuming that a relaxed *total* geometry means every individual bond/angle term is individually relaxed. 
+
+I would definitely add the force residual to the fitter.
+
+---
+
+# 2. But I would not demand zero FF force at every DFT minimum
+
+Suppose the DFT optimum is
+
+$$
+R_D
+$$
+
+and after fitting and relaxation the FF optimum is
+
+$$
+R_F=R_D+\Delta R.
+$$
+
+If
+
+$$
+|\Delta R|\lesssim 0.05-0.1\ \AA
+$$
+
+and there is no reconstruction/topology change, these are essentially two representations of the same chemical structure.
+
+The quantities we really want to compare are then
+
+$$
+H_D(R_D)
+$$
+
+and
+
+$$
+H_F(R_F).
+$$
+
+Strictly speaking, they are Hessians at different points, so comparing their Cartesian entries element-by-element is not mathematically invariant.
+
+But **local chemically defined coordinates give us a very natural correspondence**.
+
+And I would improve slightly on your proposed “pretend the vectors are identical”:
+
+> Use the **same chemical coordinate labels**, but recompute the Wilson vectors independently at the two minima.
+
+For example,
+
+$$
+g_{\mathrm{Si_7-H_{32}}}^{DFT}
+$$
+
+is constructed from \(R_D\), while
+
+$$
+g_{\mathrm{Si_7-H_{32}}}^{FF}
+$$
+
+is constructed from \(R_F\).
+
+Then compare
+
+$$
+\boxed{
+(g_a^{DFT})^T H_D g_b^{DFT}
+\quad\leftrightarrow\quad
+(g_a^{FF})^T H_F g_b^{FF}.
+}
+$$
+
+Same bond \(a\), same neighboring bond \(b\), but each expressed in its own slightly different geometry.
+
+That is actually quite rigorous conceptually. You are comparing:
+
+> curvature of the same chemically defined deformation at each model's own equilibrium.
+
+No pretense that the Cartesian coordinates are exactly identical is needed.
+
+---
+
+# 3. For bonds/angles there is essentially no cost to doing this correctly
+
+Take a Si–H bond whose direction changes by 2° after FF relaxation.
+
+Why use the old DFT vector?
+
+Just recompute
+
+$$
+\hat r_{SiH}^{FF}
+$$
+
+from the FF-relaxed geometry.
+
+Likewise an H–Si–H angle Wilson vector is trivial to recompute.
+
+Thus I would **not reuse exactly the same Wilson vectors**.
+
+Instead preserve:
+
+```text
+coordinate ID:
+    SiH stretch (Si=7,H=32)
+    HSiH angle (H=31,Si=7,H=32)
+    ...
+```
+
+and regenerate its geometric vector at each structure.
+
+This completely removes one unnecessary approximation.
+
+---
+
+# 4. You can quantify whether the geometry difference matters
+
+After a rigid Kabsch alignment of \(R_D\) and \(R_F\), calculate for every corresponding local coordinate
+
+$$
+s_a=
+\left|
+\hat g_a^{DFT}\cdot
+\hat g_a^{FF}
+\right|.
+$$
+
+If you find something like
+
+$$
+s_a=0.995-1.000
+$$
+
+for nearly everything, then you have numerical evidence that your original intuition—
+
+> “the geometries are close enough that the local directions are essentially the same”
+
+—is valid.
+
+This would be a nice diagnostic to output with every fit:
+
+```text
+geometry RMSD       0.031 Å
+Si-H Wilson overlap mean  0.9992
+Si-H Wilson overlap min   0.9961
+angle overlap mean        0.9978
+```
+
+Then there is no philosophical ambiguity about whether 0.1 Å matters.
+
+---
+
+# 5. Global eigenmodes are different
+
+Here I would be much more cautious.
+
+Suppose
+
+$$
+V_D
+$$
+
+are DFT normal modes and
+
+$$
+V_F
+$$
+
+are FF modes at its own minimum.
+
+You can align the two geometries and calculate the overlap matrix
+
+$$
+J_{mn}
+=
+(v_m^{DFT})^T v_n^{FF}.
+$$
+
+This is essentially a **Duschinsky-type mode transformation**.
+
+If
+
+$$
+J\approx I,
+$$
+
+then yes, modes correspond almost one-to-one.
+
+But near degeneracies the individual modes can rotate arbitrarily:
+
+$$
+(v_1,v_2)\rightarrow
+(v_1\cos\alpha+v_2\sin\alpha,\,
+-v_1\sin\alpha+v_2\cos\alpha)
+$$
+
+with practically no physical change.
+
+So I would **not make global DFT eigenvectors the primary fitting basis** once the minima differ.
+
+Use them for validation:
+
+* spectral ordering;
+* mode-subspace overlap;
+* SiH projected weight;
+* localization;
+* bands of nearly degenerate modes.
+
+But use **local Wilson directions for fitting**.
+
+This fits extremely well with the direction our discussion has taken.
+
+---
+
+# 6. There is an important mathematical price if we insist on fitting at the FF minimum
+
+At fixed geometry,
+
+$$
+H^{FF}(R;k)=\sum_p k_p A_p(R)
+$$
+
+is linear in \(k\).
+
+That is why our Hessian fitter is so nice.
+
+But if we insist on
+
+$$
+R=R_F(k)
+$$
+
+where
+
+$$
+\nabla E(R_F(k);k)=0,
+$$
+
+then
+
+$$
+H^{FF}(R_F(k);k)
+$$
+
+is **no longer linear in \(k\)** because changing \(k\) changes the equilibrium geometry.
+
+Formally,
+
+$$
+\frac{dH}{dk_p}
+=
+\frac{\partial H}{\partial k_p}
++
+\frac{\partial H}{\partial R}
+\frac{dR_F}{dk_p}.
+$$
+
+And from stationarity,
+
+$$
+H
+\frac{dR_F}{dk_p}
+=
+-
+\frac{\partial F}{\partial k_p}.
+$$
+
+So
+
+$$
+\frac{dR_F}{dk_p}
+=
+-H^+
+\frac{\partial F}{\partial k_p}.
+$$
+
+Then evaluating \(dH/dk\) requires essentially **third derivatives** through \(\partial H/\partial R\).
+
+That is exactly the complexity we do not want.
+
+So I think it would be a mistake to throw away the linear Hessian fitting framework merely to be formally exact about a 0.03–0.1 Å geometry difference.
+
+---
+
+# 7. Therefore I would use a two-level / iterative scheme
+
+This seems the best compromise.
+
+### Inner fit — cheap and linear
+
+At fixed geometries, solve
+
+$$
+k^*
+=
+\arg\min_k
+\left[
+L_{\rm local-curvature}
++
+\lambda_F L_{\rm force}
++
+L_{\rm reg}
+\right].
+$$
+
+Use local Wilson/Hessian-response quantities rather than global modes.
+
+### Outer validation
+
+With the new \(k^*\):
+
+1. Relax every FF structure:
+
+   $$
+   R_F=\arg\min E_{FF}(R;k^*).
+   $$
+
+2. Check:
+
+   * RMS geometry difference;
+   * residual DFT/FF local-coordinate overlap;
+   * absence of non-rigid imaginary FF modes;
+   * local curvature matrix at \(R_F\);
+   * final vibration spectrum at \(R_F\).
+
+3. If the geometry changed enough to matter, rebuild the FF local bases at \(R_F\) and refit.
+
+Because your geometry changes are small, I would expect perhaps **one or two outer iterations**, not a long nonlinear optimization.
+
+This is effectively self-consistent fitting:
+
+$$
+k^{(0)}
+\rightarrow
+R_F^{(0)}
+\rightarrow
+k^{(1)}
+\rightarrow
+R_F^{(1)}
+\rightarrow\cdots
+$$
+
+while every \(k\)-update remains a simple linear least-squares problem.
+
+---
+
+# 8. There are actually two useful fits, and we should report both
+
+I would deliberately distinguish them in the code/results.
+
+### A. Frozen-reference fit
+
+Evaluate FF and DFT response at
+
+$$
+R_D.
+$$
+
+Purpose:
+
+> How good is the **force law itself**, with geometry held fixed?
+
+This is extremely useful scientifically.
+
+If it performs badly, the stiffness model is wrong.
+
+### B. Self-relaxed prediction
+
+Evaluate
+
+$$
+H_F(R_F).
+$$
+
+Purpose:
+
+> How well does the **complete FF prediction** work, including its geometry error?
+
+This is what should generate the reported FF spectrum.
+
+So frozen geometry isn't some embarrassing approximation we have to eliminate. It answers a **different and very useful question**.
+
+I would never interpret imaginary FF frequencies at \(R_D\) as a prediction, because \(R_D\) may not be an FF stationary point.
+
+---
+
+# 9. Ensuring the final FF calculation really is a minimum
+
+This part should be strict.
+
+After FF relaxation, calculate the Hessian at \(R_F\).
+
+A stable isolated molecule/NC should have:
+
+$$
+\lambda_i>0
+$$
+
+for all internal modes and six near-zero rigid modes.
+
+If a significant negative eigenvalue remains:
+
+$$
+\lambda_{\min}<-\epsilon,
+$$
+
+then we have found either:
+
+* an insufficiently converged relaxation;
+* a saddle;
+* or an intrinsically unstable FF parameter set.
+
+I would automate:
+
+```text
+relax
+→ compute lowest Hessian eigenvalues
+→ identify rigid modes
+→ if real negative internal mode:
+      displace slightly along it
+      relax again
+```
+
+That way **the production spectrum is always calculated at an actual FF minimum**, regardless of what frozen-geometry fitting does.
+
+---
+
+# 10. The force penalty is particularly attractive for your minimal FF
+
+I think this could become a very informative metric.
+
+For each DFT reference structure report
+
+$$
+F_{\rm RMS}^{FF}(R_D).
+$$
+
+Maybe you find:
+
+```text
+SiH4      0.006 eV/Å
+Si2H6     0.014 eV/Å
+Si10H16   0.025 eV/Å
+small NC  0.041 eV/Å
+```
+
+Then your claim
+
+> DFT and FF minima are close enough that their local harmonic expansions can be meaningfully compared
+
+has quantitative support.
+
+Conversely, if one morphology gives
+
+$$
+F_{\rm RMS}=0.3\ {\rm eV/\AA},
+$$
+
+we immediately know that its geometry difference cannot simply be ignored.
+
+And because these zero-force equations can be appended to the same linear fit, they are almost free computationally.
+
+---
+
+## So my concrete recommendation
+
+I would **not** try to enforce “DFT minimum = FF minimum exactly.”
+
+Instead:
+
+$$
+\boxed{
+\begin{array}{l}
+\textbf{Fit:}\\
+\quad\text{DFT local Hessian/Wilson response}\\
+\quad+\text{FF force residual at DFT geometry}\\
+\quad+\text{regularization}\\[2mm]
+\textbf{Predict:}\\
+\quad\text{relax FF independently}\\
+\quad\text{rebuild local Wilson vectors at FF minimum}\\
+\quad\text{compute FF Hessian and spectrum there}\\[2mm]
+\textbf{Validate:}\\
+\quad\text{geometry RMSD}\\
+\quad\text{local Wilson-vector overlap}\\
+\quad\text{local curvature/coupling matrix}\\
+\quad\text{qualitative spectrum}
+\end{array}}
+$$
+
+And yes: for the accuracy level you care about, I would absolutely accept comparing the harmonic expansions around the **two nearby minima**. I just would not literally use the same Cartesian vectors when it costs essentially nothing to regenerate the corresponding Si–H/angle Wilson vectors at each geometry.
+
+That gives us most of the rigor without sacrificing the simplicity and excellent conditioning of the linear fitting problem.

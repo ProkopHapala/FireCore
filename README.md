@@ -161,7 +161,7 @@ cd tests/Fireball/t02_CH4 && ./run.sh
 - GPU Acceleration: OpenCL/CUDA implementations of force fields
 - Python Bindings: Access to both C++ and Fortran components
 - Visualization: SDL-based interactive applications
-- Force Field Fitting: Tools to parameterize classical potentials against QM data
+- Force Field Fitting: Tools to parameterize classical potentials against QM data. Nanocrystal own-min \(k\)-fit vs PBE L1 (CH vs CH₂, negative shared-pack result): [`doc/Topics/FTIR_Nanocrystals/MMFF_C_CH_vs_CH2_kfit.md`](doc/Topics/FTIR_Nanocrystals/MMFF_C_CH_vs_CH2_kfit.md). Map: [`CODEMAP.md`](CODEMAP.md), [`doc/topical_audit/SiNCs.md`](doc/topical_audit/SiNCs.md).
 
 # WARNING: FireCore is Work-in-progress stage of development
 

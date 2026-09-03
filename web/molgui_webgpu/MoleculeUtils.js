@@ -271,6 +271,8 @@ export function collapseBridgeAt(mol, idBridge) {
         if (mol.atoms[ja].id === neighIds[1]) { alreadyBonded = true; break; }
     }
     if (!alreadyBonded) mol.addBond(neighIds[0], neighIds[1]);
+    mol.packHeaviesThenH();
+    mol.assertBondTopology('collapseBridgeAt');
     return neighIds;
 }
 
@@ -351,6 +353,8 @@ export function insertBridge(mol, aId, bId, params = {}) {
         mol.addBond(cId, h2);
         dbg(`[insert_bridge] h1=${h1} h2=${h2}`);
     }
+    mol.packHeaviesThenH();
+    mol.assertBondTopology('insertBridge');
     return cId;
 }
 

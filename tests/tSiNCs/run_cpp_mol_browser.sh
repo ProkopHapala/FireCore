@@ -1,5 +1,10 @@
 #!/bin/bash
-# Launch C++ MolecularBrowser on NPZ viewer fixtures (or any -dir).
+# Launch C++ MolecularBrowser (SDL). From FireCore repo root:
+#
+#   ./tests/tSiNCs/run_cpp_mol_browser.sh
+#   ./tests/tSiNCs/run_cpp_mol_browser.sh tests/tSiNCs/OUT_chem_atlas/atlas
+#
+# Keys: Esc = up (VIEW→folder, then parent). Ctrl+Q or Ctrl+D = quit.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -19,12 +24,20 @@ if [[ ! -x "${BROWSER}" ]]; then
   (cd "${ROOT}/cpp/Build" && cmake .. -DWITH_SDL=ON && make MolecularBrowser -j"$(nproc)")
 fi
 
-if [[ -x "$(command -v g++)" ]]; then
-  ASAN="$(g++ -print-file-name=libasan.so 2>/dev/null || true)"
-  if [[ -n "${ASAN}" && -f "${ASAN}" ]]; then export LD_PRELOAD="${ASAN}"; fi
+# Only preload ASan if this binary was actually linked with it.
+# LD_PRELOAD libasan on a Release (WITH_ASAN=OFF) build + NVIDIA GL aborts with:
+#   "Shadow memory range interleaves with an existing memory mapping"
+if ldd "${BROWSER}" 2>/dev/null | grep -q libasan; then
+  export LSAN_OPTIONS="${LSAN_OPTIONS:-detect_leaks=0}"
+  echo "MolecularBrowser is ASan-linked; LSAN_OPTIONS=${LSAN_OPTIONS}"
 fi
 
 DIR="${1:-${FIX}}"
-echo "MolecularBrowser: -dir '${DIR}'  (contains npz_viewer/, si_1nm_passivation/, ...)"
-cd "${BUILD_DIR}"
-exec ./MolecularBrowser -res "${RES}" -dir "${DIR}"
+if [[ ! -d "${DIR}" ]]; then
+  echo "ERROR: directory does not exist: ${DIR}  (cwd=$(pwd))" >&2
+  exit 1
+fi
+DIR="$(cd "${DIR}" && pwd)"
+echo "cmd: ${BROWSER} -res ${RES} -dir ${DIR}"
+echo "keys: Esc=up   Ctrl+Q / Ctrl+D=quit"
+exec "${BROWSER}" -res "${RES}" -dir "${DIR}"

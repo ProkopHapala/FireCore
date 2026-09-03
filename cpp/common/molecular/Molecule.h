@@ -6,6 +6,8 @@
 #include <unordered_map>
 #include <vector>
 #include <string>
+#include <cstring>
+#include <cstdio>
 
 #include "fastmath.h"
 #include "Vec2.h"
@@ -491,6 +493,7 @@ class Molecule{ public:
         return natoms;
     }
 
+    /// XYZ: line1 `natoms [nbonds]`, line2 comment, then atoms (`El x y z`). If nbonds>0, that many 1-based `i j` pairs follow. Distance-guessing misses 5-ring closers.
     int loadXYZ(const char* fname, int verbosity=0 ){
         if(verbosity>0)printf( "Molecule::loadXYZ(%s)\n", fname );
         // xxxxx.xxxxyyyyy.yyyyzzzzz.zzzz aaaddcccssshhhbbbvvvHHHrrriiimmmnnneee
@@ -506,10 +509,11 @@ class Molecule{ public:
         char * line;
         int nl;
         line = fgets( buff, nbuf, pFile ); //printf("%s",line);
-        sscanf( line, "%i \n", &natoms );
-        //printf("natoms %i \n", natoms );
-        allocate(natoms,0);
-        //allocate(natoms,nbonds);
+        int nBn = 0;
+        int ntok = sscanf( line, "%i %i", &natoms, &nBn );
+        if(ntok<1 || natoms<=0){ printf("ERROR Molecule::loadXYZ(%s): bad natoms line\n", fname); fclose(pFile); return -1; }
+        if(nBn<0) nBn=0;
+        allocate(natoms, nBn);
         line = fgets( buff, nbuf, pFile ); // comment
         for(int i=0; i<natoms; i++){
             //char ch;
@@ -531,6 +535,16 @@ class Molecule{ public:
                 atomType[i] = -1;
             }
             //printf( " i %i name %s ityp %i \n", i, at_name, atomType[i] );
+        }
+        if(nBn>0){
+            for(int i=0; i<nBn; i++){
+                line = fgets( buff, nbuf, pFile );
+                if(!line){ printf("ERROR Molecule::loadXYZ(%s): expected %i bonds, got %i\n", fname, nBn, i); fclose(pFile); return -1; }
+                int a1=0, a2=0;
+                if(sscanf(line, "%d %d", &a1, &a2)<2){ printf("ERROR Molecule::loadXYZ(%s): bond %i parse failed\n", fname, i); fclose(pFile); return -1; }
+                if(a1<1 || a2<1 || a1>natoms || a2>natoms){ printf("ERROR Molecule::loadXYZ(%s): bond %i atoms %i %i out of range n=%i\n", fname, i, a1, a2, natoms); fclose(pFile); return -1; }
+                bond2atom[i].a = a1-1; bond2atom[i].b = a2-1; bondType[i] = 1;
+            }
         }
         fclose(pFile);
         //printf( "atypNames.size() %i \n", atypNames->size() );
@@ -616,6 +630,57 @@ class Molecule{ public:
         }
     }
 
+    /// Tripos MOL2 (atoms + bonds). MolecularBrowser lists .mol2 but used to return -1 here, so clicks opened the next .xyz instead.
+    int loadMol2( const char* fname, int verbosity=0 ){
+        FILE* fp = fopen(fname, "r");
+        if(!fp){ printf("ERROR Molecule::loadMol2: cannot open %s\n", fname); return -1; }
+        const int nbuf = 1024;
+        char buff[nbuf];
+        int nAt = -1, nBn = -1;
+        int stage = 0; // 0=header, 1=ATOM, 2=BOND
+        int ia = 0, ib = 0;
+        while(fgets(buff, nbuf, fp)){
+            if(buff[0]=='@'){
+                if(strncmp(buff, "@<TRIPOS>MOLECULE", 17)==0){ stage = 0; continue; }
+                if(strncmp(buff, "@<TRIPOS>ATOM", 13)==0){
+                    if(nAt<=0 || nBn<0){ printf("ERROR Molecule::loadMol2(%s): ATOM before counts (natoms=%i nbonds=%i)\n", fname, nAt, nBn); fclose(fp); return -1; }
+                    allocate(nAt, nBn);
+                    stage = 1; ia = 0; continue;
+                }
+                if(strncmp(buff, "@<TRIPOS>BOND", 13)==0){ stage = 2; ib = 0; continue; }
+                continue;
+            }
+            if(stage==0 && nAt<0){
+                int a=0, b=0;
+                if(sscanf(buff, "%d %d", &a, &b)==2 && a>0){ nAt=a; nBn=b; }
+                continue;
+            }
+            if(stage==1){
+                if(ia>=nAt) continue;
+                int id; char aname[32], tname[32];
+                if(sscanf(buff, "%d %31s %lf %lf %lf %31s", &id, aname, &pos[ia].x, &pos[ia].y, &pos[ia].z, tname)<6) continue;
+                char el[8]; el[0]=aname[0]; el[1]=0;
+                if(aname[1] && aname[1]>='a' && aname[1]<='z'){ el[1]=aname[1]; el[2]=0; }
+                assignAtomType(ia, el);
+                REQs[ia].x = 1.5; REQs[ia].y = 0;
+                ia++;
+            }else if(stage==2){
+                if(ib>=nBn) continue;
+                int id, a1, a2, ord=1;
+                if(sscanf(buff, "%d %d %d %d", &id, &a1, &a2, &ord)<3) continue;
+                if(a1<1 || a2<1 || a1>nAt || a2>nAt){ printf("ERROR Molecule::loadMol2(%s): bond %i atoms %i %i out of range n=%i\n", fname, ib, a1, a2, nAt); fclose(fp); return -1; }
+                bond2atom[ib].x = a1-1; bond2atom[ib].y = a2-1; bondType[ib] = ord;
+                ib++;
+            }
+        }
+        fclose(fp);
+        if(nAt<=0){ printf("ERROR Molecule::loadMol2(%s): no atoms\n", fname); return -1; }
+        if(ia!=nAt){ printf("ERROR Molecule::loadMol2(%s): read %i/%i atoms\n", fname, ia, nAt); return -1; }
+        if(ib!=nBn){ printf("ERROR Molecule::loadMol2(%s): read %i/%i bonds\n", fname, ib, nBn); return -1; }
+        if(verbosity>0) printf("Molecule::loadMol2(%s) natoms=%i nbonds=%i\n", fname, natoms, nbonds);
+        return natoms;
+    }
+
     int loadByExt( const std::string&  fname, int verbosity=0 ){
 		int idot = fname.find_last_of("."); 
 		std::string ext = fname.substr( idot + 1);
@@ -623,6 +688,8 @@ class Molecule{ public:
         if     (ext=="bas"){ return loadXYZ_bas(fname.c_str(),verbosity); }
         else if(ext=="xyz"){ return loadXYZ    (fname.c_str(),verbosity); }
         else if(ext=="mol"){ return loadMol    (fname.c_str(),verbosity); }
+        else if(ext=="mol2"){ return loadMol2  (fname.c_str(),verbosity); }
+        printf("ERROR Molecule::loadByExt: unknown extension '%s' for %s\n", ext.c_str(), fname.c_str());
         return -1;
     }
 

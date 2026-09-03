@@ -10,9 +10,16 @@
 *_tmp
 *.bak
 
+*.png
+*.pdf
+*.eps
+*.svg
+
+
 *.out
 *.log
 *.npy
+*.npz
 *.xsf
 *.bin
 __pycache__
@@ -38,3 +45,7 @@ node_modules
 .vscode/
 .devin/
 .dirac-symbol-index/
+tests/tSiNCs/OUT_*/
+tests/*/OUT_*/
+* copy.*
+*.kate-swp

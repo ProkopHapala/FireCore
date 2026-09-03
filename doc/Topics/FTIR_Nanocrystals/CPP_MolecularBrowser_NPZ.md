@@ -67,7 +67,8 @@ cpp/Build/apps/MolecularEditor/MolecularBrowser --verify-npz path/to/03_topology
 | Arrow keys | Move selection in folder grid (auto-scroll keeps selection visible) |
 | Enter | Open molecule VIEW, or enter subfolder |
 | Click tile | Open molecule VIEW |
-| Backspace | Parent directory (`..`) |
+| Esc / Backspace | Parent directory (`..`) |
+| Ctrl+Q / Ctrl+D | Quit |
 | Mouse wheel | Zoom (global camera) |
 
 Hidden from grid: `*hessian*.npz`, `*spectrum*.npz`, `Z.npy`/`bonds_ij.npy` when `pos.npy` exists, dot-directories (e.g. `.vispy_mol_browser_cache`).
@@ -76,8 +77,8 @@ Hidden from grid: `*hessian*.npz`, `*spectrum*.npz`, `Z.npy`/`bonds_ij.npy` when
 
 | Key / GUI | Effect |
 |-----------|--------|
-| Enter | Back to BROWSE (preserves grid scroll + selection) |
-| Esc | Quit |
+| Enter / Esc | Back to BROWSE (preserves grid scroll + selection) |
+| Ctrl+Q / Ctrl+D | Quit |
 | RMB drag | Rotate |
 | Wheel | Zoom |
 | `l` | Atom index labels |
@@ -94,7 +95,7 @@ Hidden from grid: `*hessian*.npz`, `*spectrum*.npz`, `Z.npy`/`bonds_ij.npy` when
 
 | File | Bonds drawn from |
 |------|------------------|
-| `01_crystal.npz`, `02_relaxed.npz` | `bonds_ij` if present |
+| `01_crystal.npz`, `02_relaxed.npz` | `bonds_ij` (required) |
 | `03_topology.npz` | Distance fallback only (`findBonds_brute`); `neigh_idx`+`stick_class` **not** used yet |
 | Missing bonds | `findBonds_brute(0.5 × covalent radii)` — may miss Si–Si on topology-only files |
 

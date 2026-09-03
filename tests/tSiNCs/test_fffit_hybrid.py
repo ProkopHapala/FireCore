@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from pyBall import FFfit
-from pyBall.FFfit_utils import assign_si_environment_types, dihedral_angle, dihedral_energy_gradient, subtype_shrinkage_rows, family_mean_prior_rows, build_cross_param_maps, compute_cross_sensitivity
+from pyBall.FFfit_utils import assign_si_environment_types, dihedral_angle, dihedral_energy_gradient, subtype_shrinkage_rows, family_mean_prior_rows, build_cross_param_maps, compute_cross_sensitivity, flatten_cartesian_hessian
 from pyBall.FFfit_plots import cluster_1d
 
 
@@ -140,6 +140,15 @@ def test_regularized_bounded_fit_stays_nonnegative_for_incomplete_model():
     assert 0.0 < diag['relative_residual'] < 0.2
 
 
+def test_si_environment_typing_uses_bonded_hydrogen_count():
+    symbols = ['Si', 'Si', 'Si', 'Si'] + ['H']*7
+    bonds = [(0, 4, 1.0), (0, 5, 1.0), (0, 6, 1.0), (0, 7, 1.0),
+             (1, 8, 1.0), (1, 9, 1.0), (2, 10, 1.0), (0, 1, 2.0), (1, 2, 2.0), (2, 3, 2.0)]
+    labels = assign_si_environment_types(symbols, bonds, enabled=True)
+    assert labels[:4] == ['SiH3', 'SiH2', 'SiH', 'Si']
+    assert labels[4:] == ['H']*7
+
+
 def test_uff_dihedral_gradient_matches_finite_difference():
     positions = np.array([[0.2, -0.4, 0.7], [0.0, 0.0, 0.0], [1.1, 0.1, -0.2], [1.8, 0.9, 0.6]])
     E, grad = dihedral_energy_gradient(positions, d=1, n=3)
@@ -154,10 +163,55 @@ def test_uff_dihedral_gradient_matches_finite_difference():
     assert np.allclose(grad.ravel(), grad_fd, rtol=2e-6, atol=2e-7)
 
 
-def test_si_environment_typing_uses_bonded_hydrogen_count():
-    symbols = ['Si', 'Si', 'Si', 'Si'] + ['H']*7
-    bonds = [(0, 4, 1.0), (0, 5, 1.0), (0, 6, 1.0), (0, 7, 1.0),
-             (1, 8, 1.0), (1, 9, 1.0), (2, 10, 1.0), (0, 1, 2.0), (1, 2, 2.0), (2, 3, 2.0)]
-    labels = assign_si_environment_types(symbols, bonds, enabled=True)
-    assert labels[:4] == ['SiH3', 'SiH2', 'SiH', 'Si']
-    assert labels[4:] == ['H']*7
+def test_flatten_cartesian_hessian_nn33_layout():
+    n = 2
+    H = np.zeros((n, n, 3, 3))
+    H[0, 1, 2, 0] = 7.5
+    H3 = flatten_cartesian_hessian(H)
+    assert H3.shape == (6, 6)
+    assert H3[2, 3] == pytest.approx(7.5)
+    H_n3n3 = np.zeros((n, 3, n, 3))
+    H_n3n3[0, 2, 1, 0] = 7.5
+    assert flatten_cartesian_hessian(H_n3n3)[2, 3] == pytest.approx(7.5)
+
+
+def test_wilson_kab_recovers_representable_hessian():
+    positions, masses, bonds, angles, B, A = make_triatomic_problem()
+    k_ref = np.array([4.2, 0.85])
+    H_ref = np.einsum('p,pij->ij', k_ref, A)
+    X, y = FFfit.wilson_kab_design(A, H_ref, B, np.arange(B.shape[0]))
+    k, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
+    assert np.allclose(k, k_ref, rtol=1e-10, atol=1e-10)
+
+
+def test_local_kab_fit_without_mode_projection():
+    positions, masses, bonds, angles, _, A = make_triatomic_problem()
+    k_ref = np.array([3.4, 0.7])
+    H_ref = np.einsum('p,pij->ij', k_ref, A)
+    symbols = ['Si', 'Si', 'H']
+    system = {'A': A, 'H_ref': H_ref, 'positions': positions, 'masses': masses, 'bonds': bonds, 'angles': angles, 'symbols': symbols}
+    k, diag = FFfit.fit_hybrid_hessian([system], mode_weight=0.0, local_weight=1.0, internal_weight=0.0,
+                                      wilson_kab_weight=1.0, wilson_rows='all', regularization=0.0, bounds=(0.0, np.inf))
+    assert np.allclose(k, k_ref, rtol=1e-9, atol=1e-10)
+    assert diag['systems'][0]['n_modes'] == 0
+    assert 'wilson_kab' in diag['systems'][0]['component_rows']
+    assert 'mode' not in diag['systems'][0]['component_rows']
+
+
+def test_freeze_holds_hydride_and_fits_the_rest():
+    X = np.array([[1.0, 0.0, 0.5], [0.0, 1.0, 0.2], [0.0, 0.0, 1.0]])
+    y = np.array([4.0, 0.9, 8.0])
+    Xf, y2, free, idx, val = FFfit.apply_parameter_freeze(X, y, {0: 4.0})
+    assert free.tolist() == [False, True, True]
+    assert np.allclose(val, [4.0])
+    assert np.allclose(y2, y - X[:, 0] * 4.0)
+    positions, masses, bonds, angles, _, A = make_triatomic_problem()
+    k_ref = np.array([3.4, 0.7])
+    H_ref = np.einsum('p,pij->ij', k_ref, A)
+    system = {'A': A, 'H_ref': H_ref, 'positions': positions, 'masses': masses, 'bonds': bonds, 'angles': angles, 'symbols': ['Si', 'Si', 'H']}
+    k, diag = FFfit.fit_hybrid_hessian([system], mode_weight=0.0, local_weight=1.0, internal_weight=0.0,
+                                       wilson_kab_weight=1.0, wilson_rows='all', regularization=0.0, freeze={0: 3.4})
+    assert k[0] == pytest.approx(3.4)
+    assert np.allclose(k, k_ref, rtol=1e-8, atol=1e-10)
+    assert diag['frozen'][0] == pytest.approx(3.4)
+

@@ -127,6 +127,7 @@ class NBFF: public ForceField{ public:
 
     double alphaMorse = 1.5;     // alpha parameter for Morse potential
     //double  KMorse  = 1.5;     // spring constant for Morse potential
+    bool    bMorseNonBond = false; // Exclusion2 cluster NB: Morse(alphaMorse) instead of LJ
     double  Rdamp     = 1.0; // damping radius for Coulomb potential r_=sqrt(d.norm(2)+Rdamp^2)
     //double  Rdamp     = 1.0e-32; // damping radius for Coulomb potential r_=sqrt(d.norm(2)+Rdamp^2)
     Mat3d   lvec __attribute__((aligned(64)));  // lattice vectors
@@ -510,6 +511,7 @@ class NBFF: public ForceField{ public:
     double evalLJQs_ex2_atom( int ia ){
         //if(ia==0){ printf("evalLJQs_ex2_atom() ia=%li bExclusion2=%i bNonBondNeighs=%i bSubtractBondNonBond=%i bSubtractAngleNonBond=%i bClampNonBonded=%i \n", ia, bExclusion2, bNonBondNeighs, bSubtractBondNonBond, bSubtractAngleNonBond, bClampNonBonded); }
         const double R2damp = Rdamp*Rdamp;
+        const double Fmax2  = FmaxNonBonded*FmaxNonBonded;
         const Vec3d  pi     = apos[ia];
         const Quat4d REQi   = REQs[ia];
         Vec3d        fi     = Vec3dZero;
@@ -525,14 +527,16 @@ class NBFF: public ForceField{ public:
                 jex = excl[iex];
             }
             if(jex==ja){ 
-                //printf("evalLJQs_ex2_atom() EXCLUDE: ia=%li ja=%li jex=%li \n", ia, ja, jex );   
                 continue;
             }
             Vec3d fij          = Vec3dZero;
             const Vec3d  pj    = apos[ja];
             const Quat4d REQj  = REQs[ja];
             Quat4d REQij; combineREQ( REQj, REQi, REQij );
-            E += getLJQH( pj-pi, fij, REQij, R2damp );
+            // E += getLJQH( pj-pi, fij, REQij, R2damp );
+            if(bMorseNonBond){ E += getMorseQH( pj-pi, fij, REQij, alphaMorse, R2damp ); }
+            else             { E += getLJQH   ( pj-pi, fij, REQij, R2damp ); }
+            if(bClampNonBonded){ clampForce( fij, Fmax2 ); }
             fi.add(fij);
         }
         fapos[ia].add(fi);

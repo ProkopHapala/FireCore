@@ -1,6 +1,7 @@
-"""Plotting and visualization utilities for FF fitting.
+"""Plotting and visualization utilities for FF fitting and nanocrystal neighborhood PDOS.
 
 Separated from FFfit_utils to keep matplotlib imports isolated.
+``plot_stacked_method_pdos`` is the Si-NC vibration plot template (chemistry stack + total DOS + rug + xy inset).
 All functions use Agg backend by default (no GUI dependency).
 """
 
@@ -10,7 +11,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
-from pyBall.FFfit_utils import angle_type_key, dihedral_angle
+from pyBall.FFfit_utils import angle_type_key, dihedral_angle, gaussian_spectrum, NBHD_PLOT_STYLE, nbhd_legend_label
 
 # === Spectrum plotting ===
 
@@ -132,11 +133,214 @@ def plot_comparison_spectra(case_name, freq_ref, model_freqs, outdir, width=20.0
     plt.close(fig)
     return out
 
-def plot_hessian_comparison(H_ref, H_model, label, outdir):
+def plot_ownmin_method_dos(rows, out_dir, title, grid=None, sigma=8.0, stretch_window=None):
+    """Untyped DOS at each method's own minimum. rows: dict(label, omega_cm, color). Full 3N signed ω — asserts, then plots ν>10.
+
+    Set row['require_minimum']=False for a published Hessian that is not a stationary point (e.g. PySCF Si NCs).
+    """
+    from pathlib import Path
+    from pyBall.FFfit_utils import assert_harmonic_spectrum_at_minimum, as_signed_wavenumbers_cm1
+    out = Path(out_dir); out.mkdir(parents=True, exist_ok=True)
+    if grid is None:
+        grid = np.linspace(0.0, 3300.0, 3301)
+    vibs = []
+    for row in rows:
+        om = as_signed_wavenumbers_cm1(row['omega_cm'])
+        if row.get('require_minimum', True):
+            assert_harmonic_spectrum_at_minimum(om, ctx=f"{title} {row['label']}: ")
+        v = om[np.isfinite(om) & (om > 10.0) & (om < 4000.0)]
+        if v.size == 0:
+            raise ValueError(f"plot_ownmin_method_dos: no vibrational modes in {row['label']}")
+        vibs.append((str(row['label']), row.get('color', '#333333'), v))
+    if stretch_window is None:
+        nu_hi = max(float(v.max()) for _, _, v in vibs)
+        stretch_window = (1900.0, 2400.0) if nu_hi < 2500.0 else (1800.0, 3300.0)
+        stretch_tag = 'Si–H window' if nu_hi < 2500.0 else 'C–H window'
+    else:
+        stretch_tag = 'hydride window'
+    fig, (ax0, ax1) = plt.subplots(2, 1, figsize=(10.2, 6.2), sharex=True, gridspec_kw=dict(height_ratios=[1.25, 0.9], hspace=0.06))
+    for lab, col, v in vibs:
+        y = gaussian_spectrum(v, grid, sigma)
+        ax0.plot(grid, y / max(float(y.max()), 1e-18), color=col, lw=1.3, label=lab)
+    ax0.set_ylabel('DOS (norm.)'); ax0.set_ylim(0.0, 1.06); ax0.legend(fontsize=8, loc='upper right', frameon=False)
+    ax0.set_title(title)
+    n = len(vibs)
+    for i, (lab, col, v) in enumerate(vibs):
+        y0 = (n - 1 - i) + 0.08
+        ax1.vlines(v, y0, y0 + 0.82, colors=col, lw=0.35, alpha=0.88)
+    ax1.set_yticks([0.5 + i for i in range(n)])
+    ax1.set_yticklabels([vibs[n - 1 - i][0] for i in range(n)], fontsize=8)
+    ax1.set_xlabel('ω (cm⁻¹)'); ax1.set_xlim(0.0, 3300.0); ax1.set_ylim(0.0, float(n))
+    fig.savefig(out / 'spectra_overlay.png', dpi=140, bbox_inches='tight'); plt.close(fig)
+    fig, (ax0, ax1) = plt.subplots(2, 1, figsize=(10.2, 5.4), sharex=True, gridspec_kw=dict(height_ratios=[1.2, 0.85], hspace=0.06))
+    lo, hi = float(stretch_window[0]), float(stretch_window[1])
+    for lab, col, v in vibs:
+        y = gaussian_spectrum(v, grid, sigma)
+        ax0.plot(grid, y / max(float(y.max()), 1e-18), color=col, lw=1.3, label=lab)
+        ax1.vlines(v, 0.0, 1.0, colors=col, lw=0.45, alpha=0.7)
+    ax0.set_ylabel('DOS (norm.)'); ax0.legend(fontsize=8, loc='upper left', frameon=False)
+    ax0.set_title(title + f'  — {stretch_tag}')
+    ax1.set_xlabel('ω (cm⁻¹)'); ax1.set_ylabel('sticks')
+    ax0.set_xlim(lo, hi); ax1.set_xlim(lo, hi); ax1.set_ylim(0.0, 1.15)
+    fig.savefig(out / 'spectra_stretch.png', dpi=140, bbox_inches='tight')
+    fig.savefig(out / 'spectra_CH_stretch.png', dpi=140, bbox_inches='tight')
+    plt.close(fig)
+    fig, axes = plt.subplots(n, 1, figsize=(10.2, 1.7 * n), sharex=True)
+    if n == 1:
+        axes = [axes]
+    for ax, (lab, col, v) in zip(axes, vibs):
+        y = gaussian_spectrum(v, grid, sigma)
+        ax.fill_between(grid, 0.0, y / max(float(y.max()), 1e-18), color=col, alpha=0.35)
+        ax.plot(grid, y / max(float(y.max()), 1e-18), color=col, lw=1.15)
+        ax.set_ylabel(lab, fontsize=8); ax.set_ylim(0.0, 1.08); ax.set_xlim(0.0, 3300.0)
+    axes[-1].set_xlabel('ω (cm⁻¹)'); axes[0].set_title(title)
+    fig.savefig(out / 'spectra_stacked.png', dpi=140, bbox_inches='tight'); plt.close(fig)
+    return out / 'spectra_overlay.png'
+
+def plot_stacked_method_pdos(grid, rows, out_path, elem='C', face_families=('100', '111'),
+                             xlim=(0.0, 3600.0), title='', sigma=8.0,
+                             pos=None, atom_colors=None, atom_sizes=None):
+    """One row per method: stacked group PDOS (matplotlib stackplot) + total DOS line.
+
+    ``w_groups`` per row must partition each mode: Σ_g w_g = 1, so Σ PDOS = total DOS.
+    Optional ``pos`` / ``atom_colors`` / ``atom_sizes`` (function args) draw a 3-view map on top.
+    If every row has ``pos`` + ``atom_colors`` + ``atom_sizes``, draw a small xy inset (bonds behind atoms) in that row's largest empty ω-gap.
+    Black rug under each panel = one vertical line per eigenmode (ω>10 cm⁻¹).
+    """
+    from pathlib import Path
+    from pyBall.plotUtils import plot_nc_views
+    n = len(rows)
+    if n < 1:
+        raise ValueError("plot_stacked_method_pdos: empty rows")
+    grid = np.asarray(grid, dtype=np.float64)
+    per_row = all(r.get('pos') is not None and r.get('atom_colors') is not None and r.get('atom_sizes') is not None for r in rows)
+    have_map = (pos is not None) and not per_row
+    n_top = 1 if have_map else 0
+    n_col = 3 if have_map else 1
+    h_row = 1.02 if per_row else (1.45 if not have_map else 1.95)
+    fig = plt.figure(figsize=(11.0, 0.62 + 2.2 * n_top + h_row * n), layout=None if per_row else 'constrained')
+    height_ratios = ([1.05] * n_top) + [1.0] * n
+    gs = fig.add_gridspec(n_top + n, n_col, height_ratios=height_ratios, hspace=0.06 if per_row else 0.04, wspace=0.04)
+    if per_row:
+        fig.subplots_adjust(left=0.08, right=0.995, top=0.88, bottom=0.055, hspace=0.08)
+    if have_map:
+        map_axes = [fig.add_subplot(gs[0, i]) for i in range(3)]
+        plot_nc_views(None, pos, atom_colors, atom_sizes, axes=map_axes, close=False)
+    stack_order = ['bulk'] + [k for k in NBHD_PLOT_STYLE if k != 'bulk']
+    om_hi = 0.0
+    for row in rows:
+        om0 = np.asarray(row['omega_cm'], dtype=np.float64)
+        phys0 = np.isfinite(om0) & (om0 > 10.0) & (om0 < 4000.0)
+        if np.any(phys0):
+            om_hi = max(om_hi, float(om0[phys0].max()))
+    x1 = float(xlim[1])
+    if om_hi > 0 and x1 > om_hi + 150.0:
+        x1 = om_hi + 80.0
+    x0 = float(xlim[0])
+    legend_map = {}
+    spec_axes = []
+    for i, row in enumerate(rows):
+        if per_row:
+            ax = fig.add_subplot(gs[n_top + i, 0])
+        elif have_map:
+            ax = fig.add_subplot(gs[n_top + i, :])
+        else:
+            ax = fig.add_subplot(gs[i, 0])
+        spec_axes.append(ax)
+        if i > 0:
+            ax.sharex(spec_axes[0])
+        om = np.asarray(row['omega_cm'], dtype=np.float64)
+        phys = np.isfinite(om) & (om > 10.0) & (om < 4000.0)
+        om = om[phys]
+        w_groups = {k: np.asarray(v, dtype=np.float64)[phys] for k, v in row['w_groups'].items()}
+        w_sum = None
+        for v in w_groups.values():
+            w_sum = v.copy() if w_sum is None else w_sum + v
+        if w_sum is None:
+            raise ValueError(f"plot_stacked_method_pdos: no groups in {row['method']}")
+        err = float(np.max(np.abs(w_sum - 1.0)))
+        if err > 1e-5:
+            raise ValueError(f"plot_stacked_method_pdos: {row['method']} group weights do not sum to 1 (max |Δ|={err:.3e}) — this is not a DOS partition")
+        y_dos = gaussian_spectrum(om, grid, sigma, weights=np.ones(om.shape[0]))
+        keys, ys, cols = [], [], []
+        for k in stack_order:
+            if k not in w_groups:
+                continue
+            y = gaussian_spectrum(om, grid, sigma, w_groups[k])
+            if float(np.max(y)) < 1e-18:
+                continue
+            keys.append(k); ys.append(y)
+            cols.append(NBHD_PLOT_STYLE.get(k, dict(color='#888888'))['color'])
+        extra = [k for k in w_groups if k not in stack_order]
+        for k in extra:
+            y = gaussian_spectrum(om, grid, sigma, w_groups[k])
+            keys.append(k); ys.append(y); cols.append('#888888')
+        y_stack = np.sum(ys, axis=0)
+        rel = float(np.max(np.abs(y_stack - y_dos)) / max(float(y_dos.max()), 1e-18))
+        if rel > 1e-4:
+            raise ValueError(f"plot_stacked_method_pdos: {row['method']} ΣPDOS ≠ DOS (rel={rel:.3e})")
+        labels = [nbhd_legend_label(k, elem=elem, face_families=face_families) for k in keys]
+        ax.stackplot(grid, *ys, colors=cols, labels=labels, alpha=0.88, lw=0)
+        ax.plot(grid, y_dos, color='k', lw=1.15, label='total DOS')
+        h = 0.07 * float(np.max(y_dos))
+        ax.vlines(om, 0.0, h, colors='#111111', lw=0.28, alpha=0.55, zorder=4)
+        ax.set_xlim(x0, x1)
+        ax.set_ylim(0.0, 1.08 * float(np.max(y_dos)))
+        ax.set_ylabel(row['method'], fontsize=7, fontweight='semibold')
+        ax.tick_params(labelsize=8)
+        if i < n - 1:
+            ax.tick_params(labelbottom=False)
+        note = row.get('note', '')
+        if note:
+            ax.text(0.99, 0.92, note, transform=ax.transAxes, ha='right', va='top', fontsize=7, color='#b91c1c' if 'imag' in note else '#444')
+        for hnd, lab in zip(*ax.get_legend_handles_labels()):
+            if lab not in legend_map:
+                legend_map[lab] = hnd
+        if per_row:
+            bij = row.get('bonds_ij')
+            if bij is None:
+                raise ValueError(f"plot_stacked_method_pdos: {row['method']} missing bonds_ij for geometry inset")
+            pts = np.sort(om[(om >= x0) & (om <= x1)])
+            edges = np.concatenate(([x0], pts, [x1]))
+            dw = np.diff(edges)
+            ig = int(np.argmax(dw))
+            g0, g1 = float(edges[ig]), float(edges[ig + 1])
+            if g1 - g0 < 350.0:
+                raise ValueError(f"plot_stacked_method_pdos: {row['method']} has no empty ω-gap ≥350 cm⁻¹ for geometry inset (widest={g1-g0:.0f})")
+            span = x1 - x0
+            f0, f1 = (g0 - x0) / span, (g1 - x0) / span
+            w = min(0.20, 0.42 * (f1 - f0))
+            cx = 0.5 * (f0 + f1)
+            ia = ax.inset_axes([cx - 0.5 * w, 0.06, w, 0.90])
+            sz = np.asarray(row['atom_sizes'], dtype=np.float64) * 0.16
+            plot_nc_views(None, row['pos'], row['atom_colors'], sz, bonds_ij=np.asarray(bij, dtype=np.int32),
+                          axes=[ia], view_labels=('',), close=False)
+            xlo, xhi = ia.get_xlim(); ylo, yhi = ia.get_ylim()
+            pad = 0.10 * max(xhi - xlo, yhi - ylo)
+            ia.set_xlim(xlo - pad, xhi + pad); ia.set_ylim(ylo - pad, yhi + pad)
+            ia.set_facecolor('white')
+            ia.patch.set_alpha(0.94)
+            ia.set_zorder(6)
+            for sp in ia.spines.values():
+                sp.set_linewidth(0.5)
+                sp.set_color('#666666')
+    if legend_map:
+        labs, hnds = list(legend_map.keys()), list(legend_map.values())
+        if per_row:
+            fig.legend(hnds, labs, loc='upper left', fontsize=7.5, frameon=False, ncol=min(4, len(labs)), bbox_to_anchor=(0.08, 0.955))
+        else:
+            fig.legend(hnds, labs, loc='upper right', fontsize=7, frameon=False, ncol=min(4, len(labs)), bbox_to_anchor=(1.0, 1.02))
+    spec_axes[-1].set_xlabel('ω (cm⁻¹)')
+    fig.suptitle(title, fontsize=11, y=0.995 if per_row else None)
+    out = Path(out_path); out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=140, bbox_inches='tight', pad_inches=0.04); plt.close(fig)
+    return out
+
+def plot_hessian_comparison(H_ref, H_model, label, outdir, ref_name='DFT reference', model_name='FF model'):
     """Plot signed values and log magnitudes of reference, model, and residual Hessians."""
     os.makedirs(outdir, exist_ok=True)
     matrices = [H_ref, H_model, H_model - H_ref]
-    names = ['DFT reference', 'FF model', 'model - DFT']
+    names = [ref_name, model_name, f'{model_name} − {ref_name}']
     vmax = max(np.max(np.abs(H_ref)), np.max(np.abs(H_model)))
     floor = max(vmax * 1e-10, np.finfo(float).tiny)
     log_matrices = [np.log10(np.maximum(np.abs(H), floor)) for H in matrices]

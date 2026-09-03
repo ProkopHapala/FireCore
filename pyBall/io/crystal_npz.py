@@ -115,6 +115,101 @@ def bboxes_to_atomscene(bmin, bmax):
     bbmin[:, :3] = bmin[:, :3]; bbmax[:, :3] = bmax[:, :3]
     return bbmin, bbmax
 
+def as_bonds_ij(bonds, n_atoms=None, ctx='bonds_ij'):
+    """Require explicit (Nb,2) 0-based pairs. Distance-guessing drops 5-ring closers."""
+    if bonds is None or len(bonds) == 0:
+        raise ValueError(f"{ctx}: empty bonds — crystal NPZ/xyz must store explicit topology")
+    arr = np.asarray(bonds, dtype=np.int32)
+    if arr.ndim == 1:
+        if arr.size % 2 != 0:
+            raise ValueError(f"{ctx}: flat bonds length {arr.size} not even")
+        arr = arr.reshape(-1, 2)
+    if arr.ndim != 2 or arr.shape[1] != 2:
+        raise ValueError(f"{ctx}: bonds.shape={arr.shape} expected (Nb,2)")
+    if (arr < 0).any():
+        raise ValueError(f"{ctx}: negative atom index in bonds")
+    if n_atoms is not None and (arr >= int(n_atoms)).any():
+        raise ValueError(f"{ctx}: bond index >= n_atoms={n_atoms}")
+    return arr
+
+
+def map_atoms_by_position(pos_src, pos_dst, tol=1e-3):
+    """Index map src→dst by coordinates. MMFF packs heavies-then-H; mol2 may be interleaved."""
+    pos_src = np.asarray(pos_src, dtype=np.float64)
+    pos_dst = np.asarray(pos_dst, dtype=np.float64)
+    if pos_src.shape != pos_dst.shape or pos_src.ndim != 2 or pos_src.shape[1] != 3:
+        raise ValueError(f"map_atoms_by_position: shapes {pos_src.shape} vs {pos_dst.shape}")
+    n = pos_src.shape[0]
+    mapping = np.empty(n, dtype=np.int32)
+    used = np.zeros(n, dtype=bool)
+    for i in range(n):
+        d2 = np.sum((pos_dst - pos_src[i]) ** 2, axis=1)
+        j = int(np.argmin(d2))
+        if d2[j] > tol * tol:
+            raise ValueError(f"map_atoms_by_position: src[{i}] min distance {np.sqrt(d2[j]):.4g} Å > {tol}")
+        if used[j]:
+            raise ValueError(f"map_atoms_by_position: dst[{j}] already matched")
+        used[j] = True
+        mapping[i] = j
+    return mapping
+
+
+def remap_bonds_ij(bonds_ij, mapping, n_atoms=None):
+    bonds_ij = as_bonds_ij(bonds_ij, n_atoms=len(mapping) if n_atoms is None else n_atoms, ctx='remap_bonds_ij')
+    mapping = np.asarray(mapping, dtype=np.int32).reshape(-1)
+    out = np.stack([mapping[bonds_ij[:, 0]], mapping[bonds_ij[:, 1]]], axis=1).astype(np.int32)
+    swap = out[:, 0] > out[:, 1]
+    out[swap] = out[swap][:, ::-1]
+    return as_bonds_ij(out, n_atoms=int(mapping.size), ctx='remap_bonds_ij.out')
+
+
+def load_bonds_ij_from_mol2(path):
+    from pyBall.atomicUtils import loadMol2
+    apos, _atypes, _enames, _qs, bonds, *_rest = loadMol2(path)
+    return as_bonds_ij(bonds, n_atoms=len(apos), ctx=f'load_bonds_ij_from_mol2({path})')
+
+
+def load_bonds_ij_from_xyz(path):
+    with open(path, 'r') as f:
+        lines = f.read().splitlines()
+    if len(lines) < 2:
+        raise ValueError(f"load_bonds_ij_from_xyz({path}): file too short")
+    hdr = lines[0].split()
+    n = int(hdr[0])
+    nb = int(hdr[1]) if len(hdr) > 1 else 0
+    if n <= 0 or nb <= 0:
+        raise ValueError(f"load_bonds_ij_from_xyz({path}): need 'nAtoms nBonds' header, got {lines[0]!r}")
+    need = 2 + n + nb
+    if len(lines) < need:
+        raise ValueError(f"load_bonds_ij_from_xyz({path}): expected {need} lines, got {len(lines)}")
+    pairs = []
+    for k in range(nb):
+        w = lines[2 + n + k].split()
+        if len(w) < 2:
+            raise ValueError(f"load_bonds_ij_from_xyz({path}): bond line {k} parse failed")
+        a1, a2 = int(w[0]), int(w[1])
+        pairs.append((a1 - 1, a2 - 1))
+    return as_bonds_ij(pairs, n_atoms=n, ctx=f'load_bonds_ij_from_xyz({path})')
+
+
+def load_bonds_ij_from_init(path):
+    suf = os.path.splitext(path)[1].lower()
+    if suf == '.mol2':
+        return load_bonds_ij_from_mol2(path)
+    if suf == '.xyz':
+        return load_bonds_ij_from_xyz(path)
+    raise ValueError(f"load_bonds_ij_from_init: unsupported '{path}' (use .mol2 or .xyz with explicit bonds)")
+
+
+def rewrite_crystal_npz_bonds(npz_path, bonds_ij):
+    """Keep pos/Z/relax metadata; set required bonds_ij. Used to backfill atlas 02_relaxed.npz."""
+    src = np.load(npz_path, allow_pickle=False)
+    data = {k: np.asarray(src[k]) for k in src.files}
+    n = int(np.asarray(data['Z']).reshape(-1).shape[0])
+    data['bonds_ij'] = as_bonds_ij(bonds_ij, n_atoms=n, ctx=f'rewrite_crystal_npz_bonds({npz_path})')
+    np.savez(npz_path, **data)
+
+
 def load_crystal_npz(path, mmap=True):
     d = _np_load(path, mmap=mmap)
     _require_keys(d, ['pos', 'Z'], 'load_crystal_npz')
@@ -124,9 +219,7 @@ def load_crystal_npz(path, mmap=True):
         raise ValueError(f"load_crystal_npz: pos.shape={pos.shape} Z.shape={Z.shape} mismatch in {path}")
     bonds_ij = None
     if 'bonds_ij' in d.files:
-        bonds_ij = np.asarray(d['bonds_ij'], dtype=np.int32)
-        if bonds_ij.size and bonds_ij.shape[1] != 2:
-            raise ValueError(f"load_crystal_npz: bonds_ij.shape={bonds_ij.shape} expected (Nb,2)")
+        bonds_ij = as_bonds_ij(d['bonds_ij'], n_atoms=Z.shape[0], ctx=f'load_crystal_npz({path})')
     return {'pos': pos, 'Z': Z, 'bonds_ij': bonds_ij, 'path': path}
 
 _TOPOLOGY_MMFFL_KEYS = ('neigh_idx', 'bond_k', 'bond_l0', 'stick_class', 'neigh_count', 'KLs', 'max_neighbors', 'n_bond', 'n_angle', 'n_dihedral')

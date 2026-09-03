@@ -2,7 +2,7 @@
 type: TopicalAudit
 title: Nanocrystal Vibrations
 tags: [nanocrystal, ftir, phonon, mmff]
-timestamp: 2026-09-01
+timestamp: 2026-09-02
 ---
 
 # Nanocrystal Vibrations: Generation, Force Fields, and Spectroscopy
@@ -14,9 +14,14 @@ This file is the **topical audit** (code inventory and status). It is maintained
 | Location | Role |
 |----------|------|
 | [`SiNCs.md`](SiNCs.md) | **Project briefing** (FTIR + XRD + FFfit) — paste into ChatGPT |
+| [`XRD.md`](XRD.md) | Powder XRD / PDF inventory + Kusová strain-gradient checklist |
+| [`Hessian_fitting.md`](Hessian_fitting.md) | Hessian / Wilson FFfit inventory + method checklist |
 | **This file** | APIs, implementations, test matrix, limitations |
+| [`doc/Topics/FTIR_Nanocrystals/PySCF_L1_neighborhood_PDOS.md`](../Topics/FTIR_Nanocrystals/PySCF_L1_neighborhood_PDOS.md) | PySCF L1 stacked PDOS — **plot template**; vs DFTB+ L1; Si Hessians not minima |
+| [`doc/Topics/FTIR_Nanocrystals/MMFF_C_CH_vs_CH2_kfit.md`](../Topics/FTIR_Nanocrystals/MMFF_C_CH_vs_CH2_kfit.md) | C L1 own-min \(k\)-fit vs PBE; Morse + split angles; SA did not unify cube/octa |
 | [`tests/tSiNCs/AGENTS.md`](../../tests/tSiNCs/AGENTS.md) | DOX contract — script ownership, `REPO`/`TEST_DIR` paths |
 | [`doc/Topics/FTIR_Nanocrystals/README.md`](../Topics/FTIR_Nanocrystals/README.md) | Topic docs index (guides, chats, progress logs) |
+| [`doc/Topics/FTIR_Nanocrystals/ChemAtlas_MMFF_relax.md`](../Topics/FTIR_Nanocrystals/ChemAtlas_MMFF_relax.md) | Atlas results location + surface-NB relax |
 | [`tests/tSiNCs/README.md`](../../tests/tSiNCs/README.md) | Working hub — quick start, fixtures, viewers |
 | [`tests/tSiNCs/ToDo_Nanocrystal.md`](../../tests/tSiNCs/ToDo_Nanocrystal.md) | Open items |
 
@@ -64,14 +69,17 @@ JS is feature-complete (plane cuts, defects, bridges). Python covers spherical c
 | `getHessianSparseBlocks(...)` | **Active** | Neighbor-shell sparse 3×3 blocks |
 | `getPhononPhiBlocks(inds_total, inds_disp, dx)` | **Active** | PBC force-constant blocks for phonon bands |
 | `setBondParamsByType` / `setAngleParamsByType` | **Active** | Selective bond/angle modification (UFF or MMFF) |
-| `getBuffs()` / `getBuffs_UFF()` | **Active** | Expose C++ parameter arrays as numpy views |
+| `setMorseNonBond(i, K)` | **Active** | Exclusion2 cluster Morse α (`NBFF::bMorseNonBond`); GridFF Morse is a different path |
+| `setEachAngle(i)` | **Active** | Per-slot `angles[nnode×6]` \(K_{\mathrm{ss}}\) (XXX / XXH / HXH). Default kernel is **one Kss per node** (`apars[:,2]`) |
+| `getBuffs()` / `getBuffs_UFF()` | **Active** | Expose C++ parameter arrays as numpy views (`angles` included) |
 | `getHessianContext()` / `assembleHessianFromParams()` | **Active** | Hessian fitting basis and validation |
 
 #### 2b. C++ (`cpp/libs/Molecular/MMFF_lib.cpp`)
 
 | Function | Status | Description |
 |----------|--------|-------------|
-| `getHessian3Nx3N()` | **Active** | Central FD Hessian assembly |
+| `getHessian3Nx3N()` | **Active** | Central FD Hessian. Cluster: keep Exclusion2 if FIRE had it (`eval_no_omp`). PBC: bonded-only |
+| `setMorseNonBond` / `setEachAngle` | **Active** | Cluster Morse vs LJ; per-angle \(K_{\mathrm{ss}}\) |
 | `getHessianSparseBlocks()` | **Active** | Sparse block extraction |
 | `getPhononPhiBlocks()` | **Active** | PBC phonon Φ blocks; uses `NBFF::checkPBCNeighCells()` |
 | `init_buffers()` / `init_buffers_UFF()` | **Active** | Python buffer exposure |
@@ -81,7 +89,7 @@ JS is feature-complete (plane cuts, defects, bridges). Python covers spherical c
 | File | Role |
 |------|------|
 | `cpp/common/molecular/MMFFsp3_loc.h` | MMFFsp3 bond/angle forces |
-| `cpp/common/molecular/NBFF.h` | PBC neighbors; `checkPBCNeighCells()` |
+| `cpp/common/molecular/NBFF.h` | PBC neighbors; `checkPBCNeighCells()`; `bMorseNonBond` on Exclusion2 |
 | `cpp/common/molecular/MolWorld_sp3.h` | World container; `makeMMFFs()` |
 | `cpp/common_resources/crystals/` | `Si_primitive`, `diamond_primitive`, CIF/XYZ inputs |
 
@@ -106,7 +114,8 @@ JS is feature-complete (plane cuts, defects, bridges). Python covers spherical c
 
 | File | Status | Description |
 |------|--------|-------------|
-| `pyBall/nanocrystal_pipeline.py` | **Active** | NPZ stages: relax → topology-linear Hessian → `eigh` → spectrum; see [`Nanocrystal_NPZ_Pipeline.guide.md`](../Topics/FTIR_Nanocrystals/Nanocrystal_NPZ_Pipeline.guide.md) |
+| `pyBall/nanocrystal_pipeline.py` | **Active** | NPZ stages: `relax --nonbond surface` (collision-group atom set) → topology-linear Hessian → `eigh` → spectrum; atlas L0/L1 uses mol2 init |
+| `tests/tSiNCs/chem_atlas.json` | **Active** | Wulff Si ≡ C + L1 5/7-ring; `relax_tiers: L0_ref, L1_dft` |
 | `pyBall/io/crystal_npz.py` | **Active** | `load_crystal_npz`, `load_topology_npz`, `validate_topology_crystal_parity` |
 | `tests/tSiNCs/export_nanocrystal_bundle.mjs` | **Active** | JS export `01_crystal.npz` + `03_topology.npz` |
 | `tests/tSiNCs/run_nanocrystal_ensemble.mjs` | **Deprecated** | Legacy ensemble wrapper; use `nanocrystals.mjs ensemble` |
@@ -145,6 +154,10 @@ Phonon workflow: [`Phonon_testing.guide.md`](../Topics/FTIR_Nanocrystals/Phonon_
 | Script | Status | Description |
 |--------|--------|-------------|
 | `run_vib_spectra.py` | **Active** | Multi-method spectra (DFTB+, CP2K, GPAW, Psi4, PySCF) |
+| `plot_hydride_motif_spectra.py` | **Active** | Neighborhood PDOS; `--pyscf` → `OUT_pyscf_jobs/`; `--dftb-l1` → `OUT_dftb_vs_pyscf_l1/` |
+| `pyBall/FFfit_plots.py` `plot_stacked_method_pdos` | **Active** | Stacked chemistry PDOS + total DOS + rug; per-row xy inset |
+| `pyBall/FFfit_utils.py` `apply_ring_tags` / `heavy_cycles` | **Active** | 5/7-ring exclusive PDOS groups |
+| `pyBall/FFfit_utils.py` `load_dftb_vibrations_tag` | **Active** | DFTB+ `vibrations.tag` → signed cm⁻¹ + Cartesian modes |
 | `vib_utils.py` | **Active** | ASE dispatch and disk cache |
 | `plot_vib_spectra.py` | **Active** | Overlay cached QM spectra |
 | `crosscheck_nanocrystal_generators.py` | **Active** | JS vs Python generator parity |
@@ -172,17 +185,18 @@ Guides: [`CPP_MolecularBrowser_NPZ.md`](../Topics/FTIR_Nanocrystals/CPP_Molecula
 
 #### 3h. XRD (`pyBall/XRD/`, `tests/tXRD/`)
 
-Powder Debye scattering on finite H-capped clusters; pair-distance histogram on GPU; thermal \(\sigma_{ij}\) from Hessian blocks. Full project context (experiment + FTIR): [`SiNCs.md`](SiNCs.md). Implementation: [`XRD_progress.md`](../Topics/FTIR_Nanocrystals/XRD_progress.md).
+Powder Debye = sinc transform of the pair-distance histogram (experimental powder / PDF). **Checklist + Kusová strain-gradient science:** [`XRD.md`](XRD.md). Engine writeup: [`XRD_progress.md`](../Topics/FTIR_Nanocrystals/XRD_progress.md). FTIR+XRD briefing: [`SiNCs.md`](SiNCs.md).
 
 | File | Status | Description |
 |------|--------|-------------|
 | `pyBall/XRD/debye_histogram.py` | **Active** | `XRDDebye` OpenCL; ensemble histogram accumulate; Hessian \(\sigma\) |
 | `pyBall/XRD/form_factors.py` | **Active** | Cromer–Mann H, C, Si |
 | `cpp/common_resources/cl/XRDDebye.cl` | **Active** | Histogram + Gaussian smear + Debye transform |
-| `tests/tXRD/test_debye_histogram.py` | **Active** | Static / constant-σ / Hessian-σ |
+| `scripts/generate_xrd_webgl.py` | **Active** | Single-crystal 2D diffraction HTML (GLSL embedded; not powder) |
+| `tests/tXRD/test_debye_histogram.py` | **Active** | Static / constant-σ / Hessian-σ (C R=6 sphere) |
 | `tests/tXRD/test_ensemble_exact.py` | **Active** | Multi-crystal histogram sum |
 | `tests/tXRD/test_large_crystal.py` | **Active** | Larger C diamond NCs |
-| `scripts/generate_xrd_webgl.py` | **Active** | Single-crystal 2D diffraction HTML |
+| `tests/tXRD/README.md` | **Active** | Folder index |
 
 ---
 
@@ -198,6 +212,8 @@ Full index: [`README.md`](../Topics/FTIR_Nanocrystals/README.md).
 | `Sparse_Hessian_Vibration_Spectra.guide.md` | guide | Sparse Hessian and spectrum methods |
 | `CPP_MolecularBrowser_NPZ.md` | guide | C++ SDL browser: NPZ load, VIEW keys, bond color map |
 | `Python_Vispy_MolBrowser_Plugins.md` | guide | Python Vispy browser: plugin system, vibration spectrum panel |
+| `HydrideMotif_spectra.md` | report | L2 DFTB+ vs MMFF group PDOS |
+| `PySCF_L1_neighborhood_PDOS.md` | report | PySCF L1 stacked PDOS template; vs DFTB+ L1 SK sets; Si imaginaries |
 | `gen_nanocrystals.chat.md` | chat | Generation CLI reference |
 | `Hessian_Kspace.chat.md` | chat | k-space / Bloch theory |
 | `Hessian_fitting.chat.md` | chat | Hessian parameter fitting |
@@ -206,7 +222,7 @@ Full index: [`README.md`](../Topics/FTIR_Nanocrystals/README.md).
 | `Linearized_topology.progress.md` | progress | MMFFL linearized topology |
 | `Nanocrystal_vibration_sparse.progress.md` | progress | Sparse vibration staging |
 | `Sparse_vibration_solver.progress.md` | progress | GPU/iterative solvers (deferred) |
-| `XRD_progress.md` | progress | XRD + vibrations |
+| `XRD_progress.md` | progress | GPU Debye engine + thermal σ. Science checklist: [`XRD.md`](../../topical_audit/XRD.md) |
 | `Debug_ASan_double_free_and_eval_atom.progress.md` | progress | MMFF ASan debugging |
 
 **Not present:** `Debug_negative_phonon_freqs.md` — imaginary-mode checklist is in [`Phonon_testing.guide.md`](../Topics/FTIR_Nanocrystals/Phonon_testing.guide.md) (Known Issues).
@@ -251,6 +267,7 @@ tests/tSiNCs/run_vib_spectra.py ◄─┘  (QM reference, adamantane / sila-adam
 | `test_diatomic_hessian.py` | Hessian correctness | MMFF | No | — |
 | `crosscheck_nanocrystal_generators.py` | JS vs Python gen | — | — | (in `tests/tSiNCs/`) |
 | `run_vib_spectra.py` | QM reference spectra | QM | No | `--methods` |
+| `fit_mmff_kss_pyscf.py` | Own-min stretch RMSE vs PySCF | MMFF | No | `--mol pyscf_nc --ref joint\|nbscan\|morse2d\|anneal` |
 | `test_cpp_npz_load.sh` | C++ NPZ parse | — | — | `--gui` optional |
 
 Run classical tests from `tests/tMMFF/` via `bash run.sh <script>`. QM and parity: see [`tests/tSiNCs/README.md`](../../tests/tSiNCs/README.md).
@@ -271,7 +288,7 @@ Run classical tests from `tests/tMMFF/` via `bash run.sh <script>`. QM and parit
 | Production spectra | **Active** | Dense `eigh` + mode histogram |
 | Linear-response FTIR | **Active** | Green's probing in `FTIR.py` |
 | Phonon bands (PBC) | **Active** | Supercell + Bloch; `checkPBCNeighCells()` |
-| QM references | **Active** | `tests/tSiNCs/` — molecular cages only |
+| QM references | **Active** | Cages: `run_vib_spectra.py`. L1 PySCF npy: `OUT_pyscf_jobs/` — **Si not stationary** |
 | Sparse/GPU freq solvers | **Deferred** | Implemented but not on critical path |
 | GPU Hessian | **Not started** | MD GPU paths exist; Hessian is CPU-only |
 | `plot_phonon_bands.py` | **Missing** | Extract from test script (backlog) |
@@ -285,11 +302,12 @@ Run classical tests from `tests/tMMFF/` via `bash run.sh <script>`. QM and parit
 
 1. **PBC optical modes:** cluster mode gives correct Γ optical modes; finite-k acoustic branches may go imaginary on small clusters. Use `--asr` or PBC with care — [`Phonon_testing.guide.md`](../Topics/FTIR_Nanocrystals/Phonon_testing.guide.md).
 2. **Hessian cost:** 6N force evaluations; expensive above ~1000 atoms. No GPU Hessian.
-3. **Parameter fitting:** bond/angle stiffness only; no non-bonded or π terms.
-4. **Surface H:** static capping in generation; H positions not relaxed before vibration.
+3. **Parameter fitting:** Hessian FFfit is bond/angle stiffness. Own-min stretch RMSE vs PBE L1 (`fit_mmff_kss_pyscf.py`) can also scan surface Morse α and XXX/XXH/HXH; **one C pack did not unify CH vs CH₂** ([`MMFF_C_CH_vs_CH2_kfit.md`](../Topics/FTIR_Nanocrystals/MMFF_C_CH_vs_CH2_kfit.md)).
+4. **Surface H:** chem atlas L0/L1 MMFF-relaxes H with surface-only NB ([`ChemAtlas_MMFF_relax.md`](../Topics/FTIR_Nanocrystals/ChemAtlas_MMFF_relax.md)); other generators may still leave static caps. Fitter historically bonded-only; cubes clash without surface NB.
 5. **SiO₂ / silica:** out of scope.
 6. **Relax vs Hessian FF:** relax uses C++ MMFF today; Hessian uses exported MMFFL linear sticks — LFF relax on `03_topology.npz` is backlog for full parity.
 7. **Eigenvectors:** not stored in `05_spectrum.npz` v1.2 (modes used internally for probe weights).
+8. **PySCF L1 (2026-09-03):** canonical `/home/prokop/SIMULATIONS/SiNCs/pyscf_vib_results`. **10/12 0-imag** (five Si fixed by tight FMAX). Still saddles: `cube_C`, `octahedron_7ring_Si`. Legacy `pySCF/jobs/results` Si superseded. DFTB+ L1 of the same 12 crystals is 0-imag (`OUT_dftb_vs_pyscf_l1/` needs rebuild vs tight Si). [`PySCF_L1_neighborhood_PDOS.md`](../Topics/FTIR_Nanocrystals/PySCF_L1_neighborhood_PDOS.md).
 
 ---
 
