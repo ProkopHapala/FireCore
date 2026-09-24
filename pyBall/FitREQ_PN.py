@@ -83,11 +83,11 @@ def loadDOFSelection(fname="dofSelection.dat"):
     return nDOFs
 
 #int loadXYZ( const char* fname, bool bAddEpairs, bool bOutXYZ, bool bEvalOnlyCorrections, bool bAppend ){ 
-lib.loadXYZ.argtypes  = [c_char_p, c_bool, c_bool, c_bool, c_char_p, c_bool, c_bool]
+lib.loadXYZ.argtypes  = [c_char_p, c_bool, c_bool, c_bool, c_char_p, c_bool, c_bool, c_bool]
 lib.loadXYZ.restype   =  c_int
-def loadXYZ(fname, bAddEpairs=False, bOutXYZ=False, bSaveJustElementXYZ=False, OutXYZ_fname='out_epairs.xyz', bEvalOnlyCorrections=False, bAppend=False ):
+def loadXYZ(fname, bAddEpairs=False, bOutXYZ=False, bSaveJustElementXYZ=False, OutXYZ_fname='out_epairs.xyz', bEvalOnlyCorrections=False, bAppend=False, bBoltzPop=False):
     global nbatch
-    nbatch = lib.loadXYZ(cstr(fname), bAddEpairs, bOutXYZ, bSaveJustElementXYZ, cstr(OutXYZ_fname), bEvalOnlyCorrections, bAppend)
+    nbatch = lib.loadXYZ(cstr(fname), bAddEpairs, bOutXYZ, bSaveJustElementXYZ, cstr(OutXYZ_fname), bEvalOnlyCorrections, bAppend, bBoltzPop)
     return nbatch
 
 # Channel-resolved linear design used by the FitHBonds variable-projection scan.

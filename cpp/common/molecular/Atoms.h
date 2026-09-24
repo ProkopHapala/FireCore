@@ -18,11 +18,15 @@ class Atoms{ public:
     int   * atypes =0;  // [natoms] array of atom type indices
     Vec3d * apos  __attribute__((aligned(64))) =0;   // [natoms] atomic positions
     // --- for global optimization
-    Mat3d * lvec   =0;  // ToDo: should this be pointer or full array ?
-    double Energy  =0;
-    long   id      =-1;
-    int    n0      =0; // number of atoms in the first part of the system (e.g. ligand) 
-    double* charge =0; // [natoms] array of atom charges
+    Mat3d * lvec   = 0;  // ToDo: should this be pointer or full array ?
+    double Energy  = 0.0;
+    long   id      = -1;
+    int    n0      = 0; // number of atoms in the first part of the system (e.g. ligand) 
+    double* charge = 0; // [natoms] array of atom charges
+    double Emin    = 0.0;
+    double T       = 0.0;
+    double Z       = 0.0;
+    double pop     = 0.0;
     //int   * rootatom =0;  // [natoms] array of atom ids to which the electron pair is attached 
     //Vec3d * rootdir  __attribute__((aligned(64))) =0;   // [natoms] vector connecting the electron pair to the atom to which the electron pair is attached (X->E_X)
 
@@ -38,12 +42,15 @@ class Atoms{ public:
     void copyOf(const Atoms& p){
         Energy  = p.Energy;
         n0      = p.n0; 
+        Emin = p.Emin;
+        T    = p.T;
+        Z    = p.Z;
+        pop  = p.pop;  
         if(natoms!=p.natoms)realloc(p.natoms);
         if(lvec  !=p.lvec  ){ lvec=new Mat3d; *lvec=*(p.lvec); }
         memcpy( atypes, p.atypes, sizeof(int)  *natoms );
         memcpy( apos,   p.apos,   sizeof(Vec3d)*natoms );
         if(charge){ memcpy( charge, p.charge, sizeof(double)*natoms ); }
-        
     }
 
     Atoms() = default;

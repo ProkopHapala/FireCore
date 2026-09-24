@@ -75,11 +75,11 @@ int loadDOFSelection( const char* fname ){
     return W.loadDOFSelection( fname );
 }
 
-int loadXYZ( const char* fname, bool bAddEpairs, bool bOutXYZ, bool bSaveJustElementXYZ, char* OutXYZ_fname, bool bEvalOnlyCorrections, bool bAppend ){ 
+int loadXYZ( const char* fname, bool bAddEpairs, bool bOutXYZ, bool bSaveJustElementXYZ, char* OutXYZ_fname, bool bEvalOnlyCorrections, bool bAppend, bool bBoltzPop ){ 
     W.bSaveJustElementXYZ = bSaveJustElementXYZ;
     W.bEvalOnlyCorrections=bEvalOnlyCorrections; 
     //printf( "loadXYZ(fname=%s, bAddEpairs=%i, bOutXYZ=%i, bSaveJustElementXYZ=%i, bEvalOnlyCorrections=%i, bAppend=%i ) \n", fname, bAddEpairs, bOutXYZ, bSaveJustElementXYZ, bEvalOnlyCorrections, bAppend );
-    return W.loadXYZ( fname, bAddEpairs, bOutXYZ, OutXYZ_fname, bAppend );
+    return W.loadXYZ( fname, bAddEpairs, bOutXYZ, OutXYZ_fname, bAppend, bBoltzPop );
 }
 
 // Variable-projection support used by FitHBonds.  The nonlinear mixing-rule

@@ -709,8 +709,8 @@ void printDOFregularization(){
  * @param bAppend Whether to append to the output file
  * @return Number of batches created
  */
-int loadXYZ( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false, char* OutXYZ_fname="", bool bAppend=false ){
-    printf( "FitREQ_PN::loadXYZ(%s) bAddEpairs=%i bOutXYZ=%i OutXYZ_fname=%s bAppend=%i\n", fname, bAddEpairs, bOutXYZ, OutXYZ_fname, bAppend );
+int loadXYZ( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false, char* OutXYZ_fname="", bool bAppend=false, bool bBoltzPop=false ){
+    printf( "FitREQ_PN::loadXYZ(%s) bAddEpairs=%i bOutXYZ=%i OutXYZ_fname=%s bAppend=%i bBoltzPop=%i\n", fname, bAddEpairs, bOutXYZ, OutXYZ_fname, bAppend, bBoltzPop );
     FILE* fin = fopen( fname, "r" );
     if(fin==0){ printf("cannot open '%s' \n", fname ); exit(0);}
     const int nline=1024;
@@ -742,8 +742,14 @@ int loadXYZ( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false, char*
                 atoms = new Atoms(na);
             }else{ printf( "ERROR in FitREQ_PN::loadXYZ() Suspicious number of atoms (%i) while reading `%s`  => Exit() \n", na, fname ); exit(0); }
         }else if( il==1 ){               // --- Read comment line ( read reference energy )
-            sscanf( line, "%*s %*s %i %*s %lf ", &(atoms->n0), &(atoms->Energy) );
-            //printf("FitREQ_PN::loadXYZ() nbatch[%i] Energy %lf\n", nbatch, atoms->Energy );             
+            if (bBoltzPop){
+                sscanf( line, "%*s %*s %i %*s %lf %*s %*s %*s %*s %*s %*s %lf %*s %lf %*s %lf %*s %lf", &(atoms->n0), &(atoms->Energy), &(atoms->Emin), &(atoms->T), &(atoms->Z), &(atoms->pop) );
+                            // #   n0  10 Eto 4.  x0  01. y   -90 C4H Emi 0.2 T   964 Z   26. pop 0.1
+            // read 
+            }else{
+                sscanf( line, "%*s %*s %i %*s %lf ", &(atoms->n0), &(atoms->Energy) );
+                //printf("FitREQ_PN::loadXYZ() nbatch[%i] Energy %lf\n", nbatch, atoms->Energy );             
+            }
         }else if( il<atoms->natoms+2 ){  // --- Read atom line (type, position, charge)
             double x,y,z,q;
             int nret = sscanf( line, "%s %lf %lf %lf %lf", at_name, &x, &y, &z, &q );
