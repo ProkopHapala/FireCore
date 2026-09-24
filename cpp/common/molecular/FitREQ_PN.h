@@ -503,6 +503,7 @@ class FitREQ_PN{ public:
     double SRcut     = 1.0;   // maximum distance for SR Epair interactions
     int    SR4n      = 2;     // order of polynomial for SR4 Epair interactions
     int    SR4m      = 2;     // order of polynomial for SR4 Epair interactions
+    bool   bBoltzPop = false; // false=user-provided weights, true=population-based penalty
 
 // =================================
 // =========== Functions ===========
@@ -1073,7 +1074,7 @@ __attribute__((hot))
 double run_PN( int ialg, int nstep, double Fmax, double dt, double max_step, double damping, bool bOMP ){
     bSaveSampleToXYZ=false; 
     //bSaveSampleToXYZ=true; 
-    if(verbosity>1){ printf( "FitREQ_PN::run() imodel %i ialg %i nstep %i Fmax %g dt %g max_step %g \n", imodel, ialg, nstep, Fmax, dt, max_step ); }
+    if(verbosity>1){ printf( "FitREQ_PN::run() imodel %i ialg %i nstep %i Fmax %g dt %g max_step %g\n", imodel, ialg, nstep, Fmax, dt, max_step ); }
     if(weights){updateWeightsSum();}
     double Err=0;
     //noiseToDOFs(0.2);
@@ -1130,7 +1131,7 @@ double evalFitError(int itr, bool bOMP=true, bool bEvalSamples=true){
     if(bEvalSamples)[[likely]]{
         if(bOMP){  Err = evalSamples_omp();   }
         else    {  Err = evalSamples_serial(); }
-    }
+   }
     if(bPrintBeforReg)printStepDOFinfo( itr, Err, "evalFitError() BEFOR_REG: " );
     if(bRegularize){ 
         double Ereg = regularizeDOFs(); 
@@ -1197,6 +1198,7 @@ double evalSamples_omp( double* Eout=0 ){
 
 __attribute__((hot)) 
 double evalSampleError( int isamp, double& E ){
+    double Error=0.0, dEw=0.0;
     //printf( "evalSampleError() isamp = %i \n", isamp );
     isamp_debug = isamp;
     Atoms* atoms  = samples[isamp];
@@ -1206,7 +1208,7 @@ double evalSampleError( int isamp, double& E ){
     alignas(32) double fDOFs_[nDOFs];
     //if(bPN){ E = evalSample_PN( isamp, atoms, wi, fREQs ); }
     //else{ E = evalSample( isamp, atoms, wi, fREQs ); }
-    E = evalSample_PN( isamp, atoms, wi, fREQs );
+    E = evalSample_PN( isamp, atoms, fREQs );
 
     //if(verbosity>3)
     //printf( "evalSampleError() isamp: %3i Emodel: %20.6f Eref: %20.6f bBroadcastFDOFs=%i @sample_fdofs=%p \n", isamp, E, atoms->Energy, bBroadcastFDOFs, sample_fdofs );
@@ -1222,19 +1224,23 @@ double evalSampleError( int isamp, double& E ){
         //printf( "evalSampleError() saving %s comment: %s \n", xyz_out, comment );
         saveDebugXYZ( 0, atoms->natoms, atoms->atypes, atoms->apos, xyz_out, comment );
     }
-    double Eref       = atoms->Energy;
-    double dE_        = E - Eref;
-    double dClamp_dE  = 1.0;
-    double dE = (bSoftClamp) ? soft_clamp(dE_, softClamp_start, softClamp_max, dClamp_dE ) : dE_;
-    ///printf( "evalSampleError() isamp: %3i Emodel: %20.6f Eref: %20.6f bBroadcastFDOFs=%i @sample_fdofs=%p \n", isamp, E, atoms->Energy, bBroadcastFDOFs, sample_fdofs );
-    wi*= invWsum;
-    double dEw        = 2.0*dE*wi*dClamp_dE; // chain derivatives   d(wi*Delta_E^2)/dE  = 2*wi*Delta_E * (Delta_E/dE)
-    double Error      =  dE*dE*wi;
-    //if(isamp_debug<nsamp_debug){ printf( "evalSampleError() isamp: %3i Emodel: %20.6f Eref: %20.6f bBroadcastFDOFs=%i @sample_fdofs=%p \n", isamp, E, atoms->Energy, bBroadcastFDOFs, sample_fdofs ); }
-    //if(isamp_debug<nsamp_debug){ 
-    //    if( abs(dE_)>1 )
-    //    printf( "evalSampleError() isamp: %3i  dEw: %+10.4e wi: %+10.4e dE: %+10.4e dE_: %+10.4e Emodel: %+10.4e Eref: %+10.4e \n", isamp, dEw, wi, dE, dE_, E, atoms->Energy ); 
-    //}
+    if(bBoltzPop){
+        // add here part about Boltzmann population
+    }else{
+        double Eref       = atoms->Energy;
+        double dE_        = E - Eref;
+        double dClamp_dE  = 1.0;
+        double dE = (bSoftClamp) ? soft_clamp(dE_, softClamp_start, softClamp_max, dClamp_dE ) : dE_;
+        ///printf( "evalSampleError() isamp: %3i Emodel: %20.6f Eref: %20.6f bBroadcastFDOFs=%i @sample_fdofs=%p \n", isamp, E, atoms->Energy, bBroadcastFDOFs, sample_fdofs );
+        wi*= invWsum;
+        dEw        = 2.0*dE*wi*dClamp_dE; // chain derivatives   d(wi*Delta_E^2)/dE  = 2*wi*Delta_E * (Delta_E/dE)
+        Error      =  dE*dE*wi;
+        //if(isamp_debug<nsamp_debug){ printf( "evalSampleError() isamp: %3i Emodel: %20.6f Eref: %20.6f bBroadcastFDOFs=%i @sample_fdofs=%p \n", isamp, E, atoms->Energy, bBroadcastFDOFs, sample_fdofs ); }
+        //if(isamp_debug<nsamp_debug){ 
+        //    if( abs(dE_)>1 )
+        //    printf( "evalSampleError() isamp: %3i  dEw: %+10.4e wi: %+10.4e dE: %+10.4e dE_: %+10.4e Emodel: %+10.4e Eref: %+10.4e \n", isamp, dEw, wi, dE, dE_, E, atoms->Energy ); 
+        //}
+    }
     double* fDOFs__ = bBroadcastFDOFs ? sample_fdofs + isamp*nDOFs : fDOFs_;   // broadcast fDOFs ?
     for(int k=0; k<nDOFs; k++){ fDOFs__[k]=0; }                                // clean fDOFs
     acumDerivs( atoms->natoms, atoms->atypes, dEw, fREQs, fDOFs_ );            // accumulate fDOFs from fREQs
@@ -1253,8 +1259,7 @@ double evalSampleError( int isamp, double& E ){
 }
 
 __attribute__((hot)) 
-double evalSample_PN( int isamp, const Atoms* atoms, double wi, Quat4d* fREQs ) const {
-    //double wi   = (weights)? weights[isamp] : 1.0; 
+double evalSample_PN( int isamp, const Atoms* atoms, Quat4d* fREQs ) const {
     const AddedData* adata = (const AddedData*)(atoms->userData);
     alignas(32) double Qs  [atoms->natoms];
     alignas(32) Vec3d  apos[atoms->natoms];   // atomic positions
@@ -1929,7 +1934,6 @@ double move_GD_BB_short( int step, double dt, double max_step ){
         if(fabs(dxdg)<=1e-10*dgdg){dt=1e-11;}
     }
     if(max_step>0)dt=limit_dt(dt,max_step);
-    printf("step= %i dt= %g\n", step, dt );
     for(int i=0; i<nDOFs; i++){
         DOFs_old[i] = DOFs[i];
         fDOFs_old[i] = fDOFs[i];
@@ -1937,6 +1941,7 @@ double move_GD_BB_short( int step, double dt, double max_step ){
         DOFs[i] += f*dt;
         F2 += f*f;
     }
+    printf("step= %i dt= %g F2=%g\n", step, dt, F2);
     // stop the algorithm if the step is too small
     //if(dt<1e-10){ return -F2; }
     return F2;

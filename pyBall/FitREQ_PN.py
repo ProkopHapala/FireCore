@@ -214,11 +214,11 @@ def setTrjBuffs( niter, trj_E=None, trj_F=None, trj_DOFs=None, trj_fDOFs=None, n
     lib.setTrjBuffs(_np_as(trj_E,c_double_p), _np_as(trj_F,c_double_p), _np_as(trj_DOFs,c_double_p), _np_as(trj_fDOFs,c_double_p))
     return trj_E, trj_F, trj_DOFs, trj_fDOFs
 
-#double run_PN( int ialg, int iparallel, int nstep, double Fmax, double dt, double max_step, double damping ){
-lib.run_PN.argtypes  = [c_int, c_int, c_int, c_double, c_double, c_double, c_double]
+#double run_PN( int ialg, int iparallel, int nstep, double Fmax, double dt, double max_step, double damping, bool bBoltzPop ){
+lib.run_PN.argtypes  = [c_int, c_int, c_int, c_double, c_double, c_double, c_double, c_bool]
 lib.run_PN.restype   =  c_double
-def run_PN(ialg=2, iparallel=0, nstep=1000, Fmax=1e-8, dt=0.01, max_step=0.05, damping=0.01):
-    return lib.run_PN( ialg, iparallel, nstep, Fmax, dt, max_step, damping )
+def run_PN(ialg=2, iparallel=0, nstep=1000, Fmax=1e-8, dt=0.01, max_step=0.05, damping=0.01, bBoltzPop=False):
+    return lib.run_PN( ialg, iparallel, nstep, Fmax, dt, max_step, damping, bBoltzPop )
 
 #double getEs_components( double* Es, double* Es_Coul, double* Es_vdW, double* Es_Epairs, double* Es_Hbond){
 lib.getEs_components.argtypes  = [ c_double_p, c_double_p, c_double_p, c_double_p, c_double_p ]

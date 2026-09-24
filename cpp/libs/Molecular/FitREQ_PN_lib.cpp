@@ -373,10 +373,11 @@ void setTrjBuffs( double* trj_E, double* trj_F, double* trj_DOFs, double* trj_fD
     W.trj_fDOFs = trj_fDOFs;
 }
 
-double run_PN( int ialg, int iparallel, int nstep, double Fmax, double dt, double max_step, double damping ){
-    printf( "run(ialg=%i,iparallel=%i,imodel=%i,nstep=%6i,nsamp=%6i)\n", ialg, iparallel, W.imodel, nstep, W.samples.size() );
+double run_PN( int ialg, int iparallel, int nstep, double Fmax, double dt, double max_step, double damping, bool bBoltzPop ){
+    printf( "run(ialg=%i,iparallel=%i,imodel=%i,nstep=%6i,nsamp=%6i,bBoltzPop=%s)\n", ialg, iparallel, W.imodel, nstep, W.samples.size(), bBoltzPop ? "true" : "false" );
     long t0 = getCPUticks();
     double Err=0;
+    W.bBoltzPop = bBoltzPop;
     switch (iparallel){
         case 0:{ Err=W.run_PN ( ialg, nstep, Fmax, dt, max_step, damping, false ); } break;
         case 1:{ Err=W.run_PN ( ialg, nstep, Fmax, dt, max_step, damping, true  ); } break;
