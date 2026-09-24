@@ -100,6 +100,10 @@ void setLinearVdW( int ivdW ){
     W.linearVdW=ivdW;
 }
 
+void setLinearEpairHeavyOnly( bool heavyOnly ){
+    W.linearEpairHeavyOnly=heavyOnly;
+}
+
 void setEpairBasis( int ibasis, int npow ){
     W.linearEpairBasis=ibasis;
     W.linearEpairPow=npow;

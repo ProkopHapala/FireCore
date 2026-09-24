@@ -118,6 +118,12 @@ def setLinearVdW(ivdW=4):
     """Select the FireCore VdW family for the linear-fit baseline (1..5)."""
     lib.setLinearVdW(ivdW)
 
+lib.setLinearEpairHeavyOnly.argtypes = [c_bool]
+lib.setLinearEpairHeavyOnly.restype = None
+def setLinearEpairHeavyOnly(heavyOnly=False):
+    """Exclude linear Epair channels whose dummy-site host is hydrogen."""
+    lib.setLinearEpairHeavyOnly(heavyOnly)
+
 lib.setEpairBasis.argtypes = [c_int, c_int]
 lib.setEpairBasis.restype = None
 def setEpairBasis(ibasis, npow=2):

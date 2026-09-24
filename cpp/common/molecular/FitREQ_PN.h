@@ -445,6 +445,9 @@ class FitREQ_PN{ public:
     int    linearEpairPow       = 2;
     int    linearEpairPowScheme = 0;
     int    linearVdW            = 4; // FireCore ivdW code: LJ12, LJ8, LJ9, Morse, Buckingham
+    // Keep generated E_H* sites but assign them no linear correction channel.
+    // This is equivalent to fixing their Epair amplitude to zero.
+    bool   linearEpairHeavyOnly = false;
     double linearEpairR0        = 1.0;
     double linearEpairCutoff    = 3.0;
     int    linearSR4m           = 2;
@@ -1382,6 +1385,7 @@ void buildLinearPairFits(){
                     const int te=atoms->atypes[ie];
                     const int ta=atoms->atypes[ia];
                     const int th=atoms->atypes[adata->host[ie]];
+                    if(linearEpairHeavyOnly && (params->atypes[th].iZ==1)) continue;
                     if(!fittedTypes[th] || !fittedTypes[ta]) continue;
                     LinearPairFit& fit=linearPairFits[te*ntype+ta];
                     if(fit.epairCol<0){ fit.epairCol=nLinearCols; nLinearCols+=nterm; }
