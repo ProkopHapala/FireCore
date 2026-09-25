@@ -11,6 +11,7 @@
 #include "MMFFBuilder.h"
 #include "functions.h"
 #include "IO_utils.h"
+#include "constants.h"
 
 inline double soft_clamp(double y, double y1, double y2, double& dy_new){
     if (y > y1){
@@ -24,8 +25,8 @@ inline double soft_clamp(double y, double y1, double y2, double& dy_new){
     }
 }
 
-constexpr double ARGEXP_LIMIT = 700.0;
-constexpr double UPEXP_LIMIT  = 1.0142320547350045e304; // exp(700)
+constexpr double ARGEXP_LIMIT  = 700.0;
+constexpr double UPEXP_LIMIT   = 1.0142320547350045e304; // exp(700)
 constexpr double DOWNEXP_LIMIT = 9.85967654375977e-305; // exp(-700)
 inline double safe_exp(double x) {
     if (x >  ARGEXP_LIMIT) return UPEXP_LIMIT;
@@ -42,12 +43,22 @@ inline double safe_exp2(double x) {
     return exp(x);
 }
 
-constexpr double ARGEXP3_LIMIT = 233.0;
+constexpr double ARGEXP3_LIMIT  = 233.0;
 constexpr double UPEXP3_LIMIT   = 1.531774938317012e101; // exp(233)
 constexpr double DOWNEXP3_LIMIT = 6.52879859425664e-102; // exp(-233)
 inline double safe_exp3(double x) {
     if (x >  ARGEXP3_LIMIT) return UPEXP3_LIMIT;
     if (x < -ARGEXP3_LIMIT) return DOWNEXP3_LIMIT;
+    return exp(x);
+}
+
+constexpr double UPARGEXP_POP_LIMIT   = 8.0;
+constexpr double DOWNARGEXP_POP_LIMIT = 30.0;
+constexpr double UPEXP_POP_LIMIT      = 2980.957987041728275; // exp(8)
+constexpr double DOWNEXP_POP_LIMIT    = 9.35762296884017e-14; // exp(-30)
+inline double safe_exp_pop(double x) {
+    if (x >  UPARGEXP_POP_LIMIT) return UPEXP_POP_LIMIT;
+    if (x < -DOWNARGEXP_POP_LIMIT) return DOWNEXP_POP_LIMIT;
     return exp(x);
 }
 
@@ -127,7 +138,7 @@ inline double getSR4_PN( double r, double eps1, double eps2, double& f1, double&
     return eps1 * f1 + eps2 * f2;
 }
 
-constexpr double SR5crossover = 1.0 / (40.0 * sqrt(5.0) - 87.0);
+const double SR5crossover = 1.0 / (40.0 * sqrt(5.0) - 87.0);
 inline double getSR5_PN(double r, double H, double R0, double SRcut, double& dEdH, double& dEdR) {
     // no need to compute anything if we are beyond the cutoff 
     if ( r > SRcut ){ dEdH = 0.0; dEdR = 0.0; return 0.0;}
@@ -186,7 +197,7 @@ inline double getSR7_PN(double r, double H, double R0, double SRcut, double& dEd
     return H * dEdH;
 }
 
-constexpr double SR8crossover = sqrt(2.0) - 1.0;
+const double SR8crossover = sqrt(2.0) - 1.0;
 inline double getSR8_PN(double r, double H, double R0, double SRcut, double& dEdH, double& dEdR) {
     if (r >= SRcut) { dEdH = 0.0; dEdR = 0.0; return 0.0; }
     const double iRcut = 1.0 / SRcut;
@@ -744,8 +755,13 @@ int loadXYZ( const char* fname, bool bAddEpairs=false, bool bOutXYZ=false, char*
         }else if( il==1 ){               // --- Read comment line ( read reference energy )
             if (bBoltzPop){
                 sscanf( line, "%*s %*s %i %*s %lf %*s %*s %*s %*s %*s %*s %lf %*s %lf %*s %lf %*s %lf", &(atoms->n0), &(atoms->Energy), &(atoms->Emin), &(atoms->T), &(atoms->Z), &(atoms->pop) );
-                            // #   n0  10 Eto 4.  x0  01. y   -90 C4H Emi 0.2 T   964 Z   26. pop 0.1
-            // read 
+/*
+printf("comment: %s", line);
+int nread = sscanf( line, "%*s %*s %i %*s %lf %*s %*s %*s %*s %*s %*s %lf %*s %lf %*s %lf %*s %lf", &(atoms->n0), &(atoms->Energy), &(atoms->Emin), &(atoms->T), &(atoms->Z), &(atoms->pop) );
+printf("nread=%d n0=%d E=%g Emin=%g T=%g Z=%g pop=%g\n",
+       nread, atoms->n0, atoms->Energy, atoms->Emin,
+       atoms->T, atoms->Z, atoms->pop);                
+*/       
             }else{
                 sscanf( line, "%*s %*s %i %*s %lf ", &(atoms->n0), &(atoms->Energy) );
                 //printf("FitREQ_PN::loadXYZ() nbatch[%i] Energy %lf\n", nbatch, atoms->Energy );             
@@ -835,6 +851,10 @@ void addAndReorderEpairs(Atoms*& atoms, FILE* fout=nullptr) {
 
     atoms->n0 = bak->n0;
     atoms->Energy = bak->Energy;
+    atoms->Emin = bak->Emin;
+    atoms->T    = bak->T;
+    atoms->Z    = bak->Z;
+    atoms->pop  = bak->pop;
     for(int i=0; i<natbak; i++){ atoms->charge[i] = bak->charge[i]; }
     
 
@@ -1231,7 +1251,22 @@ double evalSampleError( int isamp, double& E ){
         saveDebugXYZ( 0, atoms->natoms, atoms->atypes, atoms->apos, xyz_out, comment );
     }
     if(bBoltzPop){
-        // add here part about Boltzmann population
+        double Emin   = atoms->Emin;
+        double beta   = 1.0 / (const_kB * atoms->T);
+        double iZ     = 1.0 / atoms->Z;
+        double pref   = atoms->pop;
+        //double p      = iZ * safe_exp( -beta * ( E - Emin ) );
+        double p      = iZ * safe_exp_pop( -beta * ( E - Emin ) );
+        double dp     = p - pref;
+        dEw           = -2.0 * beta * dp * p;
+        Error         = dp * dp;
+/*
+printf(
+    "isamp=%d E=%g Eref=%g Emin=%g T=%g Z=%g pref=%g exponent=%g p=%g dp=%g dEw=%g Error=%g\n",
+    isamp, E, atoms->Energy, Emin, atoms->T, atoms->Z, pref, -beta*(E-Emin), p, dp, dEw, Error
+);
+*/
+//exit(1);
     }else{
         double Eref       = atoms->Energy;
         double dE_        = E - Eref;
@@ -1832,7 +1867,7 @@ void printStepDOFinfo( int istep, double Err, const char* label="" ){
         if(bPrintfDOFs){ printf("%s step: %5i |E|: %8.3e |F|: %8.3e fDOFs: ",label, istep, Err, F); for(int j=0; j<nDOFs; j++){ printf("%10.2e ",fDOFs[j]); }; printf("\n"); }
     }
     if( isnan(Err)                   ){ printf( "ERROR in %s step: %i Err= %g \n"        , label, istep, Err ); exit(0); }
-    if ( bd.x < -1e+8 || bd.y > 1e+8 ){ printf( "ERROR in %s step: %i Fmin,max= %g %g \n", label, istep, bd.x, bd.y ); exit(0); }
+    if ( bd.x < -1e+18 || bd.y > 1e+18 ){ printf( "ERROR in %s step: %i Fmin,max= %g %g \n", label, istep, bd.x, bd.y ); exit(0); }
 }
 
 void printDOFs() const {

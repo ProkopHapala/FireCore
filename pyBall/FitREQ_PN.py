@@ -493,7 +493,7 @@ def parse_xyz_mapping(xyz_path, distances=None, angles=None):
             1.40, 1.45, 1.50, 1.55, 1.60, 1.65, 1.70, 1.75, 1.80, 1.85,
             1.90, 1.95, 2.00, 2.05, 2.10, 2.15, 2.20, 2.25, 2.30, 2.35,
             2.40, 2.45, 2.50, 2.60, 2.70, 2.80, 2.90, 3.00, 3.50, 4.00,
-            4.50, 5.00, 6.00, 8.00, 10.00, 15.00, 20.00,
+            4.50, 5.00, 5.50, 6.00, 7.00, 8.00, 10.00, 15.00, 20.00,
         ]
     if angles is None:
         angles = list(range(-90, 100, 10))
@@ -516,7 +516,7 @@ def parse_xyz_mapping(xyz_path, distances=None, angles=None):
             elif t == 'x0' and i + 1 < len(toks):
                 try: vals["x0"] = float(toks[i + 1])
                 except Exception: pass
-            elif t in ('y', 'z', 'Y', 'Z') and i + 1 < len(toks):
+            elif t in ('y', 'z') and i + 1 < len(toks):
                 vals["axis"] = t.lower()
                 try: vals["angle"] = int(float(toks[i + 1]))
                 except Exception: pass
