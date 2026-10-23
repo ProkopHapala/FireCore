@@ -1111,13 +1111,14 @@ double run_PN( int ialg, int nstep, double Fmax, double dt, double max_step, dou
     int nsamp = samples.size();
     for(int itr=0; itr<nstep; itr++){
         Err = evalFitError( itr, bOMP );
+        if(bClamp){ limitDOFs(); }  // project force at an active bound
         switch(ialg){
             case 0: F2 = move_GD         (      dt, max_step          ); break;
             case 1: F2 = move_MD         (      dt, max_step, damping ); break;
             case 2: F2 = move_GD_BB_short( itr, dt, max_step          ); break;
             case 3: F2 = move_GD_BB_long ( itr, dt, max_step          ); break;
         }
-        if( bClamp ){ limitDOFs(); } // TODO: should we put this before evalFitError() ?
+        if(bClamp){ limitDOFs(); }  // clamp coordinates after the step
         saveTrajectory(itr, Err, F2);
         if( F2<F2max ){ printf("CONVERGED in %i iterations (|F|=%g < F2max= %g) \n", itr, sqrt(F2), Fmax ); break; }
     }
@@ -1164,6 +1165,7 @@ double evalFitError(int itr, bool bOMP=true, bool bEvalSamples=true){
         if(bAddRegError)Err += Ereg;
     }   
     if(bPrintAfterReg)printStepDOFinfo( itr, Err, "evalFitError() AFTER_REG: " );
+    if(verbosity>1)printStepDOFinfo( itr, Err );
     return Err;
 }
 
@@ -1858,16 +1860,21 @@ void printStepDOFinfo( int istep, double Err, const char* label="" ){
     Vec2d bd = getMinMax( nDOFs, fDOFs );
     if( verbosity>2){ 
         printf( "%s step: %i Err= %g  min,max= %g %g \n", label, istep, Err, bd.x, bd.y );
-        printDOFs(); 
+        double F2 = 0.0;                           
+        for(int i=0; i<nDOFs; i++){ F2 += fDOFs[i]*fDOFs[i]; }
+        double F = sqrt(F2);
+        if(bPrintDOFs ){ printf("%s step: %5i |E|: %8.3e |F|: %8.3e  DOFs: ",label, istep, Err, F); for(int j=0; j<nDOFs; j++){ printf("%10.2e ", DOFs[j]); }; printf("\n"); }
+        if(bPrintfDOFs){ printf("%s step: %5i |E|: %8.3e |F|: %8.3e fDOFs: ",label, istep, Err, F); for(int j=0; j<nDOFs; j++){ printf("%10.2e ",fDOFs[j]); }; printf("\n"); }
     }else if( verbosity>1){
         //int nsamp = samples.size();
-        double F2 = 0.0;                           for(int i=0; i<nDOFs; i++){ F2 += fDOFs[i]*fDOFs[i]; }
+        double F2 = 0.0;                           
+        for(int i=0; i<nDOFs; i++){ F2 += fDOFs[i]*fDOFs[i]; }
         double F = sqrt(F2);
         if(bPrintDOFs ){ printf("%s step: %5i |E|: %8.3e |F|: %8.3e  DOFs: ",label, istep, Err, F); for(int j=0; j<nDOFs; j++){ printf("%10.2e ", DOFs[j]); }; printf("\n"); }
         if(bPrintfDOFs){ printf("%s step: %5i |E|: %8.3e |F|: %8.3e fDOFs: ",label, istep, Err, F); for(int j=0; j<nDOFs; j++){ printf("%10.2e ",fDOFs[j]); }; printf("\n"); }
     }
     if( isnan(Err)                   ){ printf( "ERROR in %s step: %i Err= %g \n"        , label, istep, Err ); exit(0); }
-    if ( bd.x < -1e+18 || bd.y > 1e+18 ){ printf( "ERROR in %s step: %i Fmin,max= %g %g \n", label, istep, bd.x, bd.y ); exit(0); }
+    if ( bd.x < -1e+50 || bd.y > 1e+50 ){ printf( "ERROR in %s step: %i Fmin,max= %g %g \n", label, istep, bd.x, bd.y ); exit(0); }
 }
 
 void printDOFs() const {
@@ -1982,7 +1989,7 @@ double move_GD_BB_short( int step, double dt, double max_step ){
         DOFs[i] += f*dt;
         F2 += f*f;
     }
-    printf("step= %i dt= %g F2=%g\n", step, dt, F2);
+    printf("step= %i dt= %g F2= %g\n", step, dt, F2);
     // stop the algorithm if the step is too small
     //if(dt<1e-10){ return -F2; }
     return F2;
@@ -2065,7 +2072,14 @@ double limit_dt_MD(double dt, double max_step, double cdamp){
 
 __attribute__((hot)) 
 void limitDOFs(){
-    for(int i=0; i<nDOFs; i++){   DOFs[i] = _clamp(DOFs[i], DOFlimits[i].x, DOFlimits[i].y); }
+    for(int i=0; i<nDOFs; i++){   
+        const double lo = DOFlimits[i].x;
+        const double hi = DOFlimits[i].y;
+        DOFs[i] = _clamp(DOFs[i], lo, hi);
+        if( (DOFs[i] <= lo && fDOFs[i] < 0.0) || (DOFs[i] >= hi && fDOFs[i] > 0.0) ){
+            fDOFs[i] = 0.0;
+        }
+    }
     //printf("limitDOFs() DOFs: "); for(int i=0;i<nDOFs;i++){ printf("%8.2e ", DOFs[i]); };printf("\n");
     //printf("limitDOFs() DOFs: "); for(int i=0;i<nDOFs;i++){ printf("%8.2e ", DOFlimits[i].x); };printf("\n");
     //printf("limitDOFs() DOFs: "); for(int i=0;i<nDOFs;i++){  printf("%8.2e ", DOFlimits[i].y); };printf("\n");
