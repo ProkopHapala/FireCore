@@ -245,7 +245,7 @@ class EFF{ public:
 { 5.0,   0.1,      2.0,      0.0,       0.0,       0.0,       0.0,       0.0      }, // 5: B  (Simple core: Z=5, sQ=0.35,sP=0.35,cP=1.0 for 1s2)
 { 6.0,   0.17900,  2.0,      22.721015, 0.728733,  1.103199,  17.695345, 6.693621 }, // 6: C (ECP: Z_nuc=6, R_core=0.621, Z_core=2. p-type)
 { 7.0,   0.2,      2.0,      0.0,       0.0,       0.0,       0.0,       0.0      }, // 7: N (ECP: Z_nuc=7, R_core=0.0,   Z_core=2. p-type)
-{ 8.0,   0.3,      2.0,      25.080199, 0.331574,  1.276183,  12.910142, 3.189333 }, // 8: O (ECP: Z_nuc=8, R_core=0.167813, Z_core=2. p-type)
+{ 8.0,   0.124828,     2.0,      25.080199, 0.331574,  1.276183,  12.910142, 3.189333 }, // 8: O (ECP: Z_nuc=8, R_core=0.167813, Z_core=2. p-type)
 { 9.0,   0.3,      2.0,      0.0,       0.0,       0.0,       0.0,       0.0      }  // 9: F (Simple core: Z=9, sQ=0.3, sP=0.3, cP=1.0 for 1s2)
 // Add Al, Si etc. as needed
 };
@@ -268,14 +268,15 @@ constexpr static const double aMasses[9] = {  1.0, 4.0, 7.0, 9.0,  11.0,  12.0, 
     double KPauliKin     = 50.0; // ToDo : Not sure if we should use this - perhaps this model of pauli energy should work "ab inition"
 
     constexpr static const double default_esize = 0.5;
-    constexpr static const double min_esize     = 0.05;
+    constexpr static const double min_esize     = 0.0;
 
     double eConst = 1;
     std::vector<double> paramsSi = {1.0, 0.5, 0.3};
-    Vec3d KRSrho = { 1.125, 0.9, -0.2 }; ///< eFF universal parameters
+    Vec3d KRSrho = { 1.125, 0.9, -0.2   }; ///< eFF universal parameters
+    // 0.8, 0.5, -0.2 
     //constexpr static const Vec3d KRSrho = { 1.125, 0.9, -0.3 }; ///< eFF universal parameters // If it is sufficiently strong electron pairs are formed
     //constexpr static const Vec3d KRSrho = { 1.125, 0.9, -1.0 }; ///< eFF universal parameters // If it is sufficiently strong electron pairs are formed
-    //Vec3d KRSrho = { 1.125, 0.9, 0.2 };
+    //Vec3d KRSrho = { 1.125, 0.9, -0.2 };
 
     bool bEvalKinetic   = true;
     bool bEvalEE        = true;
@@ -670,7 +671,7 @@ double evalAE(){
                 //double dEaePaul = addPauliGauss      ( dR, sj, abwi.z, f, fsj, fs_junk, false, KRSrho );     // correct
                 //double dEaePaul = addDensOverlapGauss_S( dR, sj, aPar.z, aPar.w, f, fsj, fs_junk );     // correct
                 if(bEvalAEPauli){ dEaePaul = addPauliGauss_New( dR, aPar.y, sj, f, fsj, fs_junk, 0, KRSrho, qj*aPar.z*0.5 ); } // spin=0 means both -1 and +1  
-                if(bCoreCoul   ){ dEee     = addCoulombGauss  ( dR, aPar.y, sj, f, fsj, fs_junk,            qj*aPar.z     ); }
+                if(bCoreCoul   ){ dEee     = addCoulombGauss  ( dR, aPar.y, sj, f, fsj, fs_junk,            qj*aPar.z  ); }
                 //printf( "EaePaul[%i,%i] E %g r %g s %g abw(%g,%g) \n", i, j, dEaePaul, dR.norm(), sj, abwi.z, abwi.a );
             }
             //if( i_DEBUG>0 ) printf( "evalAE[%i,%i] dR(%g,%g,%g) s %g q %g  ->   f(%g,%g,%g) fs %g \n", i,j, dR.x,dR.y,dR.z, sj, qqi,   f.x,f.y,f.z, fsj );

@@ -1,0 +1,427 @@
+[33mcommit 845d922565b193d8f8c939539c807ebe43232b2a[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mZverina[m[33m, [m[1;31morigin/Zverina[m[33m)[m
+Author: zvire3 <zverina.tomas6@gmail.com>
+Date:   Sat Aug 29 10:29:21 2026 +0200
+
+    rebalanced carbon R-eff and started working on NH3
+
+[33mcommit 01ef9fcef2653f90905b119df61bb3d30e977724[m
+Author: zvire3 <zverina.tomas6@gmail.com>
+Date:   Thu Aug 6 15:10:10 2026 +0200
+
+    Carbon now has a pretty stable radius of core electrons and processMol2 similar exporting posibilities to processXYZ_e
+
+[33mcommit d9d2e21aee4d3a80457684e72a6bb56499f4f3fe[m
+Author: zvire3 <zverina.tomas6@gmail.com>
+Date:   Thu Aug 6 12:34:17 2026 +0200
+
+    updated rho2 to a new value that relaxes hydrogen corectly
+
+[33mcommit 2f6376ab49aa0a52b6fb87bcb33e1a2cd70957db[m
+Author: zvire3 <zverina.tomas6@gmail.com>
+Date:   Mon Aug 3 08:20:35 2026 +0200
+
+    Added function processMol2 which processes .mol2 file similarly to processXYZ_e and function evalH2 which will be used for relaxation of rho2 parameter.
+
+[33mcommit 5e2ef3cd4604342c2802b4531b93919cdc0756ae[m
+Author: zvire3 <zverina.tomas6@gmail.com>
+Date:   Sun Jun 28 11:21:43 2026 +0200
+
+    Added two functions throught all of the programs. Two electrons functions graph out energies of electrons depending on distance and functions rho2 are relaxing water and outputting data for relaxed water with a different values of rho2 then they plot them all. I also had to make changes in MolWorld because it gave errors and cmake did not compile.
+
+[33mcommit ff1e54cb85f5c2c6e87857a15ee30243588a3cb3[m
+Author: zvire3 <zverina.tomas6@gmail.com>
+Date:   Sun Jun 28 10:05:20 2026 +0200
+
+    Changing different spin electron interaction to attraction in addPauliGauss_New() and adding a new parameter called rho2 that manages the strength of this interaction. It will get a more precise value later.
+
+[33mcommit e8d25683832f285b2c7d9017c07f2744450f7c2c[m[33m ([m[1;31morigin/Gabriel[m[33m, [m[1;32mGabriel[m[33m)[m
+Author: Dxlaby <gabriel.hamrle@gmail.com>
+Date:   Wed Feb 25 21:35:56 2026 +0100
+
+    New better file
+
+[33mcommit b9a142e0351749b152aedd56c0e0ce244bf42b1c[m
+Author: Dxlaby <gabriel.hamrle@gmail.com>
+Date:   Wed Feb 25 21:05:16 2026 +0100
+
+    Adding xyz file
+
+[33mcommit 3637e8bff4fe167aec8c01c1261a7acd9ae29b02[m
+Author: Dxlaby <gabriel.hamrle@gmail.com>
+Date:   Wed Feb 25 20:55:31 2026 +0100
+
+    Adding .xyz files
+
+[33mcommit b8bfd211279cf364310d1a33b6bdcccf9b6af96a[m
+Author: Dxlaby <gabriel.hamrle@gmail.com>
+Date:   Fri Jan 9 15:13:11 2026 +0100
+
+    Synchronizing my messy code
+
+[33mcommit b83a37add58012d46e1096586d2491875c8b223b[m
+Author: Dxlaby <gabriel.hamrle@gmail.com>
+Date:   Mon Oct 27 18:37:47 2025 +0100
+
+    Minor changes
+
+[33mcommit acdb58f417d5b388eb2c26d63676b02ec97f8fc9[m
+Author: Dxlaby <gabriel.hamrle@gmail.com>
+Date:   Mon Oct 27 18:35:00 2025 +0100
+
+    Adding some features to loss function that measure geometry corectness such as forces or geometry. Adding fapos as output in processXYZ_e. Some other minor changes.
+
+[33mcommit 54c5334b3184099c672d97252295a2ed17e2c5e6[m
+Author: Dxlaby <gabriel.hamrle@gmail.com>
+Date:   Thu Sep 25 18:23:28 2025 +0200
+
+    Adding multiple gaussians as method to calculate pauli repulsion. Also fixing some minor bugs.
+
+[33mcommit 80be86f75bf1aab495986d68d5108343b0e05ca6[m
+Author: Dxlaby <gabriel.hamrle@gmail.com>
+Date:   Mon Sep 1 17:18:05 2025 +0200
+
+    Making openCL functional. Adding loss function, convSum, nPairedEl. CHANGING eFF.py AND eFF_ocl.py!!!
+
+[33mcommit 12240a1ccb70338280b93ee0d07f996c0f61bb05[m
+Author: Dxlaby <gabriel.hamrle@gmail.com>
+Date:   Sat Jul 12 15:09:24 2025 +0200
+
+    eFF.h now writes proper electron charages for electron pairs. Creating .xyz file with proper charges for electron pairs, which is now angdistscan_CH4_e4.xyz .
+
+[33mcommit 13424c63e2b0aa25f95d7e74c95d155c6d55c759[m
+Author: Dxlaby <gabriel.hamrle@gmail.com>
+Date:   Fri Jul 11 09:37:31 2025 +0200
+
+    Adding feature for saving each step through relaxetion. Can be changed in eFF_lib.cpp
+
+[33mcommit 25240c0d38773815b7dfc1989ee70061ef559c08[m
+Author: Dxlaby <gabriel.hamrle@gmail.com>
+Date:   Thu Jul 10 21:54:13 2025 +0200
+
+    Adding single relax, which can show full relaxetion through time of one initial setup.
+
+[33mcommit 16f93036659de80787a09a8585a8c1cd81877b0f[m
+Author: Dxlaby <gabriel.hamrle@gmail.com>
+Date:   Thu Jul 10 20:03:12 2025 +0200
+
+    Adding readability of e2 electron pairs from .xyz file.
+
+[33mcommit d51ee90b855b030160d2b6f6578785e23cf655df[m
+Author: Dxlaby <gabriel.hamrle@gmail.com>
+Date:   Sun Jul 6 17:14:23 2025 +0200
+
+    Adding ADAM optimizer as possible method for minimizing function
+
+[33mcommit 1832175a78f3fa067c9e2e4fecd91fbb450f5351[m
+Author: Dxlaby <gabriel.hamrle@gmail.com>
+Date:   Sun Jul 6 16:07:18 2025 +0200
+
+    Adding ERR and OUT to .gitignore
+
+[33mcommit ef4e2740523c4145c9b58f1ed74a27d78314e417[m
+Author: Dxlaby <gabriel.hamrle@gmail.com>
+Date:   Fri Jun 27 13:31:15 2025 +0200
+
+    Merging with prokops branch and chaning function processXYZ such that it can write data properly
+
+[33mcommit 27f9e75a3a1a763d3f7bab02984448bc1a76f8df[m
+Author: Dxlaby <gabriel.hamrle@gmail.com>
+Date:   Thu Jun 26 10:57:54 2025 +0200
+
+    Adding visualisation for just one KSrho in AI_angdist_show
+
+[33mcommit cb5231146254b770aa2eb4bd1c8431351d880173[m
+Author: Dxlaby <gabriel.hamrle@gmail.com>
+Date:   Sun May 25 18:50:51 2025 +0200
+
+    Adding AI that find minimum variance for KSrho input for CH4 molecule
+
+[33mcommit 53f4d3ffb172148f54dc9ccb52af6a96f21b1084[m
+Author: Dxlaby <gabriel.hamrle@gmail.com>
+Date:   Sun May 18 00:10:53 2025 +0200
+
+    Added some reading and saving of simulations. Also merged some code from hapala branch
+
+[33mcommit 7bad48f8187e97b32ff5cc73b5e4fc1659b2e2d8[m
+Merge: e321439f dbaea22d
+Author: Dxlaby <gabriel.hamrle@gmail.com>
+Date:   Sun May 18 00:09:43 2025 +0200
+
+    Merge remote-tracking branch 'origin/prokop' into Gabriel. Also added some writing saving and reading of simulations for future work as ai
+
+[33mcommit e321439f85bcc81e58c5b1f2eb89aa1d7b7fdd8c[m
+Author: Dxlaby <gabriel.hamrle@gmail.com>
+Date:   Tue Apr 29 11:56:23 2025 +0200
+
+    added prokop's hapala code
+
+[33mcommit 3cda068574e57cd48909f6742c4c6b169b0830fd[m
+Author: ProkopHapala <ProkopHapala@gmail.com>
+Date:   Mon Apr 7 17:29:33 2025 +0200
+
+    clear scan.xyz file in run_scan_constr.py; removed buffering to have synchronous printf() in C/C++
+
+[33mcommit 937b4a709d4387b277e5affdb6445a3712c9e436[m
+Author: Dxlaby <gabriel.hamrle@gmail.com>
+Date:   Sat Apr 26 22:20:06 2025 +0200
+
+    Minor changes
+
+[33mcommit 08d065e99b897feb695beb41eacd3f39e6a170ba[m
+Author: ProkopHapala <ProkopHapala@gmail.com>
+Date:   Mon Apr 7 17:07:31 2025 +0200
+
+    H2 relaxed scan now works fine in run_scan_constr.py
+
+[33mcommit a8e00082427b121bdbfd12f76ae64809f675caa6[m
+Author: ProkopHapala <ProkopHapala@gmail.com>
+Date:   Mon Apr 7 11:54:39 2025 +0200
+
+    added fixed_poss and fixed_ins to eFF.h and  relaxed_scan() to eFF_lib.cpp; it does not crash, but does not seem to relax either
+
+[33mcommit ac1a0bc613875ddff7eabe9518aac05483080ebe[m
+Merge: 8762b3d5 f0cc46d1
+Author: Dxlaby <77058096+Dxlaby@users.noreply.github.com>
+Date:   Fri Apr 25 18:01:42 2025 +0200
+
+    Merge pull request #14 from Dxlaby/Gabriel
+    
+    Pulling my branch from forked repository to orginal one
+
+[33mcommit f0cc46d180e833f807961313c568d8735d2d05a7[m
+Merge: e0ce1a08 8762b3d5
+Author: Dxlaby <77058096+Dxlaby@users.noreply.github.com>
+Date:   Fri Apr 25 17:56:20 2025 +0200
+
+    Merge branch 'Gabriel' into Gabriel
+
+[33mcommit e0ce1a0846ef91feea37e46247b277f417020841[m
+Author: Dxlaby <gabriel.hamrle@gmail.com>
+Date:   Tue Apr 22 13:00:38 2025 +0200
+
+    minor changes
+
+[33mcommit dbaea22df0db584ef6374b57481f67599d1821a8[m
+Author: ProkopHapala <prokophapala@gmail.com>
+Date:   Sun Apr 20 01:56:52 2025 +0200
+
+    processFGO() and preAllocateFGO() in eFF_lib.cpp can process .fgo file movie, tested in run_process_xyz_1d.py
+
+[33mcommit dc86ceadb62acf8d54957d728732125eb83934e1[m
+Author: ProkopHapala <prokophapala@gmail.com>
+Date:   Sun Apr 20 00:39:23 2025 +0200
+
+    EFF::readSingleFGO() extracted from EFF::loadFromFile_fgo() to allow more flexible reading of .fgo files; also corrected some error when runnig run_scan_constr.py - by default we initialize velocity buffers
+
+[33mcommit 7c2a14289c790e545844e07340b89aaf17800983[m
+Author: ProkopHapala <prokophapala@gmail.com>
+Date:   Sun Apr 20 00:02:03 2025 +0200
+
+    created run_process_xyz_1d.py to easily test 1D scans
+
+[33mcommit 476386be90653fa4905834b718cb6d1a8739f9c6[m
+Author: ProkopHapala <prokophapala@gmail.com>
+Date:   Sat Apr 19 14:22:39 2025 +0200
+
+    run_scan_Oe_ECP.py compares Oxygen ion interacting with single valence electrons with different models for core electrons
+
+[33mcommit 599151a1327ff0aa09c2b5664719076512bc689d[m
+Merge: 3b813ea1 3cc7781b
+Author: ProkopHapala <prokophapala@gmail.com>
+Date:   Sat Apr 19 13:06:17 2025 +0200
+
+    Merge branch 'prokop' of https://github.com/ProkopHapala/FireCore into prokop
+
+[33mcommit 3b813ea1907bf7582be1b764afa728264b043195[m
+Author: ProkopHapala <prokophapala@gmail.com>
+Date:   Sat Apr 19 13:06:03 2025 +0200
+
+    run_scan_Oe_ECP.py testing eFF.h energy with full electrons vs Effective potential
+
+[33mcommit 3cc7781b765f5562b981a5330c06e542e9051fb1[m
+Author: ProkopHapala <ProkopHapala@gmail.com>
+Date:   Thu Apr 17 14:48:44 2025 +0200
+
+    eFF_lib.cpp processXYZ() does not call relax and constrain when nstepMax=0
+
+[33mcommit c657e75e6e4e58d138982ecbefb62876b8fdb5fa[m
+Author: ProkopHapala <prokophapala@gmail.com>
+Date:   Thu Apr 17 00:33:44 2025 +0200
+
+    run_process_xyz.py can relax H2O with bCoreElectrons=True to proper geometry in 1000 steps; but there are two problems 1) in 10000 steps it goes to linear geometry 2) with bCoreElectrons=False it does something completerly different (check what core electrons do actually)
+
+[33mcommit 637baa5feaa48c38b53909ed6ae9a7759ed687cb[m
+Author: ProkopHapala <prokophapala@gmail.com>
+Date:   Wed Apr 16 23:01:22 2025 +0200
+
+    processXYZ now runs but does not converged - electrons seems to be flying arround, not sure why
+
+[33mcommit 6efa6d2d19bd46c6296cced394f06452cb79de82[m
+Author: ProkopHapala <ProkopHapala@gmail.com>
+Date:   Wed Apr 16 19:15:44 2025 +0200
+
+    run_process_xyz.py now can run constrained relaxation and plot 2D imshow map of both reference and EFF energy; But there is some bug that relaxation finish after single iteration as forces are zero
+
+[33mcommit e47f153e311006aed56a6acbee5c2d6d72a5484c[m
+Author: ProkopHapala <prokophapala@gmail.com>
+Date:   Wed Apr 16 00:22:58 2025 +0200
+
+    run_process_xyz.py seems to work just fine now
+
+[33mcommit a53427a7dbde1a40ab97a34bb6c9ea5378cd80f4[m
+Author: ProkopHapala <ProkopHapala@gmail.com>
+Date:   Tue Apr 15 20:03:52 2025 +0200
+
+    sketched builder2EFF in eFF_lib.cpp to efficiently load and plot EFF from .xyz file including electrons
+
+[33mcommit f74288dd369bf4ad27459343ed8d59caf5d1cffb[m
+Author: ProkopHapala <ProkopHapala@gmail.com>
+Date:   Mon Apr 7 17:29:33 2025 +0200
+
+    clear scan.xyz file in run_scan_constr.py; removed buffering to have synchronous printf() in C/C++
+
+[33mcommit 3d2b82f2e2efc45c99a3482e8d900c889803a19d[m
+Author: ProkopHapala <ProkopHapala@gmail.com>
+Date:   Mon Apr 7 17:07:31 2025 +0200
+
+    H2 relaxed scan now works fine in run_scan_constr.py
+
+[33mcommit 6db1fe3efa6074c836e73a90f47083c7b7621c07[m
+Author: ProkopHapala <ProkopHapala@gmail.com>
+Date:   Mon Apr 7 11:54:39 2025 +0200
+
+    added fixed_poss and fixed_ins to eFF.h and  relaxed_scan() to eFF_lib.cpp; it does not crash, but does not seem to relax either
+
+[33mcommit 2ac2bc18993697a3bf72e59f4cca1281479bf667[m
+Author: Dxlaby <gabriel.hamrle@gmail.com>
+Date:   Sat Apr 5 10:31:42 2025 +0200
+
+    Plotting Energy based on radius
+
+[33mcommit cec6e647c7fc8a87aa69c82097d53f5bc078874a[m
+Author: Dxlaby <gabriel.hamrle@gmail.com>
+Date:   Mon Mar 31 18:27:48 2025 +0200
+
+    Adding some changes. Mainly the graphs generator of energy dependace on radius
+
+[33mcommit 8762b3d5bb04fe13f89778b0fb61d83cf3ceb97e[m
+Merge: 84a27d03 db068f3e
+Author: Milan Koci <kocimil1@fjfi.cvut.cz>
+Date:   Tue Mar 25 12:15:42 2025 +0100
+
+    Merge branch 'master' of https://github.com/ProkopHapala/FireCore
+
+[33mcommit 84a27d034f14b6dc01e0d9283b3a944ce2d17051[m
+Author: Milan Koci <kocimil1@fjfi.cvut.cz>
+Date:   Tue Mar 25 12:14:27 2025 +0100
+
+    Add scan_relax function to MolWorld_sp3_multi, tested on H2O and PTCDA x-scans
+
+[33mcommit 668c9d7f188de83a61bd2451a18c3f0d55d1c720[m
+Author: Milan Koci <kocimil1@fjfi.cvut.cz>
+Date:   Thu Mar 20 11:23:22 2025 +0100
+
+    Fixed download from GPU for scan_relax multi function
+
+[33mcommit bf1f533006e6ccc54c60d0df6926e28b9f7b8a9f[m
+Author: Milan Koci <kocimil1@fjfi.cvut.cz>
+Date:   Thu Mar 20 08:54:20 2025 +0100
+
+    Add fixing atom to OCL
+
+[33mcommit f2c3e85a7cc13715de5613f40d403b5a820ea509[m
+Author: Milan Koci <kocimil1@fjfi.cvut.cz>
+Date:   Thu Mar 20 08:52:02 2025 +0100
+
+    Add scan function, optimizing and moving works well, not right uploading to GPu with tMMFF
+
+[33mcommit db068f3e0ff76a7e95079f13b719b3da6c16d49b[m
+Merge: 6cb9fd91 5312b897
+Author: Indra_Niel <61828300+Indranil2020@users.noreply.github.com>
+Date:   Wed Mar 19 15:12:03 2025 +0530
+
+    Merge pull request #13 from ProkopHapala/debug/grid_geration_and_test
+    
+    Debug grid geration and test new function to resolve the FFT error
+
+[33mcommit 5312b8973de4896a67490ca6ef630761c50b9d2c[m
+Merge: 012e654d 6cb9fd91
+Author: Indra_Niel <61828300+Indranil2020@users.noreply.github.com>
+Date:   Wed Mar 19 15:10:15 2025 +0530
+
+    Merge branch 'master' into debug/grid_geration_and_test
+
+[33mcommit 3f896f424bce847640a650d55e7c3209837a9b97[m
+Author: ProkopHapala <ProkopHapala@gmail.com>
+Date:   Tue Mar 18 14:19:43 2025 +0100
+
+    added 1D scans for H2 and other into distort_molecule.py
+
+[33mcommit d9daf83f141226cdfa766f40e1f67337aba34a0a[m
+Author: ProkopHapala <ProkopHapala@gmail.com>
+Date:   Tue Mar 18 13:46:54 2025 +0100
+
+    added group rotation and scalling into distort_molecule.py tested on CH4.xyz
+
+[33mcommit 20e1e4829f5051f87e02259f7729c5f8ac1fd424[m
+Author: ProkopHapala <ProkopHapala@gmail.com>
+Date:   Tue Mar 18 13:45:49 2025 +0100
+
+    added group rotation and scalling into distort_molecule.py tested on CH4.xyz
+
+[33mcommit b8214e8d0146048cdcee5209a8323eb8a3b9a337[m
+Author: ProkopHapala <ProkopHapala@gmail.com>
+Date:   Mon Mar 17 19:09:11 2025 +0100
+
+    scan_angle_dist in distort_molecule.py now does 2d scan of energy of H2O molecule with fireball
+
+[33mcommit 736125b5bd614fe942e78336418c96dc57a1f436[m
+Author: ProkopHapala <ProkopHapala@gmail.com>
+Date:   Mon Mar 17 18:28:24 2025 +0100
+
+    scan_angle_dist() now can save electron pairs
+
+[33mcommit bceda940257224bfbe4cc4430bbfe4efd1dc25fe[m
+Author: ProkopHapala <ProkopHapala@gmail.com>
+Date:   Mon Mar 17 18:06:28 2025 +0100
+
+    added scan_angle() in distort_molecule.py
+
+[33mcommit fe7c24c14bc7586d4ac7237899f90cdac97e82ac[m
+Author: ProkopHapala <ProkopHapala@gmail.com>
+Date:   Mon Mar 17 18:02:44 2025 +0100
+
+    added scan_angle() in distort_molecule.py
+
+[33mcommit 31bdb73df4957bf6ac5ff1264ee29d248431458a[m
+Author: ProkopHapala <ProkopHapala@gmail.com>
+Date:   Mon Mar 17 17:27:46 2025 +0100
+
+    added add_electron_pairs to AtomicSystem.py, tested in run_add_epairs.py
+
+[33mcommit 179e0223934362abeda015073416541095cd630f[m
+Author: Milan Koci <kocimil1@fjfi.cvut.cz>
+Date:   Fri Mar 14 13:15:41 2025 +0100
+
+    Fixed minima hopping, added few new systems
+
+[33mcommit d142d6ec36b82e6d24acac902aee1fa4636be955[m
+Author: ProkopHapala <ProkopHapala@gmail.com>
+Date:   Wed Mar 12 14:45:13 2025 +0100
+
+    initialize prokop branch to experimental dev outside master; fisrt I want to work on fast linear solver and short range interactions
+
+[33mcommit 364ec5abda316501177a17e038e0d1968a67c924[m
+Merge: 437fa85e 6cb9fd91
+Author: Milan Koci <kocimil1@fjfi.cvut.cz>
+Date:   Tue Mar 11 12:54:17 2025 +0100
+
+    Merge branch 'master' of https://github.com/ProkopHapala/FireCore
+
+[33mcommit 437fa85ea01dbae25055d06b701ac3ba02063ac9[m
+Author: Milan Koci <kocimil1@fjfi.cvut.cz>
+Date:   Tue Mar 11 12:51:51 2025 +0100
+
+    Fix bugs bMilan with database
+
+[33mcommit abc6

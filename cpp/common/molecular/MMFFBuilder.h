@@ -2739,7 +2739,7 @@ void assignTorsions( bool bNonPi=false, bool bNO=true ){
         printf("atom[%i] %s=%i ic %i ", i, params->atypes[A.type].name, A.type, A.iconf);
         if(A.iconf>=0){
             const AtomConf& c = confs[A.iconf];
-            //printf(" Conf[%i] n %i nb %i npi %i ne %i nH %i ", A.iconf, c.n, c.nbond, c.npi, c.ne, c.nH );
+            printf(" Conf[%i] n %i nb %i npi %i ne %i nH %i ", A.iconf, c.n, c.nbond, c.npi, c.ne, c.nH );
             c.print();
         }
     }

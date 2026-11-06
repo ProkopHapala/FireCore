@@ -724,8 +724,17 @@ lib.EvalTwoElectrons.restype   = c_double_p
 def EvalTwoElectrons( points, distance, samespin, bEvalCoulomb = False, bEvalPauli = True):
     # Ek=0, Eee EeePaul EeeExch Eae EaePaul Eaa
     ptr = lib.EvalTwoElectrons( points, distance, samespin, bEvalCoulomb, bEvalPauli )
+    values = np.ctypeslib.as_array( ptr ,(points*2,) ) 
+    return  values
+
+lib.EvalHE.argtypes  = [c_int, c_double, c_bool, c_bool ]
+lib.EvalHE.restype   = c_double_p
+def EvalHE( points, distance, bEvalCoulomb = False, bEvalKinetic = True):
+    # Ek=0, Eee EeePaul EeeExch Eae EaePaul Eaa
+    ptr = lib.EvalHE( points, distance, bEvalCoulomb, bEvalKinetic )
     values = np.ctypeslib.as_array( ptr ,(points,) ) 
     return  values
+
 
 
 lib.FindMinrho2.argtypes  = [c_int, c_char_p, c_int, c_double, c_double, c_int]

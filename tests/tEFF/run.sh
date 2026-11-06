@@ -48,7 +48,9 @@ python3 -u minimum.py 2>ERR | tee OUT
 #python3 -u minimum.py | tee OUT
 
 #python3 -u plot_rho2.py 2>ERR | tee OUT
-#python3 -u plot_two_electrons.py 2>ERR | tee OUT
+python3 -u plot_two_electrons.py 2>ERR | tee OUT
+#python3 -u plotHE.py 2>ERR | tee OUT
+
 #python3 -u plot_H2.py 2>ERR | tee OUT
 #python3 -u plot_NH3.py 2>ERR | tee OUT
 #python3 -u AI_angdist_sim_MGP.py 2>ERR | tee OUT

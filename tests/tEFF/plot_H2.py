@@ -15,8 +15,8 @@ from pyBall import eFF as eff
 
 
 if __name__ == "__main__":
-    distance = -0.120350
-    _start = -0.120325
+    distance = 2
+    _start = -1
     iterations = 200
     if os.path.exists("processXYZ.xyz"):
         os.remove("processXYZ.xyz") # deleting useless information

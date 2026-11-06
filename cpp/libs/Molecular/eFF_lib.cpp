@@ -227,7 +227,7 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
         if(ff.nfix>0){ ff.apply_hard_fix(); }
         if(outE){ outE[itr]=Etot;     }
         if(outF){ outF[itr]=sqrt(F2); }
-        if( (verbosity>2 )&&( itr%100 == 0)){ printf("itr: %6i Etot[eV] %16.8f |F|[eV/A] %16.8f \n", itr, Etot, sqrt(F2) ); };
+        if( (verbosity>2 )&&( itr%savePerNsteps == 0)){ printf("itr: %6i Etot[eV] %16.8f |F|[eV/A] %16.8f \n", itr, Etot, sqrt(F2) ); };
         if(F2<F2conv){
             if(verbosity>0){ printf("eFF_lib.cpp::run() Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
             //if(verbosity>0){ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
@@ -941,14 +941,14 @@ double* EvalTwoElectrons(int points, double distance, bool samespin, bool bEvalC
     
     ff.espin  [0] = 1;
     
-    ff.esize  [0] = 1;
+    ff.esize  [0] = 0.5; //0.529 for presentational purposes
     ff.echarge[0] = fabs(-1.0);
     if (samespin){
     ff.espin  [1] = 1;
     }else{
     ff.espin  [1] = -1;
     }
-    ff.esize  [1] = 1;
+    ff.esize  [1] = 0.5;
     ff.echarge[1] = fabs(-1.0);
     ff.epos   [0].set(0,0,0);
     
@@ -958,12 +958,50 @@ double* EvalTwoElectrons(int points, double distance, bool samespin, bool bEvalC
         Eout[i] = ff.evalEE();     
         
     }
+    ff.epos[1].set(0,0,0);
+    for (int i=0; i<points; i++){ 
+        ff.esize[0]=distance*i/points;
+        ff.esize[1]=distance*i/points;       
+        Eout[i+points] = ff.evalEE();     
+        
+    }
     printf("EvalTwoElectrons() done \n");
     printf("EvalTwoElectrons() Eout[0] %g Eout[points-1] %g \n", Eout[0], Eout[points-1] );
     return Eout;
 }
 
-double* EvalH2(double start, int points, double end){ // evaluate the distribution of energy between two electrons
+double* EvalHE(int points, double distance, bool bEvalCoulomb = false, bool bEvalKinetic = true){ // evaluate the distribution of energy between two electrons
+    double* Eout;
+    Eout = new double[points];
+    printf("EvalHE() points %i, distance %g, bEvalCoulomb %s, bEvalKinetic %s \n", points, distance, bEvalCoulomb ? "true" : "false", bEvalKinetic ? "true" : "false");
+    ff.bEvalCoulomb = bEvalCoulomb;
+    ff.bEvalKinetic = bEvalKinetic;
+    ff.bEvalEE = false;
+    ff.bEvalAA = false;
+    ff.na = 1;
+    ff.ne = 1;
+    ff.realloc(1, 1, true);
+    ff.epos [0].set(0,0,0);
+    ff.apos [0].set(0,0,0);
+    ff.espin  [0] = 1;
+    
+    ff.esize  [0] = 0.1;
+    ff.echarge[0] = fabs(-1.0);
+    ff.assign_params(0, 1);
+    for (int i=0; i<points; i++){ 
+        ff.esize[0] = distance*i/points+0.1;       
+        Eout[i] = ff.eval();
+        if (bEvalKinetic && !bEvalCoulomb){
+
+            Eout[i] = ff.evalKinetic();
+        }
+    }
+    printf("EvalHE() done \n");
+    printf("EvalHE() Eout[0] %g Eout[points-1] %g \n", Eout[0], Eout[points-1] );
+    return Eout;
+}
+
+double* EvalH2(double start, int points, double end){ 
     
     double* Eout;
     Eout = new double[points];
@@ -1002,12 +1040,12 @@ double* EvalH2(double start, int points, double end){ // evaluate the distributi
         ff.epos [1].set(0.5,0,0);
 
         ff.apos [0].set(0,0,0);
-        ff.apos [1].set(1,0,0);
+        ff.apos [1].set(0.7414,0,0);
         ff.esize  [0] = 0.5;
         ff.esize  [1] = 0.5;
-
         
-        ff.Setrho2((end-start)/points*i+start);  
+        
+        ff.KRSrho.set( ff.KRSrho.x, ff.KRSrho.y,(end-start)/points*i+start);  
         
         bool bConv = false;
         printf("eval = %f\n", ff.eval());
@@ -1016,7 +1054,7 @@ double* EvalH2(double start, int points, double end){ // evaluate the distributi
 
             setTrjName("processXYZ.xyz", savePerNsteps=10);
         }
-        run(1000,0.1, 0, 2, NULL, NULL, &bConv);   
+        run(1000, 0.1, 0, 2, NULL, NULL, &bConv);   
         ff.eval();
         double endforce = ff.aforce[0].norm();   
         Eout[i] = endforce; 
