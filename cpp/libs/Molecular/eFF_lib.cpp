@@ -524,7 +524,7 @@ int builder2EFFstatic( EFF* ff, MM::Builder& builder, bool bCoreElectrons=true, 
             const MM::Bond& b = builder.bonds[ib];
             Vec3d pa = builder.atoms[b.atoms.i].pos;
             Vec3d pb = builder.atoms[b.atoms.j].pos;
-            double c = 0.6;
+            double c = 0.5;
             Vec3d p1 = pb*(1-c) + pa*c;
             Vec3d p2 = pa*(1-c) + pb*c;
 

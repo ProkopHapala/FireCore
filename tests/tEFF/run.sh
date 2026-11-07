@@ -44,11 +44,11 @@ echo "#=========== RUN"
 # python3 -u AI_angdist_show.py --variant min 2>ERR | tee OUT
 
 #python3 -u Single_relax.py 2>ERR | tee OUT
-python3 -u minimum.py 2>ERR | tee OUT
+#python3 -u minimum.py 2>ERR | tee OUT
 #python3 -u minimum.py | tee OUT
 
 #python3 -u plot_rho2.py 2>ERR | tee OUT
-python3 -u plot_two_electrons.py 2>ERR | tee OUT
+#python3 -u plot_two_electrons.py 2>ERR | tee OUT
 #python3 -u plotHE.py 2>ERR | tee OUT
 
 #python3 -u plot_H2.py 2>ERR | tee OUT
@@ -58,7 +58,7 @@ python3 -u plot_two_electrons.py 2>ERR | tee OUT
 
 
 # python3 -u xyz_view_new.py -f ./H2O_spins.xyz 2>ERR | tee OUT
-python3 -u xyz_view_new.py -f ./processXYZ.xyz 2>ERR | tee OUT
+python3 -u xyz_view_new.py -f ./grid.xyz 2>ERR | tee OUT
 #python3 -u xyz_view_new.py -f ./processMol2.xyz 2>ERR | tee OUT
 #python3 -u xyz_view.py -f processXYZ.xyz 2>ERR | tee OUT
 

@@ -245,7 +245,7 @@ class EFF{ public:
 { 5.0,   0.1,      2.0,      0.0,       0.0,       0.0,       0.0,       0.0      }, // 5: B  (Simple core: Z=5, sQ=0.35,sP=0.35,cP=1.0 for 1s2)
 { 6.0,   0.17900,  2.0,      22.721015, 0.728733,  1.103199,  17.695345, 6.693621 }, // 6: C (ECP: Z_nuc=6, R_core=0.621, Z_core=2. p-type)
 { 7.0,   0.2,      2.0,      0.0,       0.0,       0.0,       0.0,       0.0      }, // 7: N (ECP: Z_nuc=7, R_core=0.0,   Z_core=2. p-type)
-{ 8.0,   0.124828,     2.0,      25.080199, 0.331574,  1.276183,  12.910142, 3.189333 }, // 8: O (ECP: Z_nuc=8, R_core=0.167813, Z_core=2. p-type)
+{ 8.0,   0.1,     2.0,      25.080199, 0.331574,  1.276183,  12.910142, 3.189333 }, // 8: O (ECP: Z_nuc=8, R_core=0.167813, Z_core=2. p-type)
 { 9.0,   0.3,      2.0,      0.0,       0.0,       0.0,       0.0,       0.0      }  // 9: F (Simple core: Z=9, sQ=0.3, sP=0.3, cP=1.0 for 1s2)
 // Add Al, Si etc. as needed
 };
@@ -272,8 +272,9 @@ constexpr static const double aMasses[9] = {  1.0, 4.0, 7.0, 9.0,  11.0,  12.0, 
 
     double eConst = 1;
     std::vector<double> paramsSi = {1.0, 0.5, 0.3};
-    Vec3d KRSrho = { 1.125, 0.9, -0.2   }; ///< eFF universal parameters
+    Vec3d KRSrho = { 0.9, 0.6, -0.2}; ///< eFF universal parameters
     // 0.8, 0.5, -0.2 
+    //0.9, 0.6, -0.2 large simulation works
     //constexpr static const Vec3d KRSrho = { 1.125, 0.9, -0.3 }; ///< eFF universal parameters // If it is sufficiently strong electron pairs are formed
     //constexpr static const Vec3d KRSrho = { 1.125, 0.9, -1.0 }; ///< eFF universal parameters // If it is sufficiently strong electron pairs are formed
     //Vec3d KRSrho = { 1.125, 0.9, -0.2 };
@@ -579,6 +580,7 @@ double evalEE(){
             double dEee=0,dEpaul=0;
             if(bEvalCoulomb){
                 dEee = addCoulombGauss( dR, si, sj, f, fsi, fsj, qij );
+                //printf( "Eeeneg qij(%g) \n", qij );
                 //dEee = addCoulombGauss( dR, si*M_SQRT2, sj*M_SQRT2, f, fsi, fsj, qq );
                 //dEee = addCoulombGauss( dR, si*2, sj*2, f, fsi, fsj, qq );
             }
@@ -664,7 +666,8 @@ double evalAE(){
             double dEae=0,dEaePaul=0,dEee=0;
             if(bEvalAECoulomb){
                 double qCore = bCoreCoul ? aPar.x : (aPar.x-aPar.z);
-                dEae  = addCoulombGauss( dR, aPar.y, sj, f, fs_junk, fsj, qCore*-qj );
+                dEae  = addCoulombGauss( dR, 0, sj, f, fs_junk, fsj, qCore*-qj );
+                //printf( "Eeapos qij(%g) \n", qCore*-qj );
             }
             if( aPar.z>1e-8 ){ // is there a core electron?
                 //if(qqi<-1.00001) EaePaul += addDensOverlapGauss_S( dR,sj, abwi.z, abwi.a, f, fsj, fs_junk );     // correct
@@ -672,6 +675,7 @@ double evalAE(){
                 //double dEaePaul = addDensOverlapGauss_S( dR, sj, aPar.z, aPar.w, f, fsj, fs_junk );     // correct
                 if(bEvalAEPauli){ dEaePaul = addPauliGauss_New( dR, aPar.y, sj, f, fsj, fs_junk, 0, KRSrho, qj*aPar.z*0.5 ); } // spin=0 means both -1 and +1  
                 if(bCoreCoul   ){ dEee     = addCoulombGauss  ( dR, aPar.y, sj, f, fsj, fs_junk,            qj*aPar.z  ); }
+                //printf( "Eeaneg qij(%g) \n", qj*aPar.z );
                 //printf( "EaePaul[%i,%i] E %g r %g s %g abw(%g,%g) \n", i, j, dEaePaul, dR.norm(), sj, abwi.z, abwi.a );
             }
             //if( i_DEBUG>0 ) printf( "evalAE[%i,%i] dR(%g,%g,%g) s %g q %g  ->   f(%g,%g,%g) fs %g \n", i,j, dR.x,dR.y,dR.z, sj, qqi,   f.x,f.y,f.z, fsj );
@@ -856,7 +860,7 @@ double evalAA(){
         //const Vec3d  abwi = aAbWs[i];
         const Quat4d aPari = aPars[i];
         for(int j=0; j<i; j++){
-            Vec3d f = Vec3dZero; // HERE WAS THE ERROR (missing initialization !!!! )
+            Vec3d f = Vec3dZero; 
             //Vec3d  abw;
             //combineAbW( abwi, aAbWs[j], abw );
             const Quat4d& aParj = aPars[j];
@@ -864,14 +868,20 @@ double evalAA(){
             //if( (i_DEBUG>0) && (1==qi==aQ[j]) ){ printf( " abw(H-H): %i,%i A %g B %g w %g \n", i,j, abw.x, abw.y, abw.z ); }
             //Eaa += addPairEF_expQ( apos[j]-pi, f, abw.z, qi*aQ[j], abw.y, abw.x );
             //Eaa += addPairEF_expQ( apos[j]-pi, f, abw.z, qi*aQ[j], abw.y, abw.x );
+            double dEaa =0;
+            double fs_junk=0;
             double qq;
             if(bCoreCoul){
+                qq = aPari.x*aParj.x;
+                if(aPari.z>1e-8   ){ dEaa     += addCoulombGauss  ( dR, 0, aPari.y, f, fs_junk, fs_junk, -aParj.x*aPari.z  );}//printf("evalAAipos[%i,%i] qCore %g \n", i, j, -aParj.x*aPari.z); }
+                if(aParj.z>1e-8   ){ dEaa     += addCoulombGauss  ( dR, 0, aParj.y, f, fs_junk, fs_junk, -aPari.x*aParj.z  );}//printf("evalAAjpos[%i,%i] qCore %g \n", i, j, -aPari.x*aParj.z); }
+                if(aParj.z>1e-8 && aPari.z>1e-8  ){ dEaa += addCoulombGauss  ( dR, aPari.y, aParj.y, f, fs_junk, fs_junk, aPari.z*aParj.z  );}//printf("evalAAijneg[%i,%i] qCore %g \n", i, j, aPari.z*aParj.z); }
+                
+            }else{
                 qq = (aPari.x-aPari.z)*(aParj.x-aParj.z);
                 //printf( "evalAA()[%i,%i] qq %g qi(%g,%g) qi(%g,%g)\n", i,j, qq, aPari.x, aPari.z, aParj.x, aParj.z );
-            }else{
-                qq = aPari.x*aParj.x;
-            }
-            double dEaa =  addAtomicForceQ( dR, f, qq );
+            } 
+            dEaa +=  addAtomicForceQ( dR, f, qq );
             //if(verbosity>2){ printf("%s a%i-a%i Coul %5.20f \n",prefix,i,j,dEaa); }
             Eaa+=dEaa;
             //printf( " Eaa[%i,%i]  Q %g(%g,%g) \n", i, j, aPari.x*aParj.x, aPari.x, aParj.x  );
