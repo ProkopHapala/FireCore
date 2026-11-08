@@ -23,10 +23,11 @@ inline float2 erfx_e6( float x_, float k ){
     float x = x_*k;
     if( x>4.5f ){ float y=1.0f/x_; return (float2){ y, -y*y }; }
     float xx = x*x;
-    float even  =  0.98501562f +xx*(-0.02756061f +xx*(-0.00188409f +xx*(-0.00309862f +xx*(-0.00134885f +xx*(-3.989465e-05f ) ) ) ) );
-    float odd   = -0.13893350f +xx*(-0.00766429f +xx*( 0.00304682f +xx*( 0.00287933f +xx*( 0.00032604f +xx*( 1.970936e-06f ) ) ) ) );
-    float deven =                  -0.05512122f +xx*(-0.00753638f +xx*(-0.01859177f +xx*(-0.01079087f +xx*(-0.00039894f ) ) ) )  ;
-    float dodd  = -0.13893350f +xx*(-0.02299287f +xx*( 0.01523413f +xx*( 0.02015536f +xx*( 0.00293444f +xx*( 2.168030e-05f ) ) ) ) );
+    // REFIT 2026-11-08: constrained coefficients, dy(0)=0 (no |r|-cusp at coincident charges); parity w/ CPU fastmath.h erfx_e6
+    float even  =  0.98501562f +xx*(-0.02754905f +xx*(-0.00129078f +xx*(-0.00090208f +xx*(-0.00034410f +xx*( 1.1960757e-05f ) ) ) ) );
+    float odd   = -0.13893389f +xx*(-0.00778697f +xx*( 0.00153756f +xx*( 0.00096830f +xx*( 1.5066710e-05f +xx*(-1.6022563e-06f ) ) ) ) );
+    float deven =                  -0.05509810f +xx*(-0.00516311f +xx*(-0.00541249f +xx*(-0.00275279f +xx*( 1.1960757e-04f ) ) ) )  ;
+    float dodd  = -0.13893389f +xx*(-0.02336092f +xx*( 0.00768781f +xx*( 0.00677808f +xx*( 1.3560039e-04f +xx*(-1.7624819e-05f ) ) ) ) );
     float  t = even    + x*odd;
     float dt = deven*x +  dodd;
     float t2 = t*t;
@@ -368,15 +369,15 @@ __kernel void localMD(
                             float4 KRS = KRSrho;
                             float4 pg  = getPauliGauss_New(dRei, sQ, my_pos.w, 0, (float4)(KRS.x, KRS.y, KRS.z, KRS.w*(qe*sP*0.5f)));
                             my_f.xyz  += -dRei * pg.y;
-                            my_f.w    += pg.z;
+                            my_f.w    += pg.w;   // FIX: electron's fsize = fsj (d/d electron size); .z is atom's d/d(sQ) (was swapped, parity w/ CPU eFF.h)
                             dbg_fAE.xyz += -dRei * pg.y;
-                            dbg_fAE.w   += pg.z;
+                            dbg_fAE.w   += pg.w;
 
                             float4 cgC = getCoulombGauss(dRei, sQ, my_pos.w, sP*qe);
                             my_f.xyz  += -dRei * cgC.y;
-                            my_f.w    += cgC.z;
+                            my_f.w    += cgC.w;   // FIX: electron's fsize = fsj (d/d electron size); .z is atom's d/d(sQ) (was swapped, parity w/ CPU eFF.h)
                             dbg_fAE.xyz += -dRei * cgC.y;
-                            dbg_fAE.w   += cgC.z;
+                            dbg_fAE.w   += cgC.w;
                         }
 
                         if (bDbg && (step==IDBG_STEP) && ( (DBG_EFF_ALLPAIRS && (lid==0)) || ((!DBG_EFF_ALLPAIRS) && (lid==IDBG_I) && (j==IDBG_J)) ) ) {
@@ -395,8 +396,8 @@ __kernel void localMD(
                                 step, lid, j, (double)r, (double)sQ, (double)my_pos.w, (double)Q, (double)sP,
                                 (double)cg.x, (double)pg_dbg.x, (double)cgC_dbg.x,
                                 (double)fC.x, (double)fC.y, (double)fC.z, (double)cg.w,
-                                (double)fP.x, (double)fP.y, (double)fP.z, (double)pg_dbg.z,
-                                (double)fCC.x,(double)fCC.y,(double)fCC.z,(double)cgC_dbg.z );
+                                (double)fP.x, (double)fP.y, (double)fP.z, (double)pg_dbg.w,
+                                (double)fCC.x,(double)fCC.y,(double)fCC.z,(double)cgC_dbg.w );
                         }
                     }
  

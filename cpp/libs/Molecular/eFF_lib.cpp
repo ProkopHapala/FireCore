@@ -149,27 +149,28 @@ void evalNumDerivs( double* Fnum, double d ){
 
 void init_buffers(){
     // atoms (ions)
-    buffers.insert( { "pDOFs",           ff.pDOFs  } );
-    buffers.insert( { "fDOFs",           ff.fDOFs  } );
-    buffers.insert( { "apos",   (double*)ff.apos   } );
-    buffers.insert( { "aforce", (double*)ff.aforce } );
-    buffers.insert( { "epos",   (double*)ff.epos   } );
-    buffers.insert( { "eforce", (double*)ff.eforce } );
-    buffers.insert( { "esize",  (double*)ff.esize  } );
-    buffers.insert( { "fsize",  (double*)ff.fsize  } );
-    buffers.insert ( { "aPars", (double*)ff.aPars  } );
-    buffers.insert ( { "Es",            &ff.Etot   } );
-    ibuffers.insert( { "espin",          ff.espin  } );
-    ibuffers.insert( { "ndims",         &ff.ne     } );
+    // NOTE: use operator[] (not insert) so re-registration updates stale pointers after ff.realloc()
+    buffers["pDOFs"]  =            ff.pDOFs;
+    buffers["fDOFs"]  =            ff.fDOFs;
+    buffers["apos"]   = (double*)ff.apos;
+    buffers["aforce"] = (double*)ff.aforce;
+    buffers["epos"]   = (double*)ff.epos;
+    buffers["eforce"] = (double*)ff.eforce;
+    buffers["esize"]  = (double*)ff.esize;
+    buffers["fsize"]  = (double*)ff.fsize;
+    buffers["aPars"]  = (double*)ff.aPars;
+    buffers["Es"]     =           &ff.Etot;
+    ibuffers["espin"] =            ff.espin;
+    ibuffers["ndims"] =           &ff.ne;
     if(ff.vDOFs){
-        buffers.insert( { "vDOFs",              ff.vDOFs  } );
-        buffers.insert( { "avel",      (double*)ff.avel   } );
-        buffers.insert( { "evel",      (double*)ff.evel   } );
-        buffers.insert( { "vsize",              ff.vsize  } );
-        buffers.insert( { "invMasses",          ff.invMasses           } );
-        buffers.insert( { "invAmass",           ff.invMasses           } );
-        buffers.insert( { "invEmass",          (ff.invMasses+ff.na*3)         } );
-        buffers.insert( { "invSmass",          (ff.invMasses+(ff.na+ff.ne)*3) } );
+        buffers["vDOFs"]     =           ff.vDOFs;
+        buffers["avel"]      = (double*)ff.avel;
+        buffers["evel"]      = (double*)ff.evel;
+        buffers["vsize"]     =           ff.vsize;
+        buffers["invMasses"] =           ff.invMasses;
+        buffers["invAmass"]  =           ff.invMasses;
+        buffers["invEmass"]  =          (ff.invMasses+ff.na*3);
+        buffers["invSmass"]  =          (ff.invMasses+(ff.na+ff.ne)*3);
     }
 }
 
@@ -699,7 +700,7 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
     bool bOnlyFirst = true;
     int iconf = 0; 
 
-    while( fgets(line, nline, fin) ){
+    while( fgets(line, nline, fin) || ( atoms && (il==atoms->natoms+2) ) ){   // NOTE: also process last conf at EOF (no trailing line needed)
         if ( il==0 ){               // --- Read number of atoms
             int na=-1;
             sscanf( line, "%i", &na );

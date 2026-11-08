@@ -695,17 +695,17 @@ double evalAE(){
                 //if(qqi<-1.00001) EaePaul += addDensOverlapGauss_S( dR,sj, abwi.z, abwi.a, f, fsj, fs_junk );     // correct
                 //double dEaePaul = addPauliGauss      ( dR, sj, abwi.z, f, fsj, fs_junk, false, KRSrho );     // correct
                 //double dEaePaul = addDensOverlapGauss_S( dR, sj, aPar.z, aPar.w, f, fsj, fs_junk );     // correct
-                if(bEvalAEPauli){ 
+                if(bEvalAEPauli){
                     Vec3d f_before = f; double fsj_before = fsj;
-                    dEaePaul = addPauliGauss_New( dR, aPar.y, sj, f, fsj, fs_junk, 0, KRSrho, qj*aPar.z*0.5 );
+                    dEaePaul = addPauliGauss_New( dR, aPar.y, sj, f, fs_junk, fsj, 0, KRSrho, qj*aPar.z*0.5 );  // FIX: electron's fsize must get d/d(sj), atom's d/d(aPar.y) is junk (was swapped)
                     if(verbosity>3){
                         Vec3d f_paul = f - f_before;
                         printf("CPU AE(%i,%i) r %.6f sQ %.6f se %.6f q %.3f Epaul %.10f | dR(%.3f,%.3f,%.3f) f(%.3f,%.3f,%.3f) fs %.3f\n", i, j, dR.norm(), aPar.y, sj, qj, dEaePaul, dR.x, dR.y, dR.z, f_paul.x, f_paul.y, f_paul.z, fsj - fsj_before);
                     }
                 } // spin=0 means both -1 and +1  
-                if(bCoreCoul   ){ 
+                if(bCoreCoul   ){
                     Vec3d f_before = f; double fsj_before = fsj;
-                    dEee     = addCoulombGauss  ( dR, aPar.y, sj, f, fsj, fs_junk,            qj*aPar.z     );
+                    dEee     = addCoulombGauss  ( dR, aPar.y, sj, f, fs_junk, fsj,            qj*aPar.z     );  // FIX: electron's fsize must get d/d(sj), atom's d/d(aPar.y) is junk (was swapped)
                     if(verbosity>3){
                         Vec3d f_coul = f - f_before;
                         printf("CPU AEcoreC(%i,%i) r %.6f sQ %.6f se %.6f q %.3f EcoreC %.10f | f(%.3f,%.3f,%.3f) fs %.3f\n", i, j, dR.norm(), aPar.y, sj, qj, dEee, f_coul.x, f_coul.y, f_coul.z, fsj - fsj_before);
