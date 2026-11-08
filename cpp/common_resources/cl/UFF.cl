@@ -404,7 +404,7 @@ __kernel void evalAngles_UFF(
         float2 csn = cs; // will hold cos(n*theta), sin(n*theta)
 
         // Start with coefficients
-        float Eloc = c0;
+        float Eloc = c0 + c1 * cs.x;   // n=1 energy term (was missing: force had c1 but energy did not)
         float fmag = c1;
 
         // n=2 term

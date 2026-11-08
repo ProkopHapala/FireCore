@@ -1275,16 +1275,16 @@ inline Vec3d move_atom_MD( int i, const float dt, const double Flim, const doubl
 
 // update atom positions using FIRE (Fast Inertial Relaxation Engine)
 __attribute__((hot))  
-inline double move_atom_FIRE( int i, float dt, double Flim, double cv, double cf ){
+inline double move_atom_FIRE( int i, float dt, double Flim, double cv, double cf, double invM=1.0 ){
     Vec3d  f   = fapos[i];
     Vec3d  v   = vapos[i];
     Vec3d  p   = apos [i];
     double fr2 = f.norm2();
     //if(fr2>(Flim*Flim)){ f.mul(Flim/sqrt(fr2)); };
     const bool bPi = i>=natoms;
-    if(bPi)f.add_mul( p, -p.dot(f) ); 
+    if(bPi)f.add_mul( p, -p.dot(f) );
     v.mul(             cv );
-    v.add_mul( f, dt + cf );
+    v.add_mul( f, (dt + cf)*invM );   // invM: opt-in per-block relaxation mass (DynamicOpt::updateAutoMasses)
     if(bPi) v.add_mul( p, -p.dot(v) );
     p.add_mul( v, dt );
     if(bPi)  p.normalize();

@@ -97,6 +97,7 @@ void setup_accel(int nstep_acc_min_, double cos_vf_acc_ ){
 
 
 double eval (){ return W.eval(); };
+double eval_no_omp (){ return W.eval_no_omp(); };  // same per-atom eval path as run_no_omp (nonbonded bPBC-aware); W.eval() uses ng4_PBC unconditionally -> inconsistent for non-PBC
 //int    run  ( int nstepMax, double dt=-1, double Fconv=1e-6, int ialg=2, double* outE=0, double* outF=0 ){ return W.run(nstepMax,dt,Fconv,ialg,outE,outF);  }
 //bool   relax( int niter,    double Ftol, bool bWriteTrj ){ return W.relax( niter, Ftol, bWriteTrj );}
 

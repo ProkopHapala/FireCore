@@ -90,6 +90,8 @@ Bonded neighbors (1-2: directly bonded; 1-3: angle neighbors) must be excluded f
 
 The choice is controlled at compile time or runtime via `bSubtractBonded` flags.
 
+**Per-atom energy partition convention (2026-11-08 fix):** all `evalLJQs_*_atom*` functions loop **every** atom `j` from a given `ia`, so each pair's `eij` is visited twice (once per endpoint). They return `E*0.5` — the half-share partition — so summing over atoms gives each pair once. Whole-pair routines (`evalLJQs_ng4`, `evalLJQs`, `evalLJQs_PBC`, `j=i+1` loops) count pairs once and are **not** halved. Before this fix `run()` reported `E_b + 2·E_NB` while forces were always correct. See [MMFF_energy_eval_debug_2026-11-08.md](MMFF_energy_eval_debug_2026-11-08.md).
+
 **Cluster Morse vs GridFF Morse.** `evalLJQs_ex2_atom` is LJ (`getLJQH`) unless `NBFF::bMorseNonBond` (`setMorseNonBond`). Morse α for AFM/GridFF is a different code path. Surface H steric on diamond NCs: atlas `--nonbond surface` (LJ); fitter `nbscan`/`morse2d` — [`MMFF_C_CH_vs_CH2_kfit.md`](../Topics/FTIR_Nanocrystals/MMFF_C_CH_vs_CH2_kfit.md). Isolated-cluster `getHessian3Nx3N` keeps Exclusion2 when FIRE had it; PBC Hessians stay bonded-only.
 
 ### Test Coverage

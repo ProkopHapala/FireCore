@@ -54,6 +54,11 @@ void init_buffers_UFF(){
     if(W.bUFF){
         ibuffers["ndims"] = &W.ffu._natoms;
         buffers ["Es"]    = &W.ffu.Etot;
+        // optimization DOFs = ffu.apos (NOT nbmol.apos — toUFF() copies positions once at build;
+        // writes to buffers["apos"] do not reach the force field)
+        buffers["DOFs"]  = (double*)W.ffu.apos;
+        buffers["fDOFs"] = (double*)W.ffu.fapos;
+        buffers["vDOFs"] = (double*)W.ffu.vapos;
     }
     ibuffers["selection"] = W.manipulation_sel;
     bbuffers["ffflags"]   = &W.doBonded;
@@ -92,8 +97,22 @@ void init_buffers(){
         W.ff.natoms=W.nbmol.natoms;
     }
     printf( "MMFF_lib.cpp::init_buffers() ndims{nDOFs=%i,natoms=%i,nnode=%i,ncap=%i,npi=%i,nbonds=%i,nvecs=%i,ne=%i,ie0=%i}\n", W.ff.nDOFs, W.ff.natoms, W.ff.nnode, W.ff.ncap, W.ff.npi, W.ff.nbonds, W.ff.nvecs, W.ff.ne, W.ff.ie0 );
-    ibuffers["ndims"]    = &W.ff.nDOFs;
-    buffers ["Es"]       = &W.ff.Etot;
+    // BUGFIX: ndims was read from W.ff (MMFFsp3, compact natoms+npi layout) while DOFs/pipos buffers
+    // point to W.ffl (MMFFsp3_loc, natoms+nnode layout) => Python shaped arrays too small (e.g. 162 of
+    // 210 DOFs) and the trailing pi-vectors were invisible/mutable outside DOFs => E depended on hidden state.
+    static int ndims[9];
+    if( W.bMMFF && !W.bUFF ){          // ffl (MMFFsp3_loc): DOFs=[natoms|nnode pi-vecs]; pipos/fpipos are [nnode]
+        ndims[0]=W.ffl.nDOFs;   ndims[1]=W.ffl.natoms; ndims[2]=W.ffl.nnode;
+        ndims[3]=W.ffl.ncap;    ndims[4]=W.ffl.nnode;  /* 'npi' slot: ffl.pipos is [nnode] */
+        ndims[5]=W.ff.nbonds;   ndims[6]=W.ffl.nvecs;  /* ffl has no nbonds member; W.ff keeps it */
+        ndims[7]=0;             ndims[8]=W.ffl.natoms; /* ne, ie0 unused for ffl */
+    }else{                             // ff (MMFFsp3) / UFF fallback — original behavior
+        ndims[0]=W.ff.nDOFs;    ndims[1]=W.ff.natoms;  ndims[2]=W.ff.nnode;
+        ndims[3]=W.ff.ncap;     ndims[4]=W.ff.npi;     ndims[5]=W.ff.nbonds;
+        ndims[6]=W.ff.nvecs;    ndims[7]=W.ff.ne;      ndims[8]=W.ff.ie0;
+    }
+    ibuffers["ndims"]    = ndims;
+    buffers ["Es"]       = (W.bMMFF && !W.bUFF) ? &W.ffl.Etot : &W.ff.Etot;   // ffl has same 6-double layout (Etot,Eb,Ea,Eps,EppT,EppI)
     ibuffers["selection"] = W.manipulation_sel;
     bbuffers["ffflags"]   = &W.doBonded;
     //printBuffNames();
@@ -275,6 +294,122 @@ int    run( int nstepMax, double dt, double Fconv, int ialg, double damping, dou
         else   { return W.run_no_omp(nstepMax,dt,Fconv, 1000.0,  damping, outE, outF, outV, outVF ); }
     }
     //else   { return W.run       (nstepMax,dt,Fconv,ialg,       outE, outF, outV, outVF ); }
+}
+
+// ================= Gradient-history optimizers (audit eFF_optimizer_speedup.md §8), opt-in alternatives to FIRE =================
+// Thin MMFF wrapper over DynamicOpt::run_GH. iMethod: 1 = BB1 spectral GD, 2 = Anderson (memory mHist<=8).
+// opt.pos aliases ffl.DOFs, so eval_no_omp() reads xs implicitly; ffl.fDOFs fills dfs.
+static double _mmff_eval_E( int n, double* xs, double* dfs ){
+    double E = W.eval_no_omp();
+    if( dfs!=W.ffl.fDOFs ) memcpy( dfs, W.ffl.fDOFs, n*sizeof(double) );
+    return E;
+}
+// Opt-in trajectory-secant preconditioner (fictitious relaxation masses; eFF_optimizer_speedup.md §7.2)
+// MMFF layout: all DOFs are 3D blocks [apos | pipos] => am_nBlocks=ffl.nvecs; UFF: 3D blocks per atom => am_nBlocks=ffu.natoms.
+// mode: 0=off, 1=block-norm secant EMA, 2=asymmetric log-stiffness (fast-up/slow-down)
+void setAutoMass( int mode, double kref ){
+    if(mode>0) W.opt.saveMassesOnce(); else W.opt.restoreMasses();   // §11.2B: mode-0 candidates must not inherit adaptive invMasses
+    W.opt.autoMass = mode; W.opt.am_kref = kref; W.opt.am_init = false;
+    if(W.bUFF){ W.opt.am_nBlocks = W.ffu.natoms; } else { W.opt.am_nBlocks = W.ffl.nvecs; }
+    W.opt.am_nScalars = 0;
+    printf("setAutoMass(mode=%i, kref=%g) nBlocks=%i\n", mode, kref, W.opt.am_nBlocks );
+}
+// UFF eval bridge: opt.pos aliases ffu.apos; W.eval() -> ffu.eval() + nonbonded (nb=ffu), fills ffu.fapos
+static double _uff_eval_E( int n, double* xs, double* dfs ){
+    double E = W.eval();
+    if( dfs != (double*)W.ffu.fapos ) memcpy( dfs, W.ffu.fapos, n*sizeof(double) );
+    return E;
+}
+
+int run_GH( int nstepMax, double Fconv, int iMethod, int mHist, double eta, double a_init, int adapt, double amax, double* outE, double* outF ){
+    if(W.bUFF){
+        if( (W.opt.pos!=(double*)W.ffu.apos) || (W.opt.force!=(double*)W.ffu.fapos) || (W.opt.n!=W.ffu.natoms*3) ){
+            printf("WARNING run_GH(): UFF optimizer bound to stale DOF buffers => re-binding opt\n");
+            W.setOptimizer( W.ffu.natoms*3, (double*)W.ffu.apos, (double*)W.ffu.fapos );
+            if(W.ffu.bOwnVapos){ _dealloc(W.ffu.vapos); }
+            W.ffu.vapos = (Vec3d*)W.opt.vel; W.ffu.bOwnVapos=false;
+        }
+        W.opt.lsMethod=iMethod; W.opt.mHist=mHist; W.opt.lsEta=eta; W.opt.lsAinit=a_init;
+        W.opt.lsAdapt=adapt;  W.opt.lsAmax=amax;
+        W.opt.getForce = _uff_eval_E;
+        W.opt.xmin = 0;
+        return W.opt.run_GH( nstepMax, Fconv, outE, outF );
+    }
+    if( (W.opt.pos!=W.ffl.DOFs) || (W.opt.force!=W.ffl.fDOFs) || (W.opt.n!=W.ffl.nDOFs) ){
+        printf("WARNING run_GH(): optimizer bound to stale DOF buffers => re-binding opt\n");
+        W.setOptimizer( W.ffl.nDOFs, W.ffl.DOFs, W.ffl.fDOFs );
+    }
+    W.opt.lsMethod=iMethod; W.opt.mHist=mHist; W.opt.lsEta=eta; W.opt.lsAinit=a_init;
+    W.opt.lsAdapt=adapt;  W.opt.lsAmax=amax;
+    W.opt.getForce = _mmff_eval_E;
+    W.opt.xmin = 0;   // no per-DOF lower bounds for MMFF (pi vectors normalized inside eval)
+    return W.opt.run_GH( nstepMax, Fconv, outE, outF );
+}
+
+// DynamicOpt FIRE driven by opt.getForce callback (UFF: bound to ffu.apos/fapos; MMFF uses run() instead)
+// generic scalar optimizer-parameter setter for parameter sweeps / meta-optimization; returns previous value, exits loudly on unknown name
+double setOptParam( const char* name, double val ){
+    DynamicOpt& o = W.opt; double old;
+    if     (!strcmp(name,"lsMomBeta")){ old=o.lsMomBeta; o.lsMomBeta=val; }
+    else if(!strcmp(name,"lsMomGain")){ old=o.lsMomGain; o.lsMomGain=val; }
+    else if(!strcmp(name,"lsTurnCos")){ old=o.lsTurnCos; o.lsTurnCos=val; }
+    else if(!strcmp(name,"lsEmaCoef")){ old=o.lsEmaCoef; o.lsEmaCoef=val; }
+    else if(!strcmp(name,"lsEtaLo"))  { old=o.lsEtaLo;   o.lsEtaLo=val;   }
+    else if(!strcmp(name,"lsEtaHi"))  { old=o.lsEtaHi;   o.lsEtaHi=val;   }
+    else if(!strcmp(name,"lsAmax"))   { old=o.lsAmax;    o.lsAmax=val;    }
+    else if(!strcmp(name,"lsDescEps")){ old=o.lsDescEps; o.lsDescEps=val; }
+    else if(!strcmp(name,"modeSupp")) { old=o.modeSupp;  o.modeSupp=(int)val; }
+    else if(!strcmp(name,"msMu"))     { old=o.msMu;      o.msMu=val;      }
+    else if(!strcmp(name,"msEma"))    { old=o.msEma;     o.msEma=val;     }
+    else if(!strcmp(name,"msInit"))   { old=o.msInit;    o.msInit=(int)val; }   // reset mode state between runs
+    else if(!strcmp(name,"massMetric")){ old=o.massMetric;o.massMetric=(int)val; }
+    else if(!strcmp(name,"finc"))     { old=o.finc;      o.finc=val;      }
+    else if(!strcmp(name,"fdec"))     { old=o.fdec;      o.fdec=val;      }
+    else if(!strcmp(name,"falpha"))   { old=o.falpha;    o.falpha=val;    }
+    else if(!strcmp(name,"dt_max"))   { old=o.dt_max;    o.dt_max=val;    }
+    else if(!strcmp(name,"damp_max")) { old=o.damp_max;  o.damp_max=val;  }
+    else if(!strcmp(name,"cvf_min"))  { old=o.cvf_min;   o.cvf_min=val;   }
+    else if(!strcmp(name,"cvf_max"))  { old=o.cvf_max;   o.cvf_max=val;   }
+    else { printf("ERROR setOptParam: unknown param '%s'\n", name); exit(1); }
+    return old;
+}
+
+int run_FIRE( int nstepMax, double dt, double Fconv, double* outE, double* outF ){
+    if(W.bUFF){
+        if( (W.opt.pos!=(double*)W.ffu.apos) || (W.opt.force!=(double*)W.ffu.fapos) || (W.opt.n!=W.ffu.natoms*3) ){
+            printf("WARNING run_FIRE(): UFF optimizer bound to stale DOF buffers => re-binding opt\n");
+            W.setOptimizer( W.ffu.natoms*3, (double*)W.ffu.apos, (double*)W.ffu.fapos );
+            if(W.ffu.bOwnVapos){ _dealloc(W.ffu.vapos); }
+            W.ffu.vapos = (Vec3d*)W.opt.vel; W.ffu.bOwnVapos=false;
+        }
+    }else{
+        // MMFF: opt should be bound to ffl.DOFs/fDOFs (natom+pi DOFs) by setOptimizer at init; rebind if stale
+        if( (W.opt.pos!=(double*)W.ffl.DOFs) || (W.opt.force!=(double*)W.ffl.fDOFs) || (W.opt.n!=W.ffl.nDOFs) ){
+            printf("WARNING run_FIRE(): MMFF optimizer bound to stale DOF buffers => re-binding opt\n");
+            W.setOptimizer( W.ffl.nDOFs, (double*)W.ffl.DOFs, (double*)W.ffl.fDOFs );
+        }
+    }
+    W.opt.getForce = W.bUFF ? _uff_eval_E : _mmff_eval_E;
+    W.opt.setTimeSteps( dt );
+    W.opt.cleanVel();
+    W.opt.damping = W.opt.damp_max;
+    W.opt.lastNeg = 0;
+    W.opt.am_init = false;
+    if(!W.opt.autoMass) W.opt.restoreMasses();      // §11.2B fresh-state contract
+    const double F2conv = Fconv*Fconv;
+    int itr=0;
+    for( ; itr<nstepMax; itr++ ){
+        double E = W.opt.getForce( W.opt.n, W.opt.pos, W.opt.force );
+        double F2=0; for(int i=0;i<W.opt.n;i++){ double f=W.opt.force[i]; F2+=f*f; }
+        if( !std::isfinite(E) || !std::isfinite(F2) ){ printf("ERROR run_FIRE(): nonfinite E=%g F2=%g at itr=%i => abort\n", E, F2, itr ); exit(1); }
+        if(outE)outE[itr]=E;
+        if(outF)outF[itr]=sqrt(F2);
+        if(F2<F2conv) break;
+        W.opt.move_FIRE();
+    }
+    int nout = (itr<nstepMax) ? itr+1 : itr;   // entries written to outE/outF (break writes at itr, budget-out wrote nstepMax)
+    { int il=nout-1; printf("run_FIRE() itr=%i/%i E=%g |F|=%g dt=%g\n", itr, nstepMax, outE?outE[il]:NAN, outF?outF[il]:NAN, W.opt.dt ); }
+    return nout;
 }
 
 void  scan( int nconf, double* poss, double* rots, double* Es, double* aforces, double* aposs, bool omp, bool bRelax, int niter_max, double dt, double Fconv, double Flim ){

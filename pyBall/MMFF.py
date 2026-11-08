@@ -895,10 +895,14 @@ def getBuffs_UFF( NEIGH_MAX=4 ):
     natoms=ndims[0]; nbonds=ndims[1]; nangles=ndims[2]; ndihedrals=ndims[3]; ninversions=ndims[4]; nf=ndims[5]; i0dih=ndims[6]; i0inv=ndims[7]; i0ang=ndims[8]; i0bon=ndims[9]
     print( "getBuffs(): natoms=%i nbonds=%i nangles=%i ndihedrals=%i ninversions=%i nf=%i i0dih=%i i0inv=%i i0ang=%i i0bon=%i " %(natoms,nbonds,nangles,ndihedrals,ninversions,nf,i0dih,i0inv,i0ang,i0bon) )
     Es    = getBuff ( "Es",    (5,) )  # [ Etot,Eb,Ea,Ed,Ei ]
-    global apos,fapos,REQs,hneigh,fint,atypes,bonAtoms,angAtoms,dihAtoms,invAtoms,neighs,neighBs,bonParams,angParams,dihParams,invParams,angNgs,dihNgs,invNgs
+    global apos,fapos,REQs,hneigh,fint,atypes,bonAtoms,angAtoms,dihAtoms,invAtoms,neighs,neighBs,bonParams,angParams,dihParams,invParams,angNgs,dihNgs,invNgs,DOFs,fDOFs,vDOFs
     #Ebuf     = getEnergyTerms( )
     apos      = getBuff ( "apos",     (natoms,3) )
     fapos     = getBuff ( "fapos",    (natoms,3) )
+    # optimization DOFs = ffu.apos (apos above is nbmol — a separate copy; use DOFs for optimizer state)
+    DOFs      = getBuff ( "DOFs",     (natoms,3) )
+    fDOFs     = getBuff ( "fDOFs",    (natoms,3) )
+    vDOFs     = getBuff ( "vDOFs",    (natoms,3) )
     REQs      = getBuff ( "REQs",     (natoms,4) )
     # ------ UFF
     hneigh    = getBuff ( "hneigh",    (natoms*NEIGH_MAX,4) )
@@ -1304,6 +1308,12 @@ lib.eval.restype   =  c_double
 def eval():
     return lib.eval()
 
+#double eval_no_omp()   # per-atom eval path identical to run_no_omp (bPBC-aware nonbonded); eval() is inconsistent for non-PBC nonbonded
+lib.eval_no_omp.argtypes  = []
+lib.eval_no_omp.restype   =  c_double
+def eval_no_omp():
+    return lib.eval_no_omp()
+
 # #bool relax( int niter, double Ftol )
 # lib.relax.argtypes  = [c_int, c_double, c_bool ]
 # lib.relax.restype   =  c_bool
@@ -1324,6 +1334,38 @@ def run(nstepMax=1000, dt=-1, Fconv=1e-6, ialg=2, damping=-1.0, outE=None, outF=
     ret = lib.run(nstepMax, dt, Fconv, ialg, damping, _np_as(outE,c_double_p), _np_as(outF,c_double_p), _np_as(outV,c_double_p), _np_as(outVF,c_double_p), omp )
     print(f"pyBall.MMFF.run: returned {ret}")
     return ret
+
+# int run_GH( int nstepMax, double Fconv, int iMethod, int mHist, double eta, double a_init, int adapt, double amax, double* outE, double* outF )
+# Gradient-history optimizers (audit eFF_optimizer_speedup.md §8): iMethod 1 = BB1 spectral GD, 2 = Anderson (mHist<=8)
+# adapt bits: 1 = eta<-EMA(BB1 s.s/s.y) | 2 = adaptive m on resets | 4 = Armijo warm-start (extrapolate, cap amax)
+lib.run_GH.argtypes  = [c_int, c_double, c_int, c_int, c_double, c_double, c_int, c_double, c_double_p, c_double_p]
+lib.run_GH.restype   =  c_int
+def run_GH(nstepMax=1000, Fconv=1e-4, iMethod=1, mHist=5, eta=0.001, a_init=0.001, adapt=0, amax=8.0, outE=None, outF=None):
+    print(f"pyBall.MMFF.run_GH: n={nstepMax} Fconv={Fconv} iMethod={iMethod} mHist={mHist} eta={eta} adapt={adapt} amax={amax}")
+    ret = lib.run_GH(nstepMax, Fconv, iMethod, mHist, eta, a_init, adapt, amax, _np_as(outE,c_double_p), _np_as(outF,c_double_p) )
+    print(f"pyBall.MMFF.run_GH: returned {ret} evals")
+    return ret
+
+# double setOptParam( const char* name, double val )  # generic DynamicOpt scalar setter for sweeps/meta-optimization; returns previous value
+lib.setOptParam.argtypes = [c_char_p, c_double]
+lib.setOptParam.restype  = c_double
+def setOptParam(name, val):
+    return lib.setOptParam(name.encode(), val)
+
+# int run_FIRE( int nstepMax, double dt, double Fconv, double* outE, double* outF )  # UFF only: DynamicOpt FIRE on ffu DOFs
+lib.run_FIRE.argtypes  = [c_int, c_double, c_double, c_double_p, c_double_p]
+lib.run_FIRE.restype   =  c_int
+def run_FIRE(nstepMax=1000, dt=0.05, Fconv=1e-6, outE=None, outF=None):
+    print(f"pyBall.MMFF.run_FIRE: n={nstepMax} dt={dt} Fconv={Fconv}")
+    ret = lib.run_FIRE(nstepMax, dt, Fconv, _np_as(outE,c_double_p), _np_as(outF,c_double_p) )
+    print(f"pyBall.MMFF.run_FIRE: returned {ret} iters")
+    return ret
+
+# void setAutoMass( int mode, double kref )  # trajectory-secant diag masses: mode 0=off, 1=EMA, 2=asym-log (fast-up/slow-down)
+lib.setAutoMass.argtypes  = [c_int, c_double]
+lib.setAutoMass.restype   =  None
+def setAutoMass(mode=1, kref=100.0):
+    lib.setAutoMass(mode, kref)
 
 #lib.scan.argtypes  = [c_int, array2d, array2d, array1d, array2d, array2d, c_bool, c_bool, c_int, c_double, c_double, c_double]
 # int  scan( int nconf, double* poss, double* rots, double* Es, double* aforces, double* aposs, bool omp, bool bRelax, int niter_max, double dt, double Fconv, double Flim ){

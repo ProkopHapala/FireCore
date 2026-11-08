@@ -776,3 +776,85 @@ One line: **FIRE has inertia but no memory; Anderson remembers steps and extrapo
 | scaled BFGS (H0=0.01·I) | **72** | — |
 
 Reading the table: on the coupled free-nuclei landscape, gradient-history methods only pay off *after* preconditioned FIRE reaches the basin (Anderson alone 349, unit-FIRE60 hybrid 543 vs secant-FIRE60 hybrid 108). On the constrained electronic subspace the landscape is benign enough that Anderson/BB1 win outright. BFGS's explicit curvature still dominates everywhere it is applicable — the gradient-history methods are the fallback when BFGS machinery is undesirable or unavailable.
+
+## 9. Fifth round: gradient-history methods on MMFF molecules (2026-11-09)
+
+### 9.1 What was implemented (all opt-in, FIRE/GD defaults untouched)
+
+- **`MMFF_lib.cpp::run_GH`** — thin wrapper over `DynamicOpt::run_GH` bridging `W.eval_no_omp()` to `opt.getForce` (pos aliases `ffl.DOFs`; no `xmin` bounds — pi DOFs are normalized inside the eval). Exposed as `mmff.run_GH(nstepMax, Fconv, iMethod, mHist, eta, a_init, outE, outF)`.
+- **`lsMethod=3` — preconditioned Anderson** (`DynamicOpt.cpp`): fixed-point map `x→x−ηDg` with `D=diag(invMasses)` instead of scalar `η`: `d = −ηDg − (S−ηDY)γ`. Same code path, `eta_i = η·invMasses[i]` per element. History push unchanged (`s`=actual step, `y=Δg`).
+- **`autoMass=2` — asymmetric log-stiffness memory** (`updateAutoMasses`): `z=log k` updated with `am_emaUp=0.2` when the observation is stiffer, `am_emaDn=0.01` when softer — remembers transient stiff modes without permanent immobilization (the "fast increase, slow decrease" candidate from the discussion).
+- **MMFF autoMass plumbing**: `mmff.setAutoMass(mode, kref)` sets `am_nBlocks=ffl.nvecs` (all DOFs are 3-vec blocks, no scalar tail). Two engagement bugs fixed: `move_FIRE_smooth` now calls `updateAutoMasses` like `move_FIRE`, and — the real reason am did nothing — `run_no_omp`'s FIRE path uses per-atom `ffl.move_atom_FIRE`, which ignored `invMasses` entirely. `run_no_omp` now calls `opt.updateAutoMasses()` per iteration under `bFIRE` and passes `invM=opt.invMasses[3i]` into `move_atom_FIRE` (new default-arg `invM=1.0`; other callers unchanged).
+- **`run_GH` Armijo budget fix**: the inner backtracking loop could exceed `nstepMax` (returned 1899 evals for budget 1880). Now `while(a>1e-14 && it<nstepMax)`; budget-out mid-search restores `xc` and exits as BUDGET-OUT, not LINE-SEARCH-FAIL. Also added `resets`/`rejects` counters to the summary line.
+- **Nonfinite *trial* energy = Armijo reject, not fatal**: a secant step into an LJ wall can produce E=NaN — `eval_E` used to `exit(1)` on the first nonfinite *trial*. Now nonfinite trials are rejected like ordinary Armijo failures (fatal only on the eval-0 anchor or accepted state — same fail-loud policy where it matters). This measurably changed trajectories: `am1FIRE→PCAnd` escaped the nHex stall basin.
+
+### 9.2 Benchmark protocol
+
+`tests/tMMFF/run_gradopt.py` — same corrected non-PBC energy convention as `run_valleyopt.py` (`eval==eval_no_omp==run()`, pi DOFs normalized, dead pi blocks are zero-force so harmless to gradient methods). Molecules: propandiol (39 free DOFs), xylitol (66), nHexadecan-2COOH (168). Each method forked per run — crashes/exit(1) recorded as FAIL, not fatal to the sweep. Eref = FIRE best-visited; milestones = evals to reach fraction of (E0−Eref) gap; hybrids charge FIRE evals to the total. Run: `LD_PRELOAD=$(gcc -print-file-name=libasan.so) CPP_RECOMPILE=0 ASAN_OPTIONS=detect_leaks=0 python3 run_gradopt.py --xyz <mol>`.
+
+### 9.3 The FIRE dt correction — the previous comparison was unfair
+
+The first sweep used `dt=0.005` (arbitrary default). `setTimeSteps(dt)` sets `dt_max=dt` — **FIRE cannot adapt its step upward past the initial value**, so `dt` IS the stability parameter, not an initial guess. A dt sweep (ialg=3, nHexadecan) shows the sensitivity:
+
+| dt | 0.005 | 0.01 | 0.02 | 0.05 | 0.1 | **0.2** | 0.3 | 0.5 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| evals→0.005-gap | — | 1448 | 718 | 311 | 174 | **121** | 256 | stalls (2.3%) |
+
+**Tuned FIRE (dt=0.2) fully converges |F|≈1e-9 in ~650–1950 evals on all three molecules** — at dt=0.005 it never converges at all. The earlier "Anderson beats FIRE 5–10×" conclusion was an artifact. Also: propandiol dt=0.8 overshot into a *deeper* basin (E=0.0685 < FIRE-ref 0.1075) — large steps can escape basins, echoing the valleyopt motivation.
+
+### 9.4 Results — evals to reach 0.005 of the E0→Eref gap (2000-eval budget, η=1e-3, FIRE dt=0.2 ialg=3)
+
+| method | propandiol (39d) | xylitol (66d) | nHexadecan (168d) |
+|---|---:|---:|---:|
+| **FIRE dt=0.2** | **160** (conv @659) | **114** (conv @647) | **121** |
+| FIRE+amEMA | 122 | 125 | 122 |
+| FIRE+amAsymLog | 149 | 121 | 127 |
+| BB1 η=1e-3 | 736 | 1492 | 648 |
+| Anderson m=1 | 329 | 865 | 395 |
+| Anderson m=2 | 388 | 734 | 453 |
+| Anderson m=3 | 323 | 939 | 438 |
+| Anderson m=5 | 199 | 375 | 421 |
+| Anderson m=8 | 179 | 321 | **stalled** (0.62%, \|F\|=3.9e-2) |
+| am1/2 FIRE60→PCAnd m5 | 191/251 | 345/383 | 251 / **stalled** |
+| FIRE30→And m5 | 208 | 438 | 257 |
+| FIRE60→And m5 | 230 | 613 | **stalled** (same basin) |
+| FIRE120→And m5 | 188 | 114 | 121 |
+
+### 9.5 The Anderson η correction — symmetric undertuning
+
+Fairness cuts both ways: η=1e-3 (eFF-tuned) is also ~10–30× too small for MMFF. η sweep on nHexadecan (evals→0.005-gap):
+
+| η | 5e-4 | 1e-3 | 3e-3 | 1e-2 | 3e-2 | 0.1 |
+|---|---:|---:|---:|---:|---:|---:|
+| m=1 | 494 | 395 | 253 | **170** | 1047 | fails |
+| m=5 | 288 | 421 | stall | 883 | 287 | 292 |
+
+Propandiol/xylitol confirm η≈0.01: **m=5 η=0.01 → 96/196** (beats tuned FIRE 160/114 on propandiol), **m=1 η=0.01 → 144/297/170** on all three. Both η=0.01 runs end LINE-SEARCH-FAIL at |F|≈1e-8 — benign: Armijo's `a` underflows at the convergence noise floor with E already at ref (worth a graceful `bConv`-adjacent exit later).
+
+**Full parameter scan** (`tests/tMMFF/scan_gradopt.py`, all methods×params per molecule): — best config per family, evals→0.005-gap [evals→|F|<1e-4]
+
+| method | propandiol (39d) | xylitol (66d) | nHexadecan (168d) |
+|---|---:|---:|---:|
+| FIRE (dt=0.2) | 160 [408] | 114 [405] | 142 [1056] |
+| Anderson m=1 (η=0.01) | 144 [552] | 297 [586] | 170 |
+| Anderson m=3 (η=0.03) | 86 [322] | 188 [434] | 121 [1884] |
+| Anderson m=5 (η=0.01) | 96 [364] | 196 [419] | 287 (η=0.03) |
+| **Anderson m=8 (η=0.03)** | **74** [241] | 120 [289] | **117** [1187] |
+| best FIRE_k→And | 112 (F30→m5 e.01) | 114 (F120→*, =FIRE) | 141 (F30→m5 e.01) |
+| BB1 (any a_init) | ~710 | ~1500 | ~650 |
+
+### 9.6 Reading the corrected results
+
+1. **Tuned Anderson m=8 η=0.03 beats tuned FIRE on 2/3 molecules** (74 vs 160, 117 vs 142; tie 120≈114 on xylitol) — with real convergence |F|<1e-4 in 241–1187 evals, comparable to FIRE's 405–1056. The gradient-history speedup is real, just ~3–10× smaller than the undertuned comparison suggested.
+2. **The m=8 "stall" was an under-η artifact, not an m problem**: η≤0.003 → resets-stall (1851 clears); η=0.03 → steps escape the trap before the secant model gets stuck. Counterintuitively, *bigger* base steps are more robust here — the optimizer doesn't linger in the ill-conditioned region long enough for the bad directions to dominate.
+3. **m is nonmonotone**: m=2 is consistently *worse* than both m=1 and m=3 (rank-2 least-squares overfits at intermediate η); m=8 η=0.03 is the overall winner, m=1 the robust simple default.
+4. **Diag secant masses ≈ neutral on MMFF** (±10–20%; landscape too isotropic vs eFF).
+5. **Hybrids (FIRE_k→And) don't beat the better of the two parents** on these smooth landscapes — they're a robustness hedge (FIRE30→m5 η=0.01 escapes the stall that catches pure m5 η=0.003), not a speedup.
+6. **Shared limitation — no self-tuning**: both FIRE (dt∈[0.1,0.3]) and Anderson (η∈[0.01,0.03]) have ~3× viable step-scale windows and neither discovers them. `setTimeSteps` caps dt at init; Armijo only shrinks. The payoff target is a mechanism that *finds* the window — BB1's secant-derived step (s·s/s·y) is exactly such a scale estimate, and folding it into the FIRE/Anderson step-size control is the natural next experiment.
+7. LINE-SEARCH-FAIL at |F|~1e-8 (Armijo `a` underflow at the convergence noise floor) is effectively convergence — worth a graceful exit so runs don't report failure at the reference energy.
+
+### 9.7 Next candidates (unchanged priorities, now better motivated)
+
+(a) **Continuous inertial+secant hybrid** `Δx=(1−w)p_FIRE+w·d_sec` — FIRE's dt-adaptation covers the model-failure regime, secant covers the curved-valley regime; (b) **rank-1 closed-form Anderson** as the always-on correction (m=1 needs no QR); (c) **step-scale escalation on repeated resets** — when `nResets/nsteps` is high, grow `η` or switch to momentum; (d) re-test diag masses on eFF free nuclei where stiffness heterogeneity is real; (e) graceful exit when Armijo underflows at the convergence noise floor (LINE-SEARCH-FAIL at |F|~1e-8 is effectively converged); (f) ~~**BB1-derived step scale**~~ **IMPLEMENTED** — `lsAdapt` bitflag (η←EMA(BB1 `s·s/s·y`), adaptive-m, Armijo warm-start): from default η=1e-3 → {89,198,154} evals→0.005-gap on propandiol/xylitol/nHex (vs tuned {74,120,117}) and 171 vs 471 on eFF free nuclei. See `doc/Topics/Learning_Optimization_Heuristics/GradientMetaOptimization.md` §6.5.
+
+Artifacts: `tests/tMMFF/{propandiol,xylitol,nHexadecan_dicarboxylic}_grad_convergence.npz/.png` (regenerate via `run_gradopt.py --plot <name>`; plot runs in ASan-free child); scan script `tests/tMMFF/scan_gradopt.py`.

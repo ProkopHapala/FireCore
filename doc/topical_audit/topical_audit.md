@@ -110,6 +110,7 @@ Topics are ranked by **consolidation priority** — how much duplicate/scattered
 - **Audit Documents:**
   - [forcefields_overview.md](forcefields_overview.md) — High-level taxonomy
   - [intramolecular_forcefields.md](intramolecular_forcefields.md) — Detailed per-FF analysis
+  - [MMFF_energy_eval_debug_2026-11-08.md](MMFF_energy_eval_debug_2026-11-08.md) — Scalar-energy eval bugs found & fixed (double-counted NB, ndims/ffl mismatch, pi-norm DOF, eval ordering); READ before using `mmff.eval()`
   - [Forcefields_Audit.md](Forcefields_Audit.md) — Legacy consolidated audit
 - **Key integrator:** `MolWorld_sp3.h` — orchestrates all FF components
 

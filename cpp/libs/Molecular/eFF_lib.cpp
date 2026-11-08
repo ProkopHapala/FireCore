@@ -228,11 +228,39 @@ void initOpt( double dt, double damping, double f_limit, bool bMass ){
 // mode: 0=off, 1=block-norm secant; kref: stiffness scale invM=kref/(kref+k). Block layout is set in run()
 // from the current na/ne (atoms + electron positions as 3D blocks; electron sizes as separate scalar DOFs).
 void setAutoMass( int mode, double kref ){
+    if(mode>0) opt.saveMassesOnce(); else opt.restoreMasses();   // §11.2B: mode-0 candidates must not inherit adaptive invMasses
     opt.autoMass = mode; opt.am_kref = kref; opt.am_init = false;
     printf("setAutoMass(mode=%i, kref=%g)\n", mode, kref );
 }
 // Opt-in mass-consistent FIRE metric (see §7.3). 0=legacy v.(invM.f); 1=P=v.f power test + sqrt(V2/G2) mixing.
 void setMassMetric( int m ){ opt.massMetric = m; printf("setMassMetric(%i)\n", m ); }
+
+// generic scalar optimizer-parameter setter for sweeps/meta-optimization; returns previous value, exits loudly on unknown name
+double setOptParam( const char* name, double val ){
+    double old;
+    if     (!strcmp(name,"lsMomBeta")){ old=opt.lsMomBeta; opt.lsMomBeta=val; }
+    else if(!strcmp(name,"lsMomGain")){ old=opt.lsMomGain; opt.lsMomGain=val; }
+    else if(!strcmp(name,"lsTurnCos")){ old=opt.lsTurnCos; opt.lsTurnCos=val; }
+    else if(!strcmp(name,"lsEmaCoef")){ old=opt.lsEmaCoef; opt.lsEmaCoef=val; }
+    else if(!strcmp(name,"modeSupp")) { old=opt.modeSupp;  opt.modeSupp=(int)val; }
+    else if(!strcmp(name,"msMu"))     { old=opt.msMu;      opt.msMu=val;      }
+    else if(!strcmp(name,"msEma"))    { old=opt.msEma;     opt.msEma=val;     }
+    else if(!strcmp(name,"msInit"))   { old=opt.msInit;    opt.msInit=(int)val; }
+    else if(!strcmp(name,"massMetric")){ old=opt.massMetric;opt.massMetric=(int)val; }
+    else if(!strcmp(name,"finc"))     { old=opt.finc;      opt.finc=val;      }
+    else if(!strcmp(name,"fdec"))     { old=opt.fdec;      opt.fdec=val;      }
+    else if(!strcmp(name,"falpha"))   { old=opt.falpha;    opt.falpha=val;    }
+    else if(!strcmp(name,"dt_max"))   { old=opt.dt_max;    opt.dt_max=val;    }
+    else if(!strcmp(name,"damp_max")) { old=opt.damp_max;  opt.damp_max=val;  }
+    else if(!strcmp(name,"cvf_min"))  { old=opt.cvf_min;   opt.cvf_min=val;   }
+    else if(!strcmp(name,"cvf_max"))  { old=opt.cvf_max;   opt.cvf_max=val;   }
+    else if(!strcmp(name,"lsEtaLo"))  { old=opt.lsEtaLo;   opt.lsEtaLo=val;   }
+    else if(!strcmp(name,"lsEtaHi"))  { old=opt.lsEtaHi;   opt.lsEtaHi=val;   }
+    else if(!strcmp(name,"lsAmax"))   { old=opt.lsAmax;    opt.lsAmax=val;    }
+    else if(!strcmp(name,"lsDescEps")){ old=opt.lsDescEps; opt.lsDescEps=val; }
+    else { printf("ERROR setOptParam: unknown param '%s'\n", name); exit(1); }
+    return old;
+}
 
 //int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0, double* outE, double* outF ){ 
 int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF ){
@@ -315,7 +343,7 @@ static double _eff_eval_E( int n, double* xs, double* dfs ){
     if(dfs!=ff.fDOFs) memcpy( dfs, ff.fDOFs, n*sizeof(double) );
     return E;
 }
-int run_GH( int nstepMax, double Fconv, int iMethod, int mHist, double eta, double a_init, double* outE, double* outF ){
+int run_GH( int nstepMax, double Fconv, int iMethod, int mHist, double eta, double a_init, int adapt, double amax, double* outE, double* outF ){
     if( (opt.pos!=ff.pDOFs) || (opt.force!=ff.fDOFs) || (opt.vel!=ff.vDOFs) || (opt.invMasses!=ff.invMasses) || (opt.fixmask!=ff.fixmask) || (opt.n!=ff.nDOFs) ){
         printf("WARNING run_GH(): optimizer bound to stale DOF buffers => re-binding opt\n");
         opt.bindOrAlloc( ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses );
@@ -323,6 +351,8 @@ int run_GH( int nstepMax, double Fconv, int iMethod, int mHist, double eta, doub
         opt.bfixmask = (ff.fixmask!=0);
     }
     opt.lsMethod=iMethod; opt.mHist=mHist; opt.lsEta=eta; opt.lsAinit=a_init;
+    opt.lsAdapt=adapt;  opt.lsAmax=amax;
+    if(opt.autoMass){ opt.am_nBlocks = ff.na + ff.ne; opt.am_nScalars = ff.ne; }   // [apos|epos] 3D blocks + [esize] scalars (same layout as run())
     opt.getForce = _eff_eval_E;
     // lower bounds: -inf everywhere except esize DOFs -> min_esize (electron-size floor)
     static double* lsxmin=0; static int lsxmin_n=0;

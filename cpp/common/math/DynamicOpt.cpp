@@ -8,17 +8,19 @@
 #include "Lingebra.h"   // leastSquareFit_QR (Anderson direction)
 #include <string.h>     // memcpy
 #include <cmath>        // isfinite
+#include <cfloat>       // DBL_MAX (rejected-trial sentinel in outF, §11.2A)
 
 // ===============  MoveSteps
 
-double DynamicOpt::move_LeapFrog(double dt_loc){
+double DynamicOpt::move_LeapFrog(double dt_loc, const double* farr){
     //double dt_ = dt*fscale_safe;
     //printf("DynamicOpt::move_LeapFrog() dt %g \n", dt_loc);
+    if(!farr)farr=force;
     double f2sum=0;
     for ( int i=0; i<n; i++ ){
         if(bfixmask){ if(fixmask[i])continue; }
         //printf( "%3i %c v %12.5e f %12.5e p %12.5e iM %12.5e \n", i, (fixmask[i])?'.':' ', vel[i],force[i],pos[i],invMasses[i]  );
-        double f = force[i];
+        double f = farr[i];
         double v = vel[i];
         f2sum+=f*f;
         v += f*invMasses[i]*dt_loc;
@@ -259,6 +261,7 @@ double DynamicOpt::damp_func_FIRE( double c, double& cv ){ // Original FIRE damp
 }
 
 double DynamicOpt::move_FIRE_smooth(){
+    if(autoMass) updateAutoMasses();
     eval_cos_vf();
 	double cv;
     double cf  = renorm_vf * damp_func( cos_vf, cv );
@@ -335,7 +338,13 @@ void DynamicOpt::updateAutoMasses(){
         }
         if( dx2 > 1e-12 ){                                    // |dx_b| > 1e-6 => measurable step
             double knew = fmin( fmax( sqrt(df2/dx2), 1e-2 ), 1e7 );
-            am_k[b] = (1.0-am_ema)*am_k[b] + am_ema*knew;
+            if( autoMass==2 ){                                // asymmetric log-stiffness memory: stiffening is learned fast (eta_up),
+                double zold = log( am_k[b] + 1e-12 );         // softening is forgotten slowly (eta_dn) => remebers transient stiff modes
+                double dz   = log( knew ) - zold;             // without being permanently immobilized by one bad observation
+                am_k[b] = exp( zold + (dz>0?am_emaUp:am_emaDn)*dz );
+            }else{
+                am_k[b] = (1.0-am_ema)*am_k[b] + am_ema*knew;
+            }
         }
         double invM = am_kref/(am_kref + am_k[b]);
         for(int k=0;k<ni;k++){ int i=i0+k; if(bfixmask && fixmask[i])continue; invMasses[i]=invM; }
@@ -345,6 +354,28 @@ void DynamicOpt::updateAutoMasses(){
 
 double DynamicOpt::move_FIRE(){
     if(autoMass) updateAutoMasses();
+    const double* fe = force;
+    if(modeSupp){   // rank-1 stiff-mode suppression: u = EMA of normalized transverse ΔF (q = ΔF - proj_s(ΔF)); fe = f - (1-mu)(f·u)u
+        if(!msInit){ _realloc(msU,n); _realloc(msFe,n); _realloc(msFold,n); _realloc(msXold,n);
+            for(int i=0;i<n;i++){ msU[i]=0; msFold[i]=force[i]; msXold[i]=pos[i]; } msInit=true; }
+        else{
+            double ss=0, dqs=0, df2=0;
+            for(int i=0;i<n;i++){ if(bfixmask&&fixmask[i])continue; double s_=pos[i]-msXold[i], df_=force[i]-msFold[i]; ss+=s_*s_; dqs+=df_*s_; df2+=df_*df_; }
+            if( ss>1e-24 && df2>1e-24 ){
+                double q2=0; for(int i=0;i<n;i++){ if(bfixmask&&fixmask[i]){msFe[i]=0;continue;} double q_= (force[i]-msFold[i]) - (dqs/ss)*(pos[i]-msXold[i]); msFe[i]=q_; q2+=q_*q_; }
+                if( q2 > 1e-12*df2 ){ double iq=1.0/sqrt(q2), w=1.0-msEma, u2=0;
+                    double qu=0; for(int i=0;i<n;i++){ if(bfixmask&&fixmask[i])continue; qu+=msU[i]*msFe[i]; }
+                    double sgn = (qu<0) ? -1.0 : 1.0;          // §11.6: u and -u are the same projector u*u^T; align sign so opposite observations don't cancel in the EMA
+                    for(int i=0;i<n;i++){ if(bfixmask&&fixmask[i]){msU[i]=0;continue;} msU[i]=msEma*msU[i]+w*sgn*msFe[i]*iq; u2+=msU[i]*msU[i]; }
+                    double iu=1.0/sqrt(u2+1e-300); for(int i=0;i<n;i++)msU[i]*=iu;
+                }
+            }
+            double fu=0; for(int i=0;i<n;i++)fu+=force[i]*msU[i];
+            for(int i=0;i<n;i++)msFe[i]=force[i]-(1.0-msMu)*fu*msU[i];
+            fe=msFe;
+        }
+        for(int i=0;i<n;i++){ msFold[i]=force[i]; msXold[i]=pos[i]; }
+    }
     if(massMetric){
         // Mass-consistent metric (§7.3): P=v.f  V2=sum(v*v/invM)  G2=sum(f*invM*f).
         // With invM==1 this is identical to the legacy eval_cos_vf() reduction.
@@ -363,10 +394,10 @@ double DynamicOpt::move_FIRE(){
     }
 	double cv;
     double cf  = renorm_vf * damp_func_FIRE( cos_vf, cv );
-    for(int i=0; i<n; i++){ 
+    for(int i=0; i<n; i++){
         //printf( "DynamicOpt::move_FIRE() [%i] fix %i \n", i, fixmask[i] );
         if(bfixmask){ if(fixmask[i])continue; }
-        vel[i]  = vel[i]*cv  + force[i]*invMasses[i]*cf;  
+        vel[i]  = vel[i]*cv  + fe[i]*invMasses[i]*cf;
     }
 	if( cos_vf < 0.0 ){
         dt       = fmax( dt * fdec, dt_min );
@@ -388,20 +419,20 @@ double DynamicOpt::move_FIRE(){
     // The whole velocity is scaled by one common factor => the step direction is preserved (dr'_i = s*dr_i).
     {
         double drmax=0;
-        for(int i=0;i<n;i++){ if(bfixmask && fixmask[i])continue; double dr=(vel[i]+force[i]*invMasses[i]*dt_)*dt_; drmax=fmax(drmax,fabs(dr)); }
+        for(int i=0;i<n;i++){ if(bfixmask && fixmask[i])continue; double dr=(vel[i]+fe[i]*invMasses[i]*dt_)*dt_; drmax=fmax(drmax,fabs(dr)); }
         if( drmax > dr_limit ){
             double s = dr_limit/drmax;
-            for(int i=0;i<n;i++){ if(bfixmask && fixmask[i])continue; vel[i] = s*(vel[i]+force[i]*invMasses[i]*dt_) - force[i]*invMasses[i]*dt_; }
+            for(int i=0;i<n;i++){ if(bfixmask && fixmask[i])continue; vel[i] = s*(vel[i]+fe[i]*invMasses[i]*dt_) - fe[i]*invMasses[i]*dt_; }
         }
     }
     if(verbosity>1) printf( "dt %7.5f damp %7.5f n+ %4i | cfv %7.5f |f| %12.5e |v| %12.5e \n", dt,damping, lastNeg, vf/sqrt(vv*ff), sqrt(ff), sqrt(vv) );
-    move_LeapFrog( dt_ );
+    move_LeapFrog( dt_, fe );
 	return ff;
 }
 
 void DynamicOpt::allocLS(){
     // preallocate all gradient-history buffers once (mMax is a fixed small constant <=8)
-    _realloc(lsXc,n); _realloc(lsGc,n); _realloc(lsXp,n); _realloc(lsGp,n); _realloc(lsD,n); _realloc(lsV,n);
+    _realloc(lsXc,n); _realloc(lsGc,n); _realloc(lsXp,n); _realloc(lsGp,n); _realloc(lsD,n); _realloc(lsV,n); _realloc(lsPm,n);
     _realloc(lsS ,n*mMax); _realloc(lsY,n*mMax); _realloc(lsQ,n*mMax);
     _realloc(lsR ,mMax*mMax); _realloc(lsB,mMax); _realloc(lsPiv,mMax);
 }
@@ -413,38 +444,77 @@ void DynamicOpt::allocLS(){
 // Returns number of energy/force evaluations.
 int DynamicOpt::run_GH( int nstepMax, double Fconv, double* outE, double* outF ){
     if(!getForce){ printf("ERROR DynamicOpt::run_GH: getForce callback not set\n"); exit(1); }
-    if( lsMethod!=1 && lsMethod!=2 ){ printf("ERROR DynamicOpt::run_GH: lsMethod=%i (1=BB1, 2=Anderson)\n", lsMethod); exit(1); }
-    if( lsMethod==2 && (mHist<1||mHist>mMax) ){ printf("ERROR DynamicOpt::run_GH: mHist=%i > mMax=%i\n", mHist, mMax); exit(1); }
+    if( lsMethod<1 || lsMethod>3 ){ printf("ERROR DynamicOpt::run_GH: lsMethod=%i (1=BB1, 2=Anderson, 3=Anderson+diagPrecond)\n", lsMethod); exit(1); }
+    if( lsMethod>=2 && (mHist<1||mHist>mMax) ){ printf("ERROR DynamicOpt::run_GH: mHist=%i > mMax=%i\n", mHist, mMax); exit(1); }
+    if(!autoMass) restoreMasses();                 // fresh-state contract: don't inherit a previous candidate's adaptive invMasses (§11.2B)
     if(!lsXc)allocLS();
-    double *xc=lsXc,*gc=lsGc,*xp=lsXp,*gp=lsGp,*d=lsD,*v=lsV,*S=lsS,*Y=lsY;
+    double *xc=lsXc,*gc=lsGc,*xp=lsXp,*gp=lsGp,*d=lsD,*v=lsV,*S=lsS,*Y=lsY,*pm=lsPm;
+    for(int i=0;i<n;i++)pm[i]=0;                 // fallback momentum starts cold each call
     double *Ewin=lsEwin_; int nEwin=0, iEwin=0, nhist=0;
     const double F2conv=Fconv*Fconv;
     auto free_F2=[&](){ double s=0; for(int i=0;i<n;i++){ if(bfixmask&&fixmask[i])continue; double f=force[i]; s+=f*f; } return s; };
     auto set_g =[&](double*g){ for(int i=0;i<n;i++){ g[i]=(bfixmask&&fixmask[i])?0.0:-force[i]; } };
-    auto eval_E=[&](){ double E=getForce(n,pos,force); if(!std::isfinite(E)){ printf("ERROR run_GH: non-finite E=%g\n",E); exit(1); } return E; };
+    auto eval_E=[&](){ return getForce(n,pos,force); };   // nonfinite allowed: handled per-context (fatal at anchor, Armijo-reject during trials)
     double Ecur=eval_E(), F2=free_F2();
-    if(!std::isfinite(F2)){ printf("ERROR run_GH: non-finite force at eval 0\n"); exit(1); }
+    if(!std::isfinite(Ecur)){ printf("ERROR run_GH: non-finite E=%g at eval 0\n",Ecur); exit(1); }
+    if(!std::isfinite(F2))  { printf("ERROR run_GH: non-finite force at eval 0\n"); exit(1); }
     int it=0;
     if(outE)outE[it]=Ecur; if(outF)outF[it]=sqrt(F2); it++;
     Ewin[nEwin++]=Ecur; iEwin=nEwin%lsEwin;
     for(int i=0;i<n;i++){ xc[i]=pos[i]; xp[i]=xc[i]; }
     set_g(gc); for(int i=0;i<n;i++)gp[i]=gc[i];
     bool bConv=(F2<F2conv), bFail=false;
+    int nResets=0, nRejects=0, nBounded=0, nLowTheta=0, kcLast=0;
+    double eta_ad=lsEta, a_last=1.0;                 // adaptive step scale + warm-start Armijo memory
+    double rfracLast=0, thetaLast=1;                 // diagnostics: LS residual fraction |r|/|g|, bounded-correction factor
+    int    m_eff=mHist, nClean=0;                    // effective Anderson rank (adaptive, lsAdapt&2)
+    bool   bWasReset=false;
     while( !bConv && it<nstepMax ){
         double a;
+        bWasReset=false;
         if(lsMethod==1){                            // ---- BB1 spectral step: a = (s.s)/(s.y)
             double ss=0,sy=0;
-            for(int i=0;i<n;i++){ double s_=xc[i]-xp[i], y_=gc[i]-gp[i]; ss+=s_*s_; sy+=s_*y_; }
+            for(int i=0;i<n;i++){ if(bfixmask&&fixmask[i])continue; double s_=xc[i]-xp[i], y_=gc[i]-gp[i]; ss+=s_*s_; sy+=s_*y_; }
             a = (sy>1e-20) ? ss/sy : lsAinit;
             a = fmin( fmax(a,1e-6), 0.1 );
             for(int i=0;i<n;i++)d[i]=-gc[i];        // d = -g : descent
-        }else{                                      // ---- Anderson: d = -eta*g - (S - eta*Y)*gamma
+        }else{                                      // ---- Anderson: d = d0 + theta*c; d0=-eta*D*g, c=-(S-eta*D*Y)*gamma, r=g-Y*gamma (D=I or diag(invMasses) for lsMethod=3)
+            bool bPC = (lsMethod==3);
             int kc = Lingebra::leastSquareFit_QR( n, nhist, Y, gc, lsB, lsQ, lsR, lsPiv, lsV, 1e-8 );
-            double gd=0, gg=0;
-            for(int i=0;i<n;i++){ double di=-lsEta*gc[i]; for(int k=0;k<kc;k++){ int j=lsPiv[k]; di-=(S[j*n+i]-lsEta*Y[j*n+i])*lsB[j]; } d[i]=di; gg+=gc[i]*gc[i]; gd+=gc[i]*d[i]; }
+            kcLast=kc;
+            double *c=lsV;                           // vwork free after the solve -> reuse as correction scratch
+            double gg=0, qq=0, gcc=0, rr=0, gd=0;
+            for(int i=0;i<n;i++){
+                double eta_i = bPC ? eta_ad*invMasses[i] : eta_ad;
+                double cy=0, cs=0; for(int k=0;k<kc;k++){ int j=lsPiv[k]; cy+=Y[j*n+i]*lsB[j]; cs+=S[j*n+i]*lsB[j]; }
+                double r_=gc[i]-cy; rr+=r_*r_;
+                c[i] = eta_i*cy - cs;                // correction c = -(S - eta*D*Y)*gamma ; theta=1 reproduces the original direction
+                d[i] = -eta_i*gc[i] + c[i];
+                qq  += gc[i]*eta_i*gc[i];            // q = g.(eta*D).g > 0 on the free subspace
+                gcc += gc[i]*c[i];
+                gd  += gc[i]*d[i]; gg += gc[i]*gc[i];
+            }
+            rfracLast = sqrt(rr/(gg+1e-300));
             double dd=0; for(int i=0;i<n;i++)dd+=d[i]*d[i]; dd=sqrt(dd); gg=sqrt(gg);
-            if( gd >= -0.001*gg*dd ){ nhist=0; for(int i=0;i<n;i++)d[i]=-lsEta*gc[i]; }   // not a descent direction -> clear history
-            a=1.0;
+            if( gd >= -0.001*gg*dd ){                // proposed direction is not descent
+                bWasReset=true; if(lsAdapt&2){ if(m_eff>1)m_eff--; nClean=0; }
+                if( (lsAdapt&32) && qq>0 ){          // §11.4: bound the secant correction (theta) instead of erasing history
+                    double theta = (gcc>0) ? fmin( 1.0, (1.0-lsDescEps)*qq/gcc ) : 1.0;   // ensures g.d <= -lsDescEps*q
+                    thetaLast=theta; if(theta<1.0)nBounded++;
+                    for(int i=0;i<n;i++){ double eta_i = bPC ? eta_ad*invMasses[i] : eta_ad; d[i]=-eta_i*gc[i] + theta*c[i] + ((lsAdapt&8)?lsMomGain*pm[i]:0.0); }
+                    double gd2=0,dd2=0; for(int i=0;i<n;i++){ gd2+=gc[i]*d[i]; dd2+=d[i]*d[i]; }                 // descent guard incl. momentum part
+                    if( gd2 >= -0.001*gg*sqrt(dd2) ){ theta=0; for(int i=0;i<n;i++){ double eta_i = bPC ? eta_ad*invMasses[i] : eta_ad; d[i]=-eta_i*gc[i]; } }
+                    int drop = (theta<0.1) ? nhist/2 : ((nLowTheta++ >= 3) ? 1 : 0);                                 // catastrophic direction: drop half; chronic bounding: drip-forget oldest column
+                    if(drop>0){ for(int jj=0;jj<nhist-drop;jj++){ memcpy(S+jj*n,S+(jj+drop)*n,n*sizeof(double)); memcpy(Y+jj*n,Y+(jj+drop)*n,n*sizeof(double)); }
+                        nhist-=drop; nResets++; if(theta<0.1)nLowTheta=0; }
+                }else{                               // legacy: non-descent -> clear ALL history; fallback = -eta*g (+ momentum pm when lsAdapt&8, guarded)
+                    nhist=0; nResets++;
+                    for(int i=0;i<n;i++){ double eta_i = bPC ? eta_ad*invMasses[i] : eta_ad; d[i]=-eta_i*gc[i] + ((lsAdapt&8)?lsMomGain*pm[i]:0.0); }
+                    if(lsAdapt&8){ double gd2=0,dd2=0; for(int i=0;i<n;i++){ gd2+=gc[i]*d[i]; dd2+=d[i]*d[i]; }
+                        if( gd2 >= -0.001*gg*sqrt(dd2) ) for(int i=0;i<n;i++){ double eta_i = bPC ? eta_ad*invMasses[i] : eta_ad; d[i]=-eta_i*gc[i]; } }
+                }
+            }
+            a = (lsAdapt&4) ? fmin( 1.3*a_last, lsAmax ) : 1.0;   // warm start: extrapolate along a good-but-short direction
         }
         // ---- caps: largest |d_i*a| <= dr_limit; lower bounds xmin (project at-bound comps, shorten otherwise)
         double dmax=0; for(int i=0;i<n;i++){ double ad=fabs(d[i]); if(ad>dmax)dmax=ad; }
@@ -454,26 +524,48 @@ int DynamicOpt::run_GH( int nstepMax, double Fconv, double* outE, double* outF )
         double Emax=Ewin[0]; for(int k=1;k<nEwin;k++)Emax=fmax(Emax,Ewin[k]);
         double gd=0; for(int i=0;i<n;i++)gd+=gc[i]*d[i];
         bool ok=false; double Et=0;
-        while(a>1e-14){
+        while(a>1e-14 && it<nstepMax){                 // budget caps evals inside the line search too (was: it overshot nstepMax)
             for(int i=0;i<n;i++)pos[i]=xc[i]+a*d[i];
             Et=eval_E(); it++;
-            if(outE&&it<=nstepMax)outE[it-1]=Et; { double Ft=free_F2(); if(outF&&it<=nstepMax)outF[it-1]=sqrt(Ft); }
-            if( Et <= Emax + lsArmijo*a*gd ){ ok=true; break; }
-            a*=0.5;
+            double Ft=free_F2();
+            bool acc = std::isfinite(Et) && std::isfinite(Ft) && ( Et <= Emax + lsArmijo*a*gd );   // require finite ENERGY and FORCES; nonfinite = outside domain -> reject
+            if(outE&&it<=nstepMax)outE[it-1]=Et;
+            if(outF&&it<=nstepMax)outF[it-1]= acc ? sqrt(Ft) : DBL_MAX;                          // §11.2A: rejected trials must never count as convergence
+            if(acc){ ok=true; break; }
+            a*=0.5; nRejects++;
         }
-        if(!ok){ for(int i=0;i<n;i++)pos[i]=xc[i]; bFail=true; break; }   // restore last accepted state
-        // ---- accept: update state, history, energy window
+        if(!ok){ for(int i=0;i<n;i++)pos[i]=xc[i]; if(it>=nstepMax)break; bFail=true; break; }   // restore last accepted state; budget-out != line-search fail
+        // ---- accept: online adaptation (free signals), then update state/history/energy window
         double F2t=free_F2();
-        if(lsMethod==2){ int j; if(nhist==mHist){ j=mHist-1; for(int jj=0;jj<mHist-1;jj++){ memcpy(S+jj*n,S+(jj+1)*n,n*sizeof(double)); memcpy(Y+jj*n,Y+(jj+1)*n,n*sizeof(double)); } } else j=nhist++;
-            for(int i=0;i<n;i++){ S[j*n+i]=a*d[i]; Y[j*n+i]=-force[i]-gc[i]; } }
+        if(lsAdapt&1){                                  // eta <- EMA(BB1 s.s/s.y) — 1-D optimal scale along -g, zero extra evals
+            double ss=0,sy=0;
+            for(int i=0;i<n;i++){ if(bfixmask&&fixmask[i])continue; double s_=pos[i]-xc[i], y_=-force[i]-gc[i]; ss+=s_*s_; sy+=s_*y_; }
+            if(sy>0){ eta_ad += lsEmaCoef*( ss/sy - eta_ad ); }
+            eta_ad = fmin( fmax( eta_ad, lsEta*lsEtaLo ), lsEta*lsEtaHi );
+        }
+        if( (lsAdapt&2) && !bWasReset ){ nClean++; if(nClean>=8 && m_eff<mHist){ m_eff++; nClean=0; } }   // reset already shrank m_eff+nClean; regrow on clean streak
+        if( lsAdapt&(8|16) ){
+            double ss=0,sp=0,pp=0;
+            for(int i=0;i<n;i++){ if(bfixmask&&fixmask[i])continue; double st=pos[i]-xc[i], pv=xc[i]-xp[i]; ss+=st*st; sp+=st*pv; pp+=pv*pv; }
+            if(lsAdapt&8){ double w=1.0-lsMomBeta; for(int i=0;i<n;i++) pm[i]=lsMomBeta*pm[i]+w*(pos[i]-xc[i]); }   // EMA of accepted steps = valley-following momentum
+            if( (lsAdapt&16) && nhist>1 && pp>0 && sp < lsTurnCos*sqrt(ss*pp) ){                                     // sharp turn => old secants stale: drop oldest half before they produce non-descent directions
+                int drop=nhist/2;
+                for(int jj=0;jj<nhist-drop;jj++){ memcpy(S+jj*n,S+(jj+drop)*n,n*sizeof(double)); memcpy(Y+jj*n,Y+(jj+drop)*n,n*sizeof(double)); }
+                nhist-=drop;
+            }
+        }
+        a_last = a;
+        if(lsMethod>=2){ int j; if(nhist==m_eff){ j=m_eff-1; for(int jj=0;jj<m_eff-1;jj++){ memcpy(S+jj*n,S+(jj+1)*n,n*sizeof(double)); memcpy(Y+jj*n,Y+(jj+1)*n,n*sizeof(double)); } } else j=nhist++;
+            for(int i=0;i<n;i++){ bool fx=(bfixmask&&fixmask[i]); S[j*n+i]=fx?0.0:a*d[i]; Y[j*n+i]=fx?0.0:(-force[i]-gc[i]); } }   // §11.2D: projected histories — masked reaction force must not enter the secant fit
         for(int i=0;i<n;i++){ xp[i]=xc[i]; gp[i]=gc[i]; xc[i]=pos[i]; }
+        if(autoMass) updateAutoMasses();                 // feeds invMasses -> preconditioned Anderson (lsMethod=3); same secant-stiffness machinery as move_FIRE
         Ecur=Et; Ewin[iEwin]=Ecur; iEwin=(iEwin+1)%lsEwin; if(nEwin<lsEwin)nEwin++;
         set_g(gc);
         F2=F2t;
         if(!std::isfinite(F2)){ printf("ERROR run_GH: non-finite force\n"); exit(1); }
         bConv=(F2<F2conv);
     }
-    if(verbosity>0) printf("run_GH(lsMethod=%i m=%i eta=%g) %s evals=%i E=%.8f |F|=%.3e\n", lsMethod, mHist, lsEta, bConv?"CONVERGED":(bFail?"LINE-SEARCH-FAIL":"BUDGET-OUT"), it, Ecur, sqrt(F2) );
+    if(verbosity>0) printf("run_GH(lsMethod=%i m=%i eta=%g adapt=%i) %s evals=%i E=%.8f |F|=%.3e resets=%i bounded=%i rejects=%i eta_ad=%g m_eff=%i kc=%i rfrac=%.3f theta=%.2f\n", lsMethod, mHist, lsEta, lsAdapt, bConv?"CONVERGED":(bFail?"LINE-SEARCH-FAIL":"BUDGET-OUT"), it, Ecur, sqrt(F2), nResets, nBounded, nRejects, eta_ad, m_eff, kcLast, rfracLast, thetaLast );
     return it;
 }
 

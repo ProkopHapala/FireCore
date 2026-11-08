@@ -658,7 +658,7 @@ class UFF : public NBFF { public:
             const int   ib  = inbs[in];
             const Vec2d par = bonParams[ib];
             const double dl = l-par.y;
-            E += par.x*dl*dl;
+            E += 0.5*par.x*dl*dl; // half-share: per-atom loop counts each bond twice (same convention as evalLJQs_atom_omp)
             const double fr = 2.0*par.x*dl; // force magnitude along unit h
             Vec3d f; f.set_mul( dp, fr*hneigh[inn].e );
 
@@ -668,7 +668,7 @@ class UFF : public NBFF { public:
                 const Quat4d  REQij = _mixREQ(REQi,REQj);
                 Vec3d fnb;
                 Enb_loc = getLJQH( dp, fnb, REQij, R2damp );
-                E -= Enb_loc;
+                E -= 0.5*Enb_loc;  // half-share: pair counted from both atoms
                 if(bClampNonBonded)[[likely]] { clampForce( fnb, Fmax2 ); }
                 f.sub( fnb );
             }
@@ -732,7 +732,7 @@ class UFF : public NBFF { public:
                     int ing = ng.array[in];
                     if(ing<0) break;
                     // bond params
-                    Vec2d bp = bonParams[ing];
+                    Vec2d bp = bonParams[neighBs[ia].array[in]]; // neighBs = bond indices (ing is ATOM index => OOB)
                     printf(" k,l[%i](%8.4f,%8.4f)", in, bp.x, bp.y);
                 }
                 printf("\n");
@@ -758,7 +758,7 @@ class UFF : public NBFF { public:
         // ---- Energy & Force Fourier
         //double E = par.k * ( par.c0 + par.c1*cs.x +     par.c2*cs2.x         +     par.c3*cs3.x         );
         //double f = par.k * (          par.c1      + 2.0*par.c2*cs2.y*inv_sin + 3.0*par.c3*cs3.y*inv_sin );
-        double E  = par.c0;
+        double E  = par.c0 + par.c1*cs.x;  // BUGFIX: c1*cos(theta) term was missing (f had it, E did not)
         double f  = par.c1;
         Vec2d csn = cs;
         csn.mul_cmplx(cs);
@@ -1423,7 +1423,7 @@ class UFF : public NBFF { public:
         if(idebug > 0) printf("UFF::eval() bClean=%i bDoBond=%i bDoAngle=%i bDoDihedral=%i bDoInversion=%i bDoAssemble=%i \n", bClean, bDoBond, bDoAngle, bDoDihedral, bDoInversion, bDoAssemble );
         Eb=0; Ea=0; Ed=0; Ei=0;
         if(bClean)cleanForce();
-        if(bDoBond     ){Eb = evalBonds();      } else { for(int i=0; i<nbonds*2;      i++){ fbon[i]=Vec3dZero; } }
+        if(bDoBond     ){Eb = evalBonds();      } else { for(int i=0; i<nbonds;        i++){ fbon[i]=Vec3dZero; } } // fbon has nbonds slots (see realloc/nf layout) - nbonds*2 was heap-buffer-overflow
         if(bDoAngle    ){Ea = evalAngles();     } else { for(int i=0; i<nangles*3;     i++){ fang[i]=Vec3dZero; } }
         if(bDoDihedral ){Ed = evalDihedrals();  } else { for(int i=0; i<ndihedrals*4;  i++){ fdih[i]=Vec3dZero; } }
         if(bDoInversion){Ei = evalInversions(); } else { for(int i=0; i<ninversions*4; i++){ finv[i]=Vec3dZero; } }

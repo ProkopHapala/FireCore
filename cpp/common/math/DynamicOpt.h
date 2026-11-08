@@ -108,19 +108,23 @@ class DynamicOpt{ public:
 
     // --- opt-in relaxation preconditioner: trajectory-secant diagonal masses (see eFF_optimizer_speedup.md §7.2)
     // Separate stiffness per particle xyz-block and per scalar (width) DOF. Fictitious relaxation masses, NOT physical MD masses.
-    int     autoMass    = 0;      // 0=off; 1=block-norm secant
+    int     autoMass    = 0;      // 0=off; 1=block-norm secant EMA; 2=asymmetric log-stiffness (fast-up/slow-down memory)
     int     am_nBlocks  = 0;      // leading 3-component blocks (atoms + electron positions)
     int     am_nScalars = 0;      // trailing scalar DOFs (electron sizes)
     double  am_kref     = 100.0;  // invM = kref/(kref+k_b); k_b starts at 0 => unit masses
     double  am_ema      = 0.1;    // EMA weight of each new stiffness sample
+    double  am_emaUp    = 0.2;    // autoMass=2: log-stiffness learning rate when observation is STIFFER  (remembers stiff modes fast)
+    double  am_emaDn    = 0.01;   // autoMass=2: log-stiffness learning rate when observation is SOFTER (slowly recovers mobility)
     double* am_k        = 0;      // [am_nBlocks+am_nScalars] smoothed stiffness estimate
     double* am_xold     = 0;      // [n] previous EVALUATED positions
     double* am_fold     = 0;      // [n] previous evaluated forces
+    double* am_mass0    = 0;      // [n] base invMasses saved before first autoMass activation; restored when autoMass is disabled (§11.2B: otherwise mode-0 candidates inherit adaptive masses)
     bool    am_init     = false;
     int     massMetric  = 0;      // 0=legacy metric (vf=v.(invM.f), vv=v.v); 1=mass-consistent (P=v.f, V2=v.(v/invM), G2=f.(invM.f)) — §7.3
 
     // --- opt-in gradient-history optimizers (line-search, need energy => getEnergy must be set) — audit §8
     // lsMethod: 0=off, 1=BB1 spectral GD, 2=Anderson acceleration of x->x-eta*g (multisecant, memory mHist<=mMax)
+    //           3=Anderson preconditioned by current invMasses: map x->x-eta*D*g, D=diag(invMasses)
     static const int mMax = 8;                       // absolute maximum Anderson history (typically m<=5)
     int     lsMethod  = 0;
     int     mHist     = 5;
@@ -128,12 +132,32 @@ class DynamicOpt{ public:
     double  lsAinit   = 1e-3;                        // BB1 first step length
     double  lsArmijo  = 1e-4;                        // Armijo slope coefficient
     int     lsEwin    = 5;                           // nonmonotone window (max of last N accepted energies)
+    // online adaptation (all opt-in, zero extra force evals — signals are already on the trajectory):
+    int     lsAdapt   = 0;                           // bit1 eta<-EMA(BB1 s.s/s.y), bit2 m_eff shrinks on resets, bit4 Armijo warm-start (a may grow up to lsAmax), bit8 momentum fallback on reset, bit16 drop stale secants on sharp turns
+    double  lsAmax    = 8.0;                         // cap on extrapolated Armijo multiplier when lsAdapt&4
+    double  lsMomBeta = 0.5;                         // fallback-momentum EMA decay (lsAdapt&8): pm <- beta*pm + (1-beta)*s_accepted
+    double  lsMomGain = 1.0;                         // gain of momentum term in the reset fallback direction (lsAdapt&8)
+    double  lsTurnCos = 0.5;                         // sharp-turn cosine: accepted-step tangent turns harder than this -> drop oldest half of secant history (lsAdapt&16)
+    double  lsDescEps = 1e-3;                        // descent margin for bounded correction (lsAdapt&32): theta makes g.d <= -lsDescEps*q; larger = stricter descent, smaller theta
+    // rank-1 stiff-mode suppression (move_FIRE): force component along smoothed transverse-ΔF direction is damped by (1-msMu)
+    int     modeSupp   = 0;                          // 0=off, 1=suppress force along smoothed stiff-mode direction u
+    double  msMu       = 0.2;                        // residual force fraction along u (1=off, 0=fully suppressed)
+    double  msEma      = 0.3;                        // EMA for u direction
+    double* msU        = 0;                          // [n] smoothed unit stiff-mode direction (lazy alloc)
+    double* msFe       = 0;                          // [n] mode-suppressed effective force
+    double* msFold     = 0;                          // [n] force snapshot for ΔF
+    double* msXold     = 0;                          // [n] pos  snapshot for Δx
+    bool    msInit     = false;
+    double  lsEmaCoef = 0.3;                         // EMA coefficient for eta_ad <- BB1 step scale
+    double  lsEtaLo   = 0.02;                        // eta_ad bounds, relative to lsEta
+    double  lsEtaHi   = 200.0;
     double* xmin      = 0;                           // optional per-DOF lower bounds (caller-owned, e.g. esize floor); 0=none
     double* lsXc=0;   // [n]   accepted state          (allocated once in allocLS, only when lsMethod>0)
     double* lsGc=0;   // [n]   gradient at xc (-force)
     double* lsXp=0;   // [n]   previous accepted state
     double* lsGp=0;   // [n]   previous gradient
     double* lsD =0;   // [n]   search direction
+    double* lsPm=0;   // [n]   fallback momentum: EMA of accepted steps (lsAdapt&8)
     double* lsV =0;   // [n]   work vector
     double* lsS =0;   // [n*mMax] accepted step history (Anderson)
     double* lsY =0;   // [n*mMax] gradient-diff history
@@ -147,7 +171,7 @@ class DynamicOpt{ public:
 
     // ==== function declarations
 
-    double move_LeapFrog( double dt_loc );
+    double move_LeapFrog( double dt_loc, const double* farr=0 );
     //void   move_LeapFrog_vlimit();
     double move_GD      ( double dt_loc );
     //double move_GD_safe ( double dt_loc );
@@ -197,6 +221,11 @@ class DynamicOpt{ public:
 
     inline void setInvMass(double invM){  if(invMasses==0){ _realloc(invMasses,n);}  for(int i=0;i<n;i++){invMasses[i]=invM;} };
 
+    // Fresh-state contract for autoMass (§11.2B): save the base invMasses on first activation, restore on
+    // disable — otherwise a mode-0 run inherits the previous candidate's adaptive masses (A->B->A contamination).
+    inline void saveMassesOnce(){ if(!am_mass0){ _realloc(am_mass0,n); for(int i=0;i<n;i++)am_mass0[i]=invMasses[i]; } }
+    inline void restoreMasses(){ if(am_mass0){ for(int i=0;i<n;i++)invMasses[i]=am_mass0[i]; delete[] am_mass0; am_mass0=0; } }
+
     inline void bindArrays( int n_, double * pos_, double * vel_, double * force_, double * invMasses_ ){
         n = n_; pos=pos_;  vel=vel_; force=force_; invMasses=invMasses_;
         bOwnPos=false; bOwnVel=false; bOwnForce=false; bOwnInvMasses=false;
@@ -234,8 +263,9 @@ class DynamicOpt{ public:
         if(bOwnInvMasses){ _dealloc(invMasses); }else{ invMasses=0; }
         _dealloc(avs);
         _dealloc(avs2);
-        _dealloc(am_k); _dealloc(am_xold); _dealloc(am_fold); am_init=false;
-        _dealloc(lsXc); _dealloc(lsGc); _dealloc(lsXp); _dealloc(lsGp); _dealloc(lsD); _dealloc(lsV);
+        _dealloc(am_k); _dealloc(am_xold); _dealloc(am_fold); _dealloc(am_mass0); am_init=false;
+        _dealloc(lsXc); _dealloc(lsGc); _dealloc(lsXp); _dealloc(lsGp); _dealloc(lsD); _dealloc(lsV); _dealloc(lsPm);
+        _dealloc(msU); _dealloc(msFe); _dealloc(msFold); _dealloc(msXold);
         _dealloc(lsS);  _dealloc(lsY);  _dealloc(lsQ);  _dealloc(lsR);  _dealloc(lsB); _dealloc(lsPiv);
         n=0; bOwnPos=true; bOwnVel=true; bOwnForce=true; bOwnInvMasses=true;
     }

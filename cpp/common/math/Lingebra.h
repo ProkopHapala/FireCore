@@ -48,7 +48,8 @@ namespace Lingebra{
 	void linSolve_BCG        ( int n, int m, double ** A, double * b, double * x );
 	void leastSquareFit_Gauss( int n, int m, double ** A, double * b, double * x );
 
-	// Flat-array least squares min|A*x - b| via modified Gram-Schmidt with column pivoting (CPQR).
+	// Flat-array least squares min|A*x - b| via modified Gram-Schmidt. Columns are processed in order of
+	// decreasing INITIAL norm (one-pass pivot order, not dynamic residual-norm CPQR).
 	// A is n x m stored COLUMN-MAJOR (m columns of length n: A + j*n). Workspaces: Q[n*m], R[m*m],
 	// piv[m], vwork[n]. rcond: columns whose post-orthogonalization norm < rcond*|col| are dropped
 	// (their x stays 0). Returns numerical rank. No normal equations, no internal allocation.
@@ -65,7 +66,7 @@ namespace Lingebra{
 			for(int i=0;i<n;i++)vwork[i]=aj[i];
 			for(int k=0;k<kc;k++){ double* qk=Q+k*n; double r=0; for(int i=0;i<n;i++)r+=qk[i]*vwork[i]; R[k*m+j]=r; for(int i=0;i<n;i++)vwork[i]-=r*qk[i]; }
 			double nv=0; for(int i=0;i<n;i++)nv+=vwork[i]*vwork[i]; nv=sqrt(nv);
-			if( nv < rcond*nyj ) continue;                   // rank-deficient column -> dropped (x[j] stays 0)
+			if( nv < 1e-300 || nv < rcond*nyj ) continue;    // rank-deficient column -> dropped (x[j] stays 0); explicit zero-norm reject (nyj==0 => rcond*nyj==0 => 0/0 NaN, §11.2C)
 			for(int i=0;i<n;i++)Q[kc*n+i]=vwork[i]/nv;
 			R[kc*m+j]=nv; piv[kc]=j; kc++;
 		}

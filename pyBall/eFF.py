@@ -302,14 +302,20 @@ lib.setMassMetric.restype   =  None
 def setMassMetric( m=0 ):
     return lib.setMassMetric( m )
 
-# int run_GH( int nstepMax, double Fconv, int iMethod, int mHist, double eta, double a_init, double* outE, double* outF )
+# double setOptParam( const char* name, double val )  # generic DynamicOpt scalar setter for sweeps
+lib.setOptParam.argtypes = [c_char_p, c_double]
+lib.setOptParam.restype  = c_double
+def setOptParam(name, val):
+    return lib.setOptParam(name.encode(), val)
+
+# int run_GH( int nstepMax, double Fconv, int iMethod, int mHist, double eta, double a_init, int adapt, double amax, double* outE, double* outF )
 # gradient-history optimizers: iMethod 1=BB1 spectral GD, 2=Anderson multisecant (memory mHist, base step eta)
-lib.run_GH.argtypes  = [c_int, c_double, c_int, c_int, c_double, c_double, c_double_p, c_double_p]
+lib.run_GH.argtypes  = [c_int, c_double, c_int, c_int, c_double, c_double, c_int, c_double, c_double_p, c_double_p]
 lib.run_GH.restype   =  c_int
-def run_GH(nstepMax=1000, Fconv=1e-4, iMethod=1, mHist=5, eta=0.001, a_init=0.001, outE=None, outF=None):
+def run_GH(nstepMax=1000, Fconv=1e-4, iMethod=1, mHist=5, eta=0.001, a_init=0.001, adapt=0, amax=8.0, outE=None, outF=None):
     if outE is None: outE=np.full(nstepMax+1, np.nan)
     if outF is None: outF=np.full(nstepMax+1, np.nan)
-    n = lib.run_GH(nstepMax, Fconv, iMethod, mHist, eta, a_init, _np_as(outE,c_double_p), _np_as(outF,c_double_p) )
+    n = lib.run_GH(nstepMax, Fconv, iMethod, mHist, eta, a_init, adapt, amax, _np_as(outE,c_double_p), _np_as(outF,c_double_p) )
     return n, outE, outF
 
 #  int  run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){

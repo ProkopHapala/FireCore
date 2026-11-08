@@ -1184,9 +1184,12 @@ void printPBCshifts(){
         // }
         bPBC=builder.bPBC;  //printf( "builder.bPBC %i \n", builder.bPBC );
         // If nPBC is explicitly non-zero, force PBC on even if XYZ had no lattice vectors
-        if( (nPBC.x>0)||(nPBC.y>0)||(nPBC.z>0) ){ 
+        if( (nPBC.x>0)||(nPBC.y>0)||(nPBC.z>0) ){
             if(!bPBC){ printf("MolWorld_sp3::loadGeom() nPBC(%i,%i,%i) is non-zero => forcing bPBC=true (XYZ had no lattice vectors)\n", nPBC.x,nPBC.y,nPBC.z); }
-            bPBC=true; builder.bPBC=true; 
+            bPBC=true; builder.bPBC=true;
+        }else{ // nPBC=(0,0,0) is an explicit non-periodic request => ignore lattice vectors for PBC (they may still be used e.g. as GridFF cell)
+            if(bPBC){ printf("MolWorld_sp3::loadGeom() nPBC=(0,0,0) => forcing bPBC=false (XYZ has lattice vectors but PBC explicitly disabled)\n"); }
+            bPBC=false;
         }
         if( !bBondInitialized){
             if( bPBC ){ builder.autoBondsPBC(); }
@@ -1815,13 +1818,29 @@ virtual void clear( bool bParams=true, bool bSurf=false ){
         //ffl.printAtomParams();
         //ffl.print_pbc_shifts();
         //printf("lvec: ");printMat(builder.lvec);
+        // BUGFIX: setNonBondStrategy must run BEFORE ffl.eval() (same as eval_no_omp at line ~2190):
+        // eval_atom's NB subtraction for bonded neighbors depends on these flags; first eval() gave garbage E.
+        if(!bUFF){ ffl.bNonBonded=bNonBonded; ffl.setNonBondStrategy( bNonBondNeighs*2-1, bExclusion2 ); }
         if(bUFF ){ E += ffu.eval(); }
         else if(bMMFF){ E += ffl.eval(); }
-        else{ VecN::set( nbmol.natoms*3, 0.0, (double*)nbmol.fapos );  }      
+        else{ VecN::set( nbmol.natoms*3, 0.0, (double*)nbmol.fapos );  }
         //bPBC=false;
         if(bNonBonded){
-            if(bUFF){ E += ffu.evalLJQs_ng4_PBC_omp(); }
-            else    { E += ffl.evalLJQs_ng4_PBC_omp(); }
+            // BUGFIX: previously called evalLJQs_ng4_PBC_omp() unconditionally (wrong branch for non-PBC,
+            // and it never accumulated E => E was bonded-only while forces included NB => E/F inconsistent).
+            // Now mirror eval_no_omp() branching (bPBC / bNonBondNeighs / bExclusion2).
+            //if(!bUFF){ ffl.bNonBonded=bNonBonded; ffl.setNonBondStrategy( bNonBondNeighs*2-1, bExclusion2 ); }
+            NBFF& nb = bUFF ? (NBFF&)ffu : (NBFF&)ffl;
+            if(bNonBondNeighs){
+                if(bPBC){ E += nb.evalLJQs_ng4_PBC_omp(); }
+                else{
+                    if(bExclusion2){ for(int ia=0; ia<nb.natoms; ia++){ E += nb.evalLJQs_ex2_atom(ia); } }
+                    else           { E += nb.evalLJQs_ng4_omp   (); }
+                }
+            }else{
+                if(bPBC){ E += nb.evalLJQs_PBC_simd(); }
+                else    { E += nb.evalLJQs_simd     (); }
+            }
             /*
             if(bMMFF){    
                 if  (bPBC){ E += nbmol.evalLJQs_ng4_PBC( ffl.neighs, ffl.neighCell, npbc, pbc_shifts, gridFF.Rdamp ); }   // atoms outside cell
@@ -2172,6 +2191,10 @@ double eval_no_omp(){
     double E=0;
     double F2max = ffl.FmaxNonBonded*ffl.FmaxNonBonded;
     ffl.bNonBonded=bNonBonded; ffl.setNonBondStrategy( bNonBondNeighs*2-1, bExclusion2 );
+    // BUGFIX: pi-terms must depend only on pi DIRECTION; ffl.eval() normalizes (MMFFsp3_loc.h:1051)
+    // but this path didn't => energy scaled with |pipos| (Powell drove pipos to ~5e4 => E=-54716).
+    // Normalizing here projects the pi DOFs onto the unit-sphere manifold before evaluation.
+    ffl.normalizePis();
     for(int i=0; i<ffl.natoms; i++){ ffl.fapos[i]=Vec3dZero; }
     for(int ia=0; ia<ffl.natoms; ia++){ 
         {                 ffl.fapos[ia           ] = Vec3dZero; } // atom pos force
@@ -2238,6 +2261,8 @@ double eval_no_omp(){
         double F2max = ffl.FmaxNonBonded*ffl.FmaxNonBonded;
 
         ffl.bNonBonded=bNonBonded; ffl.setNonBondStrategy( bNonBondNeighs*2-1, bExclusion2 );
+        // pi-vectors are unit-norm manifold DOFs (see eval_no_omp fix); tangent forces keep |pi|~1 per step
+        ffl.normalizePis();
 
         //printf( "MolWorld_sp3::run_no_omp(itr=%i/%i) gridFF.mode=%i bGridFF=%i bSurfAtoms=%i   gridFF.Bspline_PLQ=%li  FFPaul_d=%li FFLond_d=%li FFelec_d=%li \n", itr,niter_max, gridFF.mode, bGridFF, bSurfAtoms, (long)gridFF.Bspline_PLQ, (long)gridFF.FFPaul_d, (long)gridFF.FFLond_d, (long)gridFF.FFelec_d );
 
@@ -2346,6 +2371,7 @@ double eval_no_omp(){
                 opt.vv=ffl.cvf.y; 
                 opt.ff=ffl.cvf.z; 
                 opt.FIRE_update_params();
+                if(opt.autoMass) opt.updateAutoMasses();   // trajectory-secant diag masses (opt-in); pos/force at evaluated state
             }else{
                 // ----- Dynamics
                 if(ffl.colDamp.medium<0){ cdamp=ffl.colDamp.tryAccel(); }
@@ -2357,7 +2383,7 @@ double eval_no_omp(){
                     //if(i==0)printf( "run_no_omp() move_atom_Langevin() gamma_damp%g T_target=%g \n", go.gamma_damp, go.T_target );
                     ffl.move_atom_Langevin( i, dt, 10000.0, go.gamma_damp, go.T_target );
                 }else if(bFIRE){
-                    ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf );
+                    ffl.move_atom_FIRE( i, opt.dt, 10000.0, opt.cv, opt.renorm_vf*opt.cf, opt.invMasses?opt.invMasses[i*3]:1.0 );
                 }else{
                     ffl.cvf.add( ffl.move_atom_MD( i, dt, Flim, cdamp ) );
                 }

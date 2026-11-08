@@ -490,7 +490,7 @@ class NBFF: public ForceField{ public:
             fi.add(fij);
         }
         fapos[ia].add(fi);           // global write fapos[ia]
-        return E;
+        return E*0.5;   // per-atom loop counts each pair twice when summed over ia => half-share partition
     }
     // evaluate all non-bonding interactions excluding bonded atoms, with OpenMP parallelization
     __attribute__((hot))
@@ -540,7 +540,7 @@ class NBFF: public ForceField{ public:
             fi.add(fij);
         }
         fapos[ia].add(fi);
-        return E;
+        return E*0.5;   // per-atom loop counts each pair twice when summed over ia => half-share partition
     }
     // __attribute__((hot))
     // double evalLJQs_ex2_omp( ){
@@ -677,7 +677,7 @@ class NBFF: public ForceField{ public:
         }
         fapos[ia].add( Vec3d{fx,fy,fz} );
         //exit(0);
-        return E;
+        return E*0.5;   // per-atom loop counts each pair twice when summed over ia => half-share partition
     }
     __attribute__((hot))
     double evalLJQs_PBC_simd(){
@@ -747,7 +747,7 @@ class NBFF: public ForceField{ public:
         }
         //printf("DEBUG 3 id=%i ia=%i \n", id, ia );
         fapos[ia].add( Vec3d{fx,fy,fz} );
-        return E;
+        return E*0.5;   // per-atom loop counts each pair twice when summed over ia => half-share partition
     }
     __attribute__((hot))
     double evalLJQs_ng4_PBC_simd(){
@@ -790,7 +790,7 @@ class NBFF: public ForceField{ public:
             //fi+=fij;
         }
         fapos[ia].add( Vec3d{fx,fy,fz} );
-        return E;
+        return E*0.5;   // per-atom loop counts each pair twice when summed over ia => half-share partition
     }
     __attribute__((hot))
     double evalLJQs_simd(){
@@ -830,7 +830,7 @@ class NBFF: public ForceField{ public:
             //fi+=fij;
         }
         fapos[ia].add( Vec3d{fx,fy,fz} );
-        return E;
+        return E*0.5;   // per-atom loop counts each pair twice when summed over ia => half-share partition
     }
     __attribute__((hot))
     double evalLJQs_ng4_simd(){
@@ -905,7 +905,7 @@ class NBFF: public ForceField{ public:
             hsum_double_avx( fi.y),
             hsum_double_avx( fi.z)
         );
-        return hsum_double_avx( E );
+        return hsum_double_avx( E )*0.5;   // per-atom loop counts each pair twice when summed over ia => half-share partition
     }
 #endif // WITH_AVX
 
@@ -989,13 +989,13 @@ class NBFF: public ForceField{ public:
             }
         }
         fapos[ia].add(fi);
-        return E;
+        return E*0.5;   // per-atom loop counts each pair twice when summed over ia => half-share partition
     }
 
     double evalLJQs_ng4_PBC_omp(){
         double E=0;
         for (int ia=0; ia<natoms; ia++ ){
-            evalLJQs_ng4_PBC_atom( ia );
+            E+=evalLJQs_ng4_PBC_atom( ia );   // BUGFIX: E was never accumulated (always returned 0)
         }
         return E;
     }
@@ -1083,7 +1083,7 @@ class NBFF: public ForceField{ public:
             //if(i==ia_DBG){ printf( "CPU_LJQ[%i] fapos(%g,%g,%g) += fi(%g,%g,%g) \n" , i, fapos[i].x,fapos[i].y,fapos[i].z, fi.x,fi.y,fi.z ); }
             fapos[i].add(fi);
         }
-        return E;
+        return E*0.5;   // all-to-all loop counts each pair twice => halve total
     }
 
 

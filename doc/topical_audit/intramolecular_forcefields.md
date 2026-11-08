@@ -119,6 +119,11 @@ Default `apars[ia].z` is one stiffness for all angles on that heavy atom (H–C�
 - `tests/tMMFF/test_diamond_phonon_bands.py` — Phonon band structure of diamond; validates force constants by finite differences.
 - `tests/tMMFF/test_MMFF_ocl_parity.py` — CPU vs GPU parity.
 - `tests/tMMFF/run_parity_mmff.sh` — automated parity suite.
+- `tests/tMMFF/test_energy_consistency.py` — scalar-energy parity: `numgrad(E)=-fDOFs`, `eval()==eval_no_omp()==run()`.
+
+### Scalar energy evaluation — READ FIRST (2026-11-08)
+
+The scalar energy path was unused (FIRE is force-based) and had silently rotted: wrong NB path in `eval()`, double-counted per-atom NB energy, `ndims` bound to the wrong force-field object (hidden pi-vectors → E drift), missing `normalizePis()` in `run_no_omp` (unbounded pi-length DOF), `nPBC=(0,0,0)` overridden by xyz `lvs` (`shifts[-1]` UAF). All fixed; full report: **[MMFF_energy_eval_debug_2026-11-08.md](MMFF_energy_eval_debug_2026-11-08.md)**. DOF layout: `ffl.DOFs = [apos(natoms) | pipos(nnode)]` ≠ `ff`'s compact `natoms+npi`; all-sp3 molecules have dead pi DOFs (`Ksp=Kpp=0`) — mask them out of optimization.
 
 ---
 
