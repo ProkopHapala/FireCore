@@ -425,6 +425,20 @@ double DynamicOpt::move_FIRE(){
             for(int i=0;i<n;i++){ if(bfixmask && fixmask[i])continue; vel[i] = s*(vel[i]+fe[i]*invMasses[i]*dt_) - fe[i]*invMasses[i]*dt_; }
         }
     }
+    // gated two-timescale momentum (§15.6): vs<-ema*vs+(1-ema)*v every step; v+=g*vs only when cos(F,v)>gate_cos.
+    // Applied after dr_limit rescale so the boost is not absorbed by the cap (matches branch_lab PyFire hook).
+    if( gate_g!=0.0 ){
+        if(!vSlow){ _realloc(vSlow,n); }
+        if(!vSlowInit){ for(int i=0;i<n;i++) vSlow[i]=0; vSlowInit=true; }
+        // gate on POST-mix velocity (matches branch_lab PyFire hook): recompute cos after the vel update
+        double vf2=0,vv2=0;
+        if(massMetric){ for(int i=0;i<n;i++){ if(bfixmask && fixmask[i])continue; vf2+=vel[i]*fe[i]; vv2+=vel[i]*vel[i]/invMasses[i]; } }
+        else          { for(int i=0;i<n;i++){ if(bfixmask && fixmask[i])continue; vf2+=vel[i]*fe[i]*invMasses[i]; vv2+=vel[i]*vel[i]; } }
+        double cos2 = vf2/sqrt(vv2*ff + ff_safety);
+        double vb = 1.0-vs_ema;
+        if( cos2>gate_cos ){ for(int i=0;i<n;i++){ double s=vs_ema*vSlow[i]+vb*vel[i]; vSlow[i]=s; vel[i]+=gate_g*s; } }
+        else               { for(int i=0;i<n;i++){ vSlow[i]=vs_ema*vSlow[i]+vb*vel[i]; } }
+    }
     if(verbosity>1) printf( "dt %7.5f damp %7.5f n+ %4i | cfv %7.5f |f| %12.5e |v| %12.5e \n", dt,damping, lastNeg, vf/sqrt(vv*ff), sqrt(ff), sqrt(vv) );
     move_LeapFrog( dt_, fe );
 	return ff;
@@ -609,4 +623,105 @@ double DynamicOpt::getFsqSum( ){
         ff += fi*fi;
     }
     return ff;
+}
+
+// =============== Fat state checkpoint (§13.4 branch experiments: identical complete states for counterfactuals)
+// Blob layout (all doubles): [magic, ver=1, n, nk, flags] + NSCAL scalars + buffers.
+// flags: bit0=am buffers (am_k/am_xold/am_fold), bit1=am_mass0, bit2=ls buffers, bit3=ms buffers.
+// restoreState copies contents into currently-bound arrays (pos/vel/force/invMasses may alias ff buffers; never re-bind).
+
+static const double OPTSTATE_MAGIC = 1.23456789e300;
+static const int    OPTSTATE_NSCAL = 69;                    // scalar count after the 5-word header
+
+static inline void wrScalars( double*& p, const DynamicOpt& o ){
+    *p++=o.dt; *p++=o.damping; *p++=o.cvf_min; *p++=o.cvf_max; *p++=o.cv_kill;
+    *p++=o.fTminmax; *p++=o.f_limit; *p++=o.v_limit; *p++=o.dr_limit; *p++=o.scale_dt; *p++=o.ff_safety;
+    *p++=o.minLastNeg; *p++=o.finc; *p++=o.fdec; *p++=o.falpha; *p++=o.kickStart;
+    *p++=o.dt_max; *p++=o.dt_min; *p++=o.damp_max; *p++=o.lastNeg;
+    *p++=o.method; *p++=o.stepsDone; *p++=o.t; *p++=o.ff; *p++=o.vv; *p++=o.vf;
+    *p++=o.f_len; *p++=o.v_len; *p++=o.cos_vf; *p++=o.renorm_vf; *p++=o.cv; *p++=o.cf;
+    *p++=o.autoMass; *p++=o.am_kref; *p++=o.am_ema; *p++=o.am_emaUp; *p++=o.am_emaDn;
+    *p++=o.am_init; *p++=o.massMetric; *p++=o.am_nBlocks; *p++=o.am_nScalars;
+    *p++=o.lsMethod; *p++=o.mHist; *p++=o.lsEta; *p++=o.lsAinit; *p++=o.lsArmijo;
+    *p++=o.lsEwin; *p++=o.lsAdapt; *p++=o.lsAmax; *p++=o.lsMomBeta; *p++=o.lsMomGain;
+    *p++=o.lsTurnCos; *p++=o.lsDescEps; *p++=o.modeSupp; *p++=o.msMu; *p++=o.msEma;
+    *p++=o.msInit; *p++=o.lsEmaCoef; *p++=o.lsEtaLo; *p++=o.lsEtaHi;
+    *p++=o.gate_cos; *p++=o.gate_g; *p++=o.vs_ema; *p++=o.vSlowInit;
+    for(int k=0;k<5;k++)*p++=o.lsEwin_[k];
+}
+static inline void rdScalars( const double*& p, DynamicOpt& o ){
+    o.dt=*p++; o.damping=*p++; o.cvf_min=*p++; o.cvf_max=*p++; o.cv_kill=*p++;
+    o.fTminmax=*p++; o.f_limit=*p++; o.v_limit=*p++; o.dr_limit=*p++; o.scale_dt=*p++; o.ff_safety=*p++;
+    o.minLastNeg=(int)*p++; o.finc=*p++; o.fdec=*p++; o.falpha=*p++; o.kickStart=*p++;
+    o.dt_max=*p++; o.dt_min=*p++; o.damp_max=*p++; o.lastNeg=(int)*p++;
+    o.method=(int)*p++; o.stepsDone=(int)*p++; o.t=*p++; o.ff=*p++; o.vv=*p++; o.vf=*p++;
+    o.f_len=*p++; o.v_len=*p++; o.cos_vf=*p++; o.renorm_vf=*p++; o.cv=*p++; o.cf=*p++;
+    o.autoMass=(int)*p++; o.am_kref=*p++; o.am_ema=*p++; o.am_emaUp=*p++; o.am_emaDn=*p++;
+    o.am_init=(bool)(int)*p++; o.massMetric=(int)*p++; o.am_nBlocks=(int)*p++; o.am_nScalars=(int)*p++;
+    o.lsMethod=(int)*p++; o.mHist=(int)*p++; o.lsEta=*p++; o.lsAinit=*p++; o.lsArmijo=*p++;
+    o.lsEwin=(int)*p++; o.lsAdapt=(int)*p++; o.lsAmax=*p++; o.lsMomBeta=*p++; o.lsMomGain=*p++;
+    o.lsTurnCos=*p++; o.lsDescEps=*p++; o.modeSupp=(int)*p++; o.msMu=*p++; o.msEma=*p++;
+    o.msInit=(bool)(int)*p++; o.lsEmaCoef=*p++; o.lsEtaLo=*p++; o.lsEtaHi=*p++;
+    o.gate_cos=*p++; o.gate_g=*p++; o.vs_ema=*p++; o.vSlowInit=(bool)(int)*p++;
+    for(int k=0;k<5;k++)o.lsEwin_[k]=*p++;
+}
+
+int DynamicOpt::stateSize( ){
+    int nk = am_nBlocks + am_nScalars;
+    int sz = 5 + OPTSTATE_NSCAL + 4*n;
+    if( am_k )     sz += nk + 2*n;
+    if( am_mass0 ) sz += n;
+    if( msU )      sz += 4*n;
+    if( vSlow )    sz += n;
+    if( lsXc )     sz += 7*n + 3*n*mMax + mMax*mMax + 2*mMax;
+    return sz;
+}
+
+int DynamicOpt::saveState( double* buf ){
+    double* p = buf;
+    *p++ = OPTSTATE_MAGIC; *p++ = 1; *p++ = n; *p++ = am_nBlocks + am_nScalars;
+    *p++ = (am_k?1:0) | (am_mass0?2:0) | (lsXc?4:0) | (msU?8:0) | (vSlow?16:0);
+    wrScalars( p, *this );
+    memcpy( p, pos,       n*sizeof(double) ); p+=n;
+    memcpy( p, vel,       n*sizeof(double) ); p+=n;
+    memcpy( p, force,     n*sizeof(double) ); p+=n;   // move_FIRE reads force on the first step after restore
+    memcpy( p, invMasses, n*sizeof(double) ); p+=n;
+    int nk = am_nBlocks + am_nScalars;
+    if( am_k ){ memcpy(p,am_k,nk*sizeof(double)); p+=nk; memcpy(p,am_xold,n*sizeof(double)); p+=n; memcpy(p,am_fold,n*sizeof(double)); p+=n; }
+    if( am_mass0 ){ memcpy(p,am_mass0,n*sizeof(double)); p+=n; }
+    if( msU ){ memcpy(p,msU,n*sizeof(double)); p+=n; memcpy(p,msFe,n*sizeof(double)); p+=n; memcpy(p,msFold,n*sizeof(double)); p+=n; memcpy(p,msXold,n*sizeof(double)); p+=n; }
+    if( vSlow ){ memcpy(p,vSlow,n*sizeof(double)); p+=n; }
+    if( lsXc ){
+        memcpy(p,lsXc,n*sizeof(double)); p+=n; memcpy(p,lsGc,n*sizeof(double)); p+=n; memcpy(p,lsXp,n*sizeof(double)); p+=n;
+        memcpy(p,lsGp,n*sizeof(double)); p+=n; memcpy(p,lsD ,n*sizeof(double)); p+=n; memcpy(p,lsPm,n*sizeof(double)); p+=n;
+        memcpy(p,lsV ,n*sizeof(double)); p+=n;
+        memcpy(p,lsS,n*mMax*sizeof(double)); p+=n*mMax; memcpy(p,lsY,n*mMax*sizeof(double)); p+=n*mMax; memcpy(p,lsQ,n*mMax*sizeof(double)); p+=n*mMax;
+        memcpy(p,lsR,mMax*mMax*sizeof(double)); p+=mMax*mMax; memcpy(p,lsB,mMax*sizeof(double)); p+=mMax;
+        for(int k=0;k<mMax;k++)*p++=lsPiv[k];
+    }
+    return p - buf;
+}
+
+void DynamicOpt::restoreState( const double* buf ){
+    const double* p = buf;
+    double magic = *p++; int ver = (int)*p++; int ns = (int)*p++; int nk = (int)*p++; int flags = (int)*p++;
+    if( magic!=OPTSTATE_MAGIC || ver!=1 ){ printf("ERROR restoreState: bad blob (magic=%g ver=%i)\n", magic, ver ); exit(1); }
+    if( ns!=n ){ printf("ERROR restoreState: n mismatch blob=%i opt=%i\n", ns, n ); exit(1); }
+    rdScalars( p, *this );
+    memcpy( pos,       p, n*sizeof(double) ); p+=n;
+    memcpy( vel,       p, n*sizeof(double) ); p+=n;
+    memcpy( force,     p, n*sizeof(double) ); p+=n;
+    memcpy( invMasses, p, n*sizeof(double) ); p+=n;
+    if( flags&1 ){ if(!am_k){ _realloc(am_k,nk); _realloc(am_xold,n); _realloc(am_fold,n); } memcpy(am_k,p,nk*sizeof(double)); p+=nk; memcpy(am_xold,p,n*sizeof(double)); p+=n; memcpy(am_fold,p,n*sizeof(double)); p+=n; }
+    if( flags&2 ){ if(!am_mass0)_realloc(am_mass0,n); memcpy(am_mass0,p,n*sizeof(double)); p+=n; } else { if(am_mass0){ delete[] am_mass0; am_mass0=0; } }
+    if( flags&8 ){ if(!msU){ _realloc(msU,n); _realloc(msFe,n); _realloc(msFold,n); _realloc(msXold,n); } memcpy(msU,p,n*sizeof(double)); p+=n; memcpy(msFe,p,n*sizeof(double)); p+=n; memcpy(msFold,p,n*sizeof(double)); p+=n; memcpy(msXold,p,n*sizeof(double)); p+=n; }
+    if( flags&16 ){ if(!vSlow)_realloc(vSlow,n); memcpy(vSlow,p,n*sizeof(double)); p+=n; } else { if(vSlow){ delete[] vSlow; vSlow=0; } }
+    if( flags&4 ){ if(!lsXc)allocLS();
+        memcpy(lsXc,p,n*sizeof(double)); p+=n; memcpy(lsGc,p,n*sizeof(double)); p+=n; memcpy(lsXp,p,n*sizeof(double)); p+=n;
+        memcpy(lsGp,p,n*sizeof(double)); p+=n; memcpy(lsD ,p,n*sizeof(double)); p+=n; memcpy(lsPm,p,n*sizeof(double)); p+=n;
+        memcpy(lsV ,p,n*sizeof(double)); p+=n;
+        memcpy(lsS,p,n*mMax*sizeof(double)); p+=n*mMax; memcpy(lsY,p,n*mMax*sizeof(double)); p+=n*mMax; memcpy(lsQ,p,n*mMax*sizeof(double)); p+=n*mMax;
+        memcpy(lsR,p,mMax*mMax*sizeof(double)); p+=mMax*mMax; memcpy(lsB,p,mMax*sizeof(double)); p+=mMax;
+        for(int k=0;k<mMax;k++)lsPiv[k]=(int)*p++;
+    }
 }

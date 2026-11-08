@@ -312,6 +312,10 @@ void setAutoMass( int mode, double kref ){
     W.opt.autoMass = mode; W.opt.am_kref = kref; W.opt.am_init = false;
     if(W.bUFF){ W.opt.am_nBlocks = W.ffu.natoms; } else { W.opt.am_nBlocks = W.ffl.nvecs; }
     W.opt.am_nScalars = 0;
+    if(mode>0 && W.opt.n>0){  // eager-alloc so optStateSize() is stable from the start (updateAutoMasses still seeds on am_init)
+        int nb=W.opt.am_nBlocks+W.opt.am_nScalars; _realloc(W.opt.am_k,nb); _realloc(W.opt.am_xold,W.opt.n); _realloc(W.opt.am_fold,W.opt.n);
+        for(int i=0;i<nb;i++)W.opt.am_k[i]=0;
+    }
     printf("setAutoMass(mode=%i, kref=%g) nBlocks=%i\n", mode, kref, W.opt.am_nBlocks );
 }
 // UFF eval bridge: opt.pos aliases ffu.apos; W.eval() -> ffu.eval() + nonbonded (nb=ffu), fills ffu.fapos
@@ -346,11 +350,50 @@ int run_GH( int nstepMax, double Fconv, int iMethod, int mHist, double eta, doub
     return W.opt.run_GH( nstepMax, Fconv, outE, outF );
 }
 
+// ================= Branch-lab step API (§13.4): stepwise FIRE driving + fat optimizer-state checkpoint =================
+// Segmented stepping is trajectory-identical to the internal run() loop: all FIRE state lives in opt fields.
+// optBind must be called once after the molecule is loaded (same binding run_GH does).
+void optBind(){
+    if(W.bUFF){
+        if( (W.opt.pos!=(double*)W.ffu.apos) || (W.opt.force!=(double*)W.ffu.fapos) || (W.opt.n!=W.ffu.natoms*3) ){
+            W.setOptimizer( W.ffu.natoms*3, (double*)W.ffu.apos, (double*)W.ffu.fapos );
+            if(W.ffu.bOwnVapos){ _dealloc(W.ffu.vapos); }
+            W.ffu.vapos = (Vec3d*)W.opt.vel; W.ffu.bOwnVapos=false;
+        }
+        W.opt.getForce = _uff_eval_E;  W.opt.xmin = 0;
+    }else{
+        if( (W.opt.pos!=W.ffl.DOFs) || (W.opt.force!=W.ffl.fDOFs) || (W.opt.n!=W.ffl.nDOFs) ){
+            W.setOptimizer( W.ffl.nDOFs, W.ffl.DOFs, W.ffl.fDOFs );
+        }
+        W.opt.getForce = _mmff_eval_E; W.opt.xmin = 0;
+    }
+}
+void   optInitOpt( double dt, double damping ){ W.opt.initOpt(dt,damping); W.opt.damping=W.opt.damp_max; W.opt.lastNeg=0; }  // same fresh-start semantics as run()
+double optEval(){ if(!W.opt.getForce)optBind(); return W.opt.getForce( W.opt.n, W.opt.pos, W.opt.force ); }
+double optMoveFIRE(){ return W.opt.move_FIRE(); }
+int    optNDOFs(){ return W.opt.n; }
+double* optBuffer( int which ){   // 0=pos 1=vel 2=force 3=invMasses — direct numpy views for branch actions
+    switch(which){ case 0:return W.opt.pos; case 1:return W.opt.vel; case 2:return W.opt.force; case 3:return W.opt.invMasses; }
+    printf("ERROR optBuffer(%i) out of range\n",which); exit(1);
+}
+int  optStateSize(){ return W.opt.stateSize(); }
+int  optSaveState( double* buf ){ return W.opt.saveState(buf); }
+void optRestoreState( const double* buf ){ W.opt.restoreState(buf); }
+
 // DynamicOpt FIRE driven by opt.getForce callback (UFF: bound to ffu.apos/fapos; MMFF uses run() instead)
 // generic scalar optimizer-parameter setter for parameter sweeps / meta-optimization; returns previous value, exits loudly on unknown name
 double setOptParam( const char* name, double val ){
     DynamicOpt& o = W.opt; double old;
-    if     (!strcmp(name,"lsMomBeta")){ old=o.lsMomBeta; o.lsMomBeta=val; }
+    if     (!strcmp(name,"dt"))       { old=o.dt;        o.dt=val;        }
+    else if(!strcmp(name,"damping"))  { old=o.damping;   o.damping=val;   }
+    else if(!strcmp(name,"lastNeg"))  { old=o.lastNeg;   o.lastNeg=(int)val; }
+    else if(!strcmp(name,"dt_min"))   { old=o.dt_min;    o.dt_min=val;    }
+    else if(!strcmp(name,"damp_max")) { old=o.damp_max;  o.damp_max=val;  }
+    else if(!strcmp(name,"f_limit"))  { old=o.f_limit;   o.f_limit=val;   }
+    else if(!strcmp(name,"gate_cos")) { old=o.gate_cos;  o.gate_cos=val;  }
+    else if(!strcmp(name,"gate_g"))   { old=o.gate_g;    o.gate_g=val;    }
+    else if(!strcmp(name,"vs_ema"))   { old=o.vs_ema;    o.vs_ema=val;    }
+    else if(!strcmp(name,"lsMomBeta")){ old=o.lsMomBeta; o.lsMomBeta=val; }
     else if(!strcmp(name,"lsMomGain")){ old=o.lsMomGain; o.lsMomGain=val; }
     else if(!strcmp(name,"lsTurnCos")){ old=o.lsTurnCos; o.lsTurnCos=val; }
     else if(!strcmp(name,"lsEmaCoef")){ old=o.lsEmaCoef; o.lsEmaCoef=val; }
@@ -370,6 +413,7 @@ double setOptParam( const char* name, double val ){
     else if(!strcmp(name,"damp_max")) { old=o.damp_max;  o.damp_max=val;  }
     else if(!strcmp(name,"cvf_min"))  { old=o.cvf_min;   o.cvf_min=val;   }
     else if(!strcmp(name,"cvf_max"))  { old=o.cvf_max;   o.cvf_max=val;   }
+    else if(!strcmp(name,"minLastNeg")){ old=o.minLastNeg;o.minLastNeg=(int)val; }
     else { printf("ERROR setOptParam: unknown param '%s'\n", name); exit(1); }
     return old;
 }

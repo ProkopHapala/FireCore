@@ -148,6 +148,12 @@ class DynamicOpt{ public:
     double* msFold     = 0;                          // [n] force snapshot for ΔF
     double* msXold     = 0;                          // [n] pos  snapshot for Δx
     bool    msInit     = false;
+    // gated two-timescale momentum (§15.6): slow-EMA velocity register, boost v only while cos(F,v)>gate_cos
+    double  gate_cos   = 0.7;                        // alignment gate threshold
+    double  gate_g     = 0.0;                        // boost gain (0=off)
+    double  vs_ema     = 0.9;                        // EMA decay for vSlow register
+    double* vSlow      = 0;                          // [n] slow-EMA velocity register (lazy alloc when gate_g!=0)
+    bool    vSlowInit  = false;
     double  lsEmaCoef = 0.3;                         // EMA coefficient for eta_ad <- BB1 step scale
     double  lsEtaLo   = 0.02;                        // eta_ad bounds, relative to lsEta
     double  lsEtaHi   = 200.0;
@@ -194,6 +200,13 @@ class DynamicOpt{ public:
 
     double getFmaxAbs( );
     double getFsqSum( );
+
+    // Fat checkpoint (§13.4/§13.8: branch experiments need identical complete states). Serializes all scalars
+    // and the CONTENTS of every state buffer into a flat double blob; restoreState copies contents back into the
+    // currently-bound arrays (pos/vel/force/invMasses are never re-bound — they may alias force-field buffers).
+    int  stateSize ( );                                    // number of doubles required for the blob
+    int  saveState ( double* buf );                        // returns stateSize, or -1 on mismatch
+    void restoreState( const double* buf );                // fails loudly on magic/n mismatch
 
     // ==== inline functions
 
@@ -266,6 +279,7 @@ class DynamicOpt{ public:
         _dealloc(am_k); _dealloc(am_xold); _dealloc(am_fold); _dealloc(am_mass0); am_init=false;
         _dealloc(lsXc); _dealloc(lsGc); _dealloc(lsXp); _dealloc(lsGp); _dealloc(lsD); _dealloc(lsV); _dealloc(lsPm);
         _dealloc(msU); _dealloc(msFe); _dealloc(msFold); _dealloc(msXold);
+        _dealloc(vSlow); vSlowInit=false;
         _dealloc(lsS);  _dealloc(lsY);  _dealloc(lsQ);  _dealloc(lsR);  _dealloc(lsB); _dealloc(lsPiv);
         n=0; bOwnPos=true; bOwnVel=true; bOwnForce=true; bOwnInvMasses=true;
     }
@@ -287,6 +301,7 @@ class DynamicOpt{ public:
         setDamping  (damp_);
         cleanForce( );
         cleanVel  ( );
+        vSlowInit=false;
     }
 
     inline double spreadDamp( int i, double v, double beta ){

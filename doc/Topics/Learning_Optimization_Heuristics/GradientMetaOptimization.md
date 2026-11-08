@@ -1,6 +1,6 @@
 # GradientMetaOptimization — findings log and open directions
 
-**Current research direction:** §13 supersedes §11's conservative two-action recommendation as the main project: discover a new cheap vector-memory update rule through large-scale offline trajectory experiments, learned control and symbolic program search. §12's clean replays show why more small FIRE/Anderson patches are not a sufficient research objective. Correctness fixes remain prerequisites for trustworthy training labels, not the principal research contribution.
+**Interpretation update:** §17 reviews the §14–16 evidence and corrects the overstatement that per-step headroom is exhausted. The probe measures finite-family, short-horizon endpoint-energy gains on baseline-visited states; it does not establish optimal time-to-convergence or exclude new learned dynamics. The reported feature predictability is in-sample. A landscape/config selector is a useful experiment, not yet the uniquely supported research direction. §13 remains the broader algorithm-discovery proposal.
 
 *Comprehensive record of the gradient-based optimization study (MMFF + eFF), so the
 tuning traps, structural findings, and the on-line-learning agenda do not have to be
@@ -1161,3 +1161,428 @@ A substantial win must survive held-out tasks and matched tuning effort, not onl
 5. **Distill and perform decisive ablations.** Separate gains due to a novel memory update, state-dependent control, better scale calibration and algorithm selection. Prefer the shortest deployable rule that retains the actual benefit.
 
 No new training or benchmark was launched for this research reset, and no speedup is claimed. This section is a proposal for using substantial offline compute to make an algorithmic discovery, rather than another round of local manual tuning. Backup: `/tmp/GradientMetaOptimization_before_algorithm_discovery.md`.
+
+## 14. §13 execution — checkpoint contract + branch-lab headroom pilot (v1 results)
+
+### 14.1 Implemented infrastructure
+
+**Fat checkpoint** (`DynamicOpt::stateSize/saveState/restoreState`): serializes every optimizer field (FIRE scalars, autoMass buffers incl. `am_mass0`, modeSupp buffers, full GH/Anderson workspace, pos/vel/**force**/invMasses contents) into a flat double blob. Restore copies contents into the *currently bound* arrays — ff-owned buffers are never re-bound. Fails loudly on magic/n mismatch. `force` must be in the blob: `move_FIRE` reads it on the first post-restore step; omitting it silently fed stale forces from the previous branch (caught by the equivalence check below, not by eyeballing).
+
+**Step API** (both `MMFF_lib` and `eFF_lib`): `optBind()` (same binding `run_GH` does, incl. `getForce` bridge and UFF `vapos` aliasing), `optInitOpt(dt,damping)` (fresh-start semantics identical to `run()`), `optEval()` (evaluates at current pos through the lib's eval bridge), `optMoveFIRE()`, `optNDOFs()`, `optBuffer(which)` → numpy views of pos/vel/force/invMasses, `optStateSize/Save/Restore`, plus `dt/damping/lastNeg` added to `setOptParam`. Segmented Python stepping is trajectory-identical to the internal `run()` loop because all FIRE state lives in `opt` fields.
+
+**`branch_lab.py`** (study dir): collects a stepwise FIRE trajectory, snapshots every accepted step, picks ~K parents, applies the action family to restored state, continues each branch H evals, records (features, per-action ΔE). Actions mutate **only optimizer memory/scalars** — never positions — so a branch is a counterfactual decision, not a restart.
+
+Action family v1 (17): baseline; `v{0,0.5,1.5,2}` velocity scaling; `steer{0.25,0.5,1.0}` rotate v toward f̂; `killmode{0.5,1.0}` remove v-component along transverse-ΔF direction; `dt{0.5,2}`; `dampreset`; `fresh` (v=0+dampreset); `im{0.5,2}` global invMass scale; `kick` (v += 0.5|v|ŝ along last accepted step).
+
+Features per parent (all dimensionless, computed from trajectory history only): `cos(F,v)`, `log10|F|`, `|v|/|F|`, BB1 `s·y/s·s`, `|F|/EMA(|F|)`, last-step progress per unit force.
+
+**Checkpoint-equivalence is verified, not assumed**: 'base' branch from parent ix reproduces the recorded `E[ix+H]` to `diff=0.00e+00` on all three systems.
+
+### 14.2 Pilot results (17 actions, H=24 evals, 20 parents per system)
+
+| system | baseline ΔE | oracle ΔE | headroom mean | parents with any better action | best actions (win-rate) |
+|---|---:|---:|---:|---:|---|
+| MMFF propandiol | 0.003 | 0.004 | 0.001 (max 0.008) | 90% | v1.5/dt2.0 20% |
+| UFF propandiol | 0.004 | 0.006 | 0.002 (max 0.012) | 95% | dt0.5 30%, v2/im0.5 15% |
+| eFF H2O | 1.276 | 1.285 | 0.009 (max 0.128) | 45% | v2/steer1.0 15% |
+
+Feature-predicted best action recovers 85–99% of the (small) oracle gap.
+
+### 14.3 One-shot results (17 actions, H=24, 20 parents/system)
+
+| system | baseline ΔE | oracle ΔE | headroom mean | improvable parents | best actions |
+|---|---:|---:|---:|---:|---|
+| MMFF propandiol | 0.003 | 0.004 | 0.001 (max 0.008) | 90% | v1.5/dt2.0 20% |
+| UFF propandiol | 0.004 | 0.006 | 0.002 (max 0.012) | 95% | dt0.5 30%, v2/im0.5 15% |
+| eFF H2O | 1.276 | 1.285 | 0.009 (max 0.128) | 45% | v2/steer1.0 15% |
+
+Feature-predicted best action recovers 85–99% of the (small) oracle gap.
+
+### 14.4 Persistent-policy branches (`--persist`: rule re-applied every step — the actual recurrence hypothesis)
+
+Same actions, but each is a *policy* applied every step of H. This is where real signal appears:
+
+| action | UFF win% | MMFF win% | eFF win% | mean ΔE (UFF/MMFF/eFF) |
+|---|---:|---:|---:|---|
+| base | 10 | 15 | 35 | +0.004 / +0.002 / +1.276 |
+| **v1.5 persistent** | **70** | **40** | 25 | **+0.007** / +0.002 / +1.223 |
+| v2.0 | 10 | 20 | 10 | +0.005 / +0.001 / +1.261 |
+| v0.5 | 5 | 0 | 5 | +0.002 / +0.001 / +1.268 |
+| kick | 5 | 15 | 5 | +0.005 / +0.001 / +1.248 |
+| v0.0 (quench) | 0 | 0 | 0 | **−2.2 / −1.8 / +0.86** |
+| steer1.0 | 0 | 0 | 0 | −3.3 / −1.3 / **−30.6** |
+| dt2.0 | 0 | 0 | 0 | −3.2 / −1.9 / −9.3 |
+| fresh | 0 | 0 | 0 | −0.26 / −0.75 / +0.90 |
+| dt0.5 / im0.5 / steer0.5 / killmode / dampreset / steer0.25 / im2 | ~0 | ~0 | ~0 | ≈ baseline |
+
+### 14.5 What the pilot established
+
+1. **Headroom lives in persistent dynamics, not interventions** — *for an undertuned baseline*. With `falpha=0.8/fdec=0.5` defaults, `v←1.5v` each step (extra momentum injection) beat baseline on 70% of UFF, 40% of MMFF, 25% of eFF parents, and persistent quench/alignment/overshoot were catastrophic (−2 to −30 ΔE).
+2. **Calibration control result — most of that was parameter tuning, not new dynamics.** Re-running UFF with the verified champion params (dt=0.142, fa=0.964, fdec=0.837): `v1.5` drops to **0% wins**, residual headroom concentrates in global `invMass` scaling (`im{0.5,2}` 45% each) — i.e., still effective step-size. The tuned FIRE dynamics leaves only ~2–8% relative ΔE headroom over 24 evals for the entire single-knob perturbation family.
+3. **That is the pilot's real answer**: once the optimizer is well-calibrated, *no single scalar intervention* unlocks much — supporting the §13.2 thesis that better continuations require richer state (multiple timescales, mode-resolved memory), which this proposal family cannot express. A negative-but-informative result: the headroom question is now scoped to genuinely new dynamics.
+4. **eFF is the hard case for predictability**: feature→best-action fit recovers −154% of gap (worse than always predicting base) — 6 dynamical features cannot identify *when* momentum boosting helps on eFF; UFF-tuned dropped to 19%. More memory is the identified missing ingredient.
+5. **Infrastructure verified**: exact checkpoint equivalence (0.00e+00 on all systems), per-branch eval accounting, dimensionless features, action-value tables in `branch_results/*.npz` — ready as the recurrent-rule training set.
+
+### 14.6 Next increments
+
+1. ~~Calibration control~~ — done above: `v1.5` was an undertuned-baseline artifact; only invMass/step-scale slack remains.
+2. **Richer proposal family**: multi-timescale/stateful branches — e.g., two-timescale momentum (fast+slow v), mode-resolved damping (per-block or per-u), steer-then-hold sequences. If scalar families show no headroom, the next test must add *memory dimension*, not more scalars.
+3. **Harder state sampling**: parents at resets/stalls/turns (`cos(F,v)<0`, `rfrac→1`), not the converging tail.
+4. **GH checkpointing**: `run_GH` accept-loop locals (`nhist`, `Ewin`, `a_last`, `eta_ad`) need a step-function refactor to branch Anderson fairly.
+5. **Metric**: evals-to-threshold alongside ΔE@H (near-converged parents make ΔE degenerate).
+6. Then the §13.2 recurrent family (r=4–8 registers, small controller) — the branch dataset is its training input.
+
+## 15. Register-memory policies — PyFire replica, branch wins, and the rollout reality check
+
+### 15.1 Python FIRE engine (`PyFire` in `branch_lab.py`)
+
+Reason: the C++ step API executes `move_FIRE` exactly but cannot express new state (registers). A Python replica implements the identical math — `eval_cos_vf` (plain metric), damping update `cf=renorm·damping, cv=1−damping` / `cos<0 → cv=cv_kill, cf=0`, `lastNeg>minLastNeg → dt·=finc, damping·=falpha`, `cos<0 → dt·=fdec, damping=damp_max, lastNeg=0`, force-limit `dt` shrink, `dr_limit` rescale, then an open **policy hook** between the velocity mix and the leapfrog kick (`hook(d,st,ctx)` mutates `v` before `x+=v·dt`).
+
+**Verification (`--verify`)**: `max|Δpos| ≤ 5e-14` over 30 steps on all three systems (UFF 1.8e-15, MMFF 4.9e-14, eFF 5.2e-18) — bit-equivalent to `move_FIRE`. The first verify attempt appeared to diverge; root cause was *test-side*: `reset()` restored positions but not FIRE scalars, so the Python run inherited the cpp run's residual `dt/lastNeg`. Fixed by snapshotting the post-init blob and `restore()`-ing before each engine — the checkpoint contract again earning its keep.
+
+### 15.2 Register policy family (each = a few vector ops + private memory)
+
+| policy | mechanism |
+|---|---|
+| `2tslow{g}` | slow-EMA velocity register `vs←0.9vs+0.1v`, boost `v+=g·vs` (two-timescale momentum) |
+| `mkill{g}` | online transverse-mode unit vector `u` (EMA of sign-aligned `ΔF⊥s`), damp `v−=g(v·u)u` |
+| `psteer{b}` | rotate `v` toward `f` by fraction `b`, preserving ‖v‖ |
+| `vcurve{k}` | curved-valley extrapolation: extra `½k‖s‖²` displacement along turning normal `n=ŝ−ŝ0` |
+| `gmkill` | `mkill` gated on `cos(F,v)<0.7` — only kill transverse modes while misaligned |
+| `g2ts` | `2tslow` gated on `cos(F,v)>0.8` — only boost while aligned |
+
+### 15.3 Branch results (H=24, 20 parents, tuned baselines)
+
+| system | top actions (% parent wins) | headroom mean | feature predictability |
+|---|---|---:|---:|
+| UFF | mkill0.5 45%, 2tslow1.0 35% | ~1% of ΔE | 90% recovered |
+| MMFF | 2tslow1.0 60% | ~0 | 49% |
+| eFF | 2tslow0.5 45%, mkill0.5 25% | ~1% | 96% |
+
+**Registers do beat baseline at branch granularity** — mode-resolved (`mkill`) and multi-timescale (`2tslow`) memories are the consistently preferred family, steering/curvature extrapolation is not.
+
+### 15.4 Full rollouts — evals to |F|<1e-4 (`--rollout`, 5000 budget)
+
+| policy | eFF | MMFF | UFF |
+|---|---:|---:|---:|
+| base FIRE | **520** | **1621** | 5000 stall* |
+| 2tslow0.5 | 1636 | **1292 (−20%)** | 5000 |
+| mkill0.5 | 619 | 2500 | 5000 |
+| psteer0.1 | 884 | 2570 | 5000 |
+| vcurve1.0 | 541 | 1628 | 5000 |
+| gmkill | 565 | 1753 | — |
+| g2ts | 563 | **1361 (−16%)** | — |
+
+*UFF reaches only ~5e-4 in 5000 evals under these params — the tuned UFF champion used `massMetric=1` which PyFire's plain metric doesn't replicate; a handicapped but *common* baseline for all policies.
+
+### 15.5 Reading — the §13.5 diagnostic resolves cleanly
+
+- **Branch wins do not imply rollout wins.** `2tslow0.5` won 45% of eFF parents yet is 3× *worse* over a full trajectory (1636 vs 520). Short-horizon ΔE rewards momentum injection; over a trajectory the same boost must then be paid back in damping/resets.
+- **Gating is the missing piece, and it works mechanically**: `g2ts` recovers 91% of the unconditional-2tslow damage on eFF (1636→563) and on MMFF converts a −20% mechanism into a −16% *deployable* policy. `cos(F,v)` — a free, dimensionless dynamical statistic — is already an adequate gate.
+- **But the honest headline stands**: against calibrated FIRE, exactly one register policy wins (2tslow0.5 on MMFF, −20%) — and MMFF's baseline is itself handicapped (no `autoMass`; the real champion ran 267 to 1e-6). Every mechanism that "wins" so far recreates something tuned FIRE already encodes (slow-EMA momentum ≈ higher effective `falpha`; `mkill` ≈ what `massMetric`/`autoMass` preconditioning achieves).
+- **Conclusion for §13**: the proposal space is now right (memory + conditional updates), the verification stack is airtight, and the limiting factor is *policy fitting against complete-rollout objectives* — i.e., learn `gate(features)` coefficients and register gains against evals-to-convergence on-policy, rather than branch ΔE. That is precisely §13.2 steps 2–3: the branch dataset (predictability ≥90% on UFF/eFF) says the actions are *learnable*; the rollouts say only the *timing* of applying them needs learning.
+
+### 15.6 Gate×gain scan on rollouts (`--gatescan`) — the first cross-system win
+
+2-parameter grid over the two gated registers, scored on **complete-rollout evals to |F|<1e-4** (5000 budget):
+
+| system | base | best `g2ts` | Δ | `gmkill` best |
+|---|---:|---:|---:|---:|
+| eFF H2O (1e-4) | 520 | **378** c0.5 g0.25 | **−27%** | 495 c0.3 g1.0 |
+| eFF H2O (1e-6) | 742 | **528** c0.5 g0.25 | **−29%** | 701 c0.3 g1.0 |
+| MMFF propandiol | 1621 | **809** c0.9 g0.25 | **−50%** | ~1650 flat |
+| MMFF **butandiol** (held-out) | 1566 | **761** c0.5 g0.25 | **−51%** | ~1550 flat |
+| MMFF **formic_dimer** (held-out) | 4581 | **2178** c0.7 g0.25 | **−52%** | ~4550 flat |
+| UFF propandiol | 5000 stall | **4416** CONV g1.0 | escapes stall | ~5000 flat |
+
+**The rule**: `vs ← 0.9·vs + 0.1·v; if cos(F,v) > c_gate: v += g·vs` — boost velocity along its slow-EMA direction only while moving downhill. 4 vector ops + one EMA register + one scalar gate. No geometry, topology, or system identity.
+
+**Response surface**: plateau at g=0.25 across all gates 0.5–0.9 on every system (e.g. MMFF: 809/911/926 vs base 1621 — not knife-edge). Cliff at g≥1.0 (diverges/stalls everywhere) — the safe region is unambiguous. `gmkill` (transverse-mode kill) is flat-neutral everywhere: once momentum is gated correctly, extra mode suppression adds nothing on these landscapes.
+
+### 15.7 Interpretation and caveats
+
+- **Why it works**: FIRE's momentum mixing `v←cv·v+cf·f̂` rescales velocity toward the *instantaneous* force direction every step; the gated slow-EMA register adds a *persistent* directional component that survives the resets. When `cos(F,v)` is high the optimizer is in a coherent descent phase — exactly when extra inertia along the established direction pays off (long valley). When cos drops (turning/wall) the gate closes and FIRE's own damping handles it. It is a *conditional* momentum timescale — the simplest possible version of §13's "learned memory" that actually helps.
+- **vs the undertuned-baseline artifact** (§14.5): this is different in kind — g=0.25 is a *conservative* additive term gated by alignment, not a global scalar multiplication of v. It wins on held-out molecules never used for tuning, at gains far below the divergence cliff.
+- **Honest caveats**: (a) all baselines here are handicapped — no `autoMass`, plain `massMetric=0`. The eFF meta-champion (132 evals) used `am=2`+preconditioning; whether g2ts *stacks* with autoMass or is subsumed by it is the decisive next test. (b) gains vs. *handicapped* FIRE, not vs champions — the fair test is g2ts-in-C++ vs the full champion configs. (c) UFF under `massMetric=0` stalls regardless — can't read UFF yet.
+- **Status vs §13 targets**: 1.5–2× improvement on held-out problems — **met vs the common baseline on 4/5 systems**, pending the un-handicapped-baseline check.
+
+### 15.8 g2ts ported to C++ `move_FIRE` (exact parity)
+
+Fields `gate_cos`, `gate_g` (0=off), `vs_ema`, register buffer `vSlow` + `vSlowInit` in `DynamicOpt`; params exposed via `setOptParam` in both libs; `vSlow` included in the state checkpoint blob (flag bit 16, NSCAL 69). Gate uses **post-mix** cos(F,v) recomputed after the velocity update — required for parity with the PyFire hook (first version used pre-mix `cos_vf` → 4e-2 divergence; post-mix version matches PyFire to **1.1e-12 over 200 steps**).
+
+### 15.9 The decisive test — champion replay ± gate (`test_gate_champion.py`)
+
+Same eval path as meta-opt (`_eval_mmff`/`_eval_eff`, |F|<1e-6), saved champion θ, gate_cos=0.7:
+
+| system | champion off | gate_g=0.25 | gate_g=0.5 |
+|---|---:|---:|---:|
+| MMFF propandiol | **267** | 3044 | 546 |
+| UFF propandiol | **445** | 521 | 556 |
+| eFF H₂O | **132** | 339 | 380 |
+
+**Result: the gate is uniformly harmful under the champion configs** — the mechanism is *subsumed*, not stacked. `autoMass` preconditioning + `massMetric` + tuned FIRE parameters already deliver (better than) whatever the gated slow-momentum register was providing on the handicapped baseline.
+
+### 15.10 The pattern, stated plainly
+
+Three independent mechanisms now show the same lifecycle:
+
+1. `v×1.5` persistent momentum: 70% UFF parent wins → **0%** after baseline tuning (§14.5).
+2. Global invMass scaling: residual ~45% wins → effective step-size only.
+3. `g2ts` gated register: −27 to −52% vs handicapped baselines **on 5/5 systems including 2 held-out molecules** → +20% to +1140% evals vs champions.
+
+**Interpretation**: the information budget of a weakly-tuned FIRE is large — almost any reasonable memory mechanism improves it. The tuned champion's information advantage is real but *already exploited*: adaptive inverse-mass estimates are themselves a learned per-DOF memory register encoding directional mobility — precisely the role `vSlow` was playing. What remains genuinely unexplored is whether a *switching/policy* layer ON TOP of the full-featured optimizer (autoMass+massMetric+momentum registers) can adapt these mechanisms over the trajectory — i.e., the next controller must operate on the **strong** baseline, not replace it.
+
+### 15.11 Updated next steps
+
+1. ~~Port g2ts + champion replay~~ — done: subsumed. The C++ implementation remains (off by default; useful as a primitive for learned policies).
+2. **Re-run headroom/predictability analysis against the STRONG baseline** (champion θ + autoMass): if branches from champion states show ~zero headroom for every register proposal, then the per-step policy question is closed for this action family and effort should go to §13's third leg — *program search over update rules* evaluated on complete rollouts of the strong optimizer.
+3. If some headroom remains: it will be conditional (predictability was already ≥90% on 2/3 systems) — a small learned gate, not a fixed rule.
+4. **Held-out systems still needed for the champions themselves** — all champion tuning was per-system; the robustness of e.g. am=2 across molecules is unknown and is itself a research question.
+
+### 15.12 Held-out check on the champion itself
+
+Replaying `fire_mmff_prop` champion θ on held-out MMFF molecules (same `_eval_mmff` path, |F|<1e-6):
+
+| molecule | default FIRE | propandiol champion |
+|---|---:|---:|
+| butandiol | **448** | 471 |
+| formic_dimer | **860** | 1317 (+53% slower) |
+
+The champion's 267 is partly **overfit to propandiol's landscape** — on unseen molecules its dt/falpha/autoMass combination loses to plain defaults. This reframes the whole study's target once more: neither per-system constant tuning NOR a fixed mechanism generalizes. The only family that demonstrably adapted across the board so far is the *self-tuning* kind (adaptive GH bits, robust across η — §12.5), suggesting the real prize is an **online-adaptive** rule: a mechanism that senses trajectory statistics and adjusts — precisely the §13.2 recurrent-controller idea, but now with the correct strong baseline and a verified implementation stack to test it on.
+
+## 16. Headroom probe on the STRONG baseline (`--strong` mode, C++ engine)
+
+Setup: champion θ + `setAutoMass(ch.am)` + `massMetric` loaded into the step driver; parent checkpoints along the champion's own trajectory; 18 param-switch actions (gate on at (cos,g) grid, modeSupp/msKill, massMetric toggles, dt×0.67/1.5, falpha/fdec kicks, v×0.5/1.5, amOff) applied persistently for H=16 evals per branch. Checkpoint equivalence under full autoMass state: **exact (0.00e+00)** on all parents — the blob covers `am_k/am_xold/am_fold/am_mass0/invMasses`.
+
+Infra fix during this: `optStateSize` was captured before lazy am-buffer allocation → heap overflow; solved by eager-allocating `am_k/am_xold/am_fold` in `setAutoMass` (both libs) — blob layout now stable from step 0.
+
+### 16.1 Result: per-step headroom is exhausted on tuned trajectories
+
+| system (champion config) | baseline ΔE/16ev | oracle headroom | detail |
+|---|---:|---:|---|
+| eFF (am=2, mm=1) | 2.117 | **~0.14%** | base wins 27%, all actions ≤13%; `amOff`→1.246 (−41%, autoMass IS the champion) |
+| MMFF (am=2) | 0.002 | **~0** | noise-level; predictability 97% of ~nothing |
+| UFF (am=0, mm=1) | 0.009 | ~20% rel., tiny abs | g2ts_c0.5g0.5 wins 47% of parents — but §15.9 full-run says it doesn't transfer (556 vs 445) |
+
+**Qualification from §17:** this measures short-horizon endpoint-energy headroom for the tested interventions on sampled champion states. It does not establish per-step optimality for time-to-convergence. Current saved artifacts also contain phase-specific gains and in-sample prediction scores that require the narrower interpretation below.
+
+### 16.2 autoMass is landscape-conditional too
+
+`def` FIRE vs `def+am1/am2/am2+mm1` on held-out MMFF molecules (|F|<1e-6):
+
+| molecule | def | +am1 | +am2 | +am2+mm1 |
+|---|---:|---:|---:|---:|
+| butandiol | **448** | 525 | 493 | 538 |
+| formic_dimer | **860** | 842 | 877 | 853 |
+
+The mechanism that defined the propandiol/eFF champions is **neutral-to-negative on unseen molecules** — autoMass is just another per-landscape tunable, not a free upgrade.
+
+### 16.3 Synthesis — what the whole branch-lab campaign established
+
+1. **Per-step headroom on a tuned baseline: ~0** (three systems, two action families, exact checkpoints). Per-step policy learning on these actions is closed.
+2. **Every mechanism is landscape-conditional**: g2ts (weak FIRE, −50%) ⊂ autoMass (champion) ⊂ landscape-dependent too. massMetric helps UFF, modeSupp marginal, θ-bounded Anderson helps MMFF/eFF but not UFF (§12.3).
+3. **Feature→action predictability: 90–98%** whenever any headroom existed — the *conditional* structure is real; what's missing is the thing to condition ON that has any headroom left per-step.
+4. **The remaining exploitable axis is cross-landscape selection/adaptation**: champions don't transfer between molecules (+53% evals), mechanisms don't transfer (+10–20%), but features DO predict which mechanism wins. A deployable algorithm shaped by this evidence = **a landscape classifier on early trajectory statistics that selects the right tuned mechanism/config** — a coarse-grained version of the §13.2 controller (select among proven configs rather than synthesize per-step updates).
+5. **Robustness of tuning itself**: champions beat defaults *in-place* (267 vs ~600 MMFF, 132 vs ~300 eFF) but lose out-of-place — meaning "the right config" is a property of (system, mechanism) joint structure that a selector could capture where any single default cannot.
+
+### 16.4 Where effort should go next (updated)
+
+- **(a) Mechanism-selector experiment**: meta-opt per molecule × mechanism-family on a molecule suite → fit trajectory-feature → config map → evaluate held-out. Uses existing infra (`meta_opt._eval_*`, features from `branch_lab`), answers "is the win in selection?".
+- **(b) Program search (§13.3)** over update rules evaluated on *complete rollouts of the strong baseline* — only remaining place per-step novelty could exist.
+- **(c) If selector wins**: distill it into an online rule = the adaptive algorithm the original brief asked for.
+
+### 16.5 First selector data — config×molecule matrix and an |F|₀ split
+
+evals to |F|<1e-6, MMFF, configs = {default, propandiol-champion θ, def+am2, def+mm1}:
+
+| molecule | def | prop-champ | def+am2 | def+mm1 | 30-step warmup stats (def run) |
+|---|---:|---:|---:|---:|---|
+| propandiol | 593 | **267** | 572 | 593 | resets 4/30, mean\|cos\| 0.72, \|F\|₀=1.56 |
+| benzene | 101 | **62** | 124 | 101 | resets 4/30, mean\|cos\| 0.90, \|F\|₀=2.59 |
+| pyridine | 134 | **84** | 145 | 134 | resets 4/30, mean\|cos\| 0.82, \|F\|₀=4.31 |
+| butandiol | **448** | 471 | 493 | 448 | resets 4/30, mean\|cos\| 0.50, \|F\|₀=12.27 |
+| formic_dimer | **860** | 1317 | 877 | 860 | resets 3/30, mean\|cos\| 0.84, \|F\|₀=10.95 |
+
+**Observed rule (5/5, small n)**: \|F\|₀>5 → defaults win; \|F\|₀<5 → champion wins. Plausible mechanism: high initial force = far-from-basin/rugged start → the champion's aggressive `dt`/`finc` and fast-adapting masses overshoot into walls and spend evals recovering; smooth-basin starts let the same settings glide. `def+am2`/`def+mm1` never win — the champion is a *joint* config, not decomposable.
+
+Selector value if it holds on a bigger suite: oracle-per-molecule mean ≈ 344 vs always-default 427 vs always-champion 444 — a ~20% mean gain plus tail-risk removal (formic 1317→860). Caveats: n=5, one FF family, thresholds un-fitted — needs ≥15 molecules + held-out split before claiming.
+
+**Historical hypothesis, qualified by §17:** a regime-selecting optimizer (probe → choose config → run) is a plausible and inexpensive baseline. The present data do not establish that per-step learning is exhausted, that unseen-landscape selection is predictable, or that selection is the only remaining avenue for algorithm discovery.
+
+## 17. What local headroom means, why rollout performance differs, and what to learn next
+
+### 17.1 The apparent contradiction is mostly a mismatch of definitions
+
+The new results do **not** demonstrate "the steps are optimal, but the molecule is not." They demonstrate a much narrower property:
+
+> From a small collection of complete states visited by one tuned FIRE trajectory, the tested interventions usually do not improve the **endpoint energy after 16 force evaluations** by much in the aggregate.
+
+That is conditional on the action family, duration, scoring rule and sampled states. Moreover, a persistent action is a 16-evaluation control policy, not a single step. "Near-best tested short continuation" is the right description; "locally optimal step" suggests a stronger result that was not measured.
+
+There are three distinct optimization questions:
+
+| question | what is optimized | what the current experiment answers |
+|---|---|---|
+| short continuation | endpoint energy after H evaluations, starting at one fixed optimizer state | yes, for sampled states and 18 tested interventions |
+| full relaxation | total evaluations to an accepted force-converged state, with acceptable energy/geometry | only the separate full-rollout comparisons |
+| transferable algorithm | expected full-relaxation performance over unseen geometries/molecules | not established by one-start champions or the five-molecule split |
+
+A champion jointly tuned on propandiol can be hard to improve by short interventions on **its own propandiol states**, yet transfer poorly to another initial geometry. Those are different states and different tasks. There is no logical conflict.
+
+### 17.2 Why better short-term energy need not mean earlier convergence
+
+Even energy and force norm do not rank states identically on a fixed convex quadratic. For `E(x,y)=0.5*(100*x²+y²)`:
+
+| endpoint | energy | force norm | converged at force tolerance .5? |
+|---|---:|---:|---|
+| A=(.02,0) | .020 | 2.0 | no |
+| B=(0,.3) | .045 | .3 | yes |
+
+This algebraic example was checked directly. A has the lower energy, but B already meets the declared force tolerance. On a nonlinear valley, a branch also changes position, velocity, masses, secant information and future resets. A larger immediate drop can leave poorly aligned momentum or enter a difficult region; a smaller drop can build memory or arrive on a much faster continuation. Neither endpoint energy nor force alone captures all remaining cost.
+
+Let z denote the **complete optimizer state**, not just coordinates. The current score is:
+
+```text
+G_H(z,a) = E(z) - E(z_H after intervention a)
+```
+
+A score aligned with a local time-to-convergence objective instead asks:
+
+```text
+Q_H^pi(z,a) = evaluations already spent in the branch
+              + remaining evaluations under continuation policy pi from z_H
+```
+
+If convergence happens during the branch, stop and count its actual cost. Keeping the same continuation pi across actions makes the comparison meaningful, but it is still not the true optimal remaining cost. The energy-drop oracle is an oracle for G_H over the finite action list, **not** for Q or all possible algorithms.
+
+If one had the exact optimal remaining-cost function, the full action space and every relevant state, a best next decision would account for its future and the local/global distinction would largely disappear. That is not what the current H=16 probe does. A finite-energy-horizon negative result therefore cannot rule out delayed-benefit actions, action sequences or a new recurrence that visits different states.
+
+The UFF result already supplies an empirical example of the distinction: g2ts wins short branches at some parent states, but applying it through the full champion rollout loses (556 versus 445 in the reported comparison). This demonstrates a horizon/policy-transfer problem, not a violation of optimality.
+
+### 17.3 Reanalysis of the currently saved strong-branch tables
+
+Read-only NumPy analysis was run on `branch_results/mmff_strong.npz`, `branch_results/uff_strong.npz`, and `tests/tEFF/branch_results/eff_strong.npz`. Each contains **15 parents and 18 actions**. The files save action values, features, indices and parent energies/forces, but not horizon/command/config/build metadata; verify their provenance before equating them with a particular printed run. The discussion labels these strong probes H=16.
+
+| current saved file | mean baseline energy drop | mean oracle extra drop | extra / mean baseline drop |
+|---|---:|---:|---:|
+| MMFF strong | .00217548 | .000191458 | **8.80%** |
+| UFF strong | .00874675 | .00170066 | **19.44%** |
+| eFF strong | 2.11746 | .00300768 | **0.142%** |
+
+The MMFF aggregate is small in absolute energy, but "zero" is not its relative value. Absolute energy changes from different force fields are not a common performance scale. None of these percentages is a convergence-time speedup.
+
+More importantly, aggregate energy-drop weighting hides trajectory phases. Specific current-file examples:
+
+- eFF parent at evaluation index 50: baseline drop .0752129, g2ts adds .0200631 — **26.7% more short-horizon drop**, parent force norm .5073.
+- eFF index 34: baseline drop .0138949, dt0.67 adds .0200563 — **144% more**, parent force norm .7907. Its actual intervention semantics need checking as described below.
+- MMFF index 98: baseline drop .0000840338, g2ts adds .0000437979 — **52.1% more**, parent force norm .004733.
+
+The eFF mean is dominated by large-drop portions of the trajectory. A small ratio of mean gains to mean drops cannot establish that all intermediate decisions have negligible headroom. Conversely, a large percentage near an almost-zero drop is not evidence of useful speedup. Report absolute gain, a numerically resolved relative gain, phase/remaining-cost and terminal convergence together.
+
+### 17.4 "90–98% predictable" is currently an in-sample fit, not learned transfer
+
+`branch_lab.py` fits ridge coefficients W using all parent rows and then chooses actions from `X@W` on **those same rows**. The printed quantity is recovered training-set oracle reward, not classification accuracy and not held-out predictability. Adjacent states from one trajectory are also strongly correlated.
+
+The current saved files give:
+
+| file | training-set recovered oracle gain | leave-one-parent-out recovered gain |
+|---|---:|---:|
+| MMFF | 96.7% | **−180.8%** |
+| UFF | 97.6% | 88.8% |
+| eFF | **−113.9%** | **−173.4%** |
+
+These were computed with the script's same raw features and ridge coefficient 1e-4. Negative recovery means the predictor selects actions that are worse than always taking baseline on average. Recovery can be extremely unstable when the oracle gap is tiny. Leave-one-parent-out is merely a diagnostic and remains optimistic about transfer because other rows are from the same trajectory; it is not an unseen-molecule test. The eFF file does not support a blanket 90–98% claim even in sample.
+
+Thus there are at least two different failure modes already visible: small short-horizon reward gaps, and poor prediction of useful interventions. They must not be merged into "the actions are learnable but only landscape-level selection remains." The UFF data do contain a promising within-trajectory signal; whether it predicts longer-term value is still open.
+
+### 17.5 Action semantics limit the negative result further
+
+The current strong test uses `make_param_actions`, not unrestricted new register programs or all combinations of controls. Several actions also differ from their informal names:
+
+- With `--persist`, fn is called once before the loop and again before the first move. A multiplicative velocity/dt action is therefore applied twice before that first move.
+- Reapplying dt×.67 or ×1.5 every evaluation compounds the intervention; it is not simply selecting a new fixed timestep ceiling. Both are legitimate experimental policies if named/scored accordingly, but answer different questions.
+- Persistent modeSupp/msKill calls reset `msInit=0` every evaluation. `move_FIRE` consequently reinitializes its mode estimator instead of accumulating a direction. This does not fairly test a persistent learned-mode rule; initialization belongs at branch entry, separate from the per-step control.
+- Newly activated memory registers may start cold at the parent. That tests cold-start activation, not a policy whose register has been accumulating throughout its preceding trajectory. Use explicit prefix replay or a declared cold-start protocol for each new recurrence.
+
+Checkpoint equivalence is a substantial achievement, but it verifies baseline state restoration, not that each intervention implements the intended policy. Before interpreting a no-headroom result, trace actual dt/masses/mode state for a few steps of every action. Save H, flags, parent trajectory identity, action definitions, configuration and build/version with the result file.
+
+### 17.6 What can legitimately be inferred from the molecule/config matrix?
+
+It demonstrates **configuration transfer is imperfect** and supplies a useful selector benchmark. The different winners are real observations for these particular starts. It does not establish that the systems fall into stable classes called "smooth" and "rugged," or that all fixed mechanisms are universally useless outside their winning molecule.
+
+Large initial force can mean initial strain, a stiff but entirely convex mode, a different energy scale or more DOFs. It does not measure nonconvexity, barrier structure or valley curvature. The threshold at 5 is a post-hoc separation of five observations; there is no untouched test set. The state can also change regime during a single relaxation, so "per-molecule versus per-step" is a false binary. A selector may actually be detecting an **initial-state regime**, not an intrinsic property of the molecule.
+
+Expand with multiple initial distortions of the **same** molecule as well as held-out molecules. If the winner flips with distortion, a state-dependent controller is more appropriate than a fixed molecule-level label. Normalize/test features against system size and consistent unit rescaling; the raw-force threshold may still be useful within a fixed FF/unit setup, but is not a universal physical rule.
+
+Arithmetic check on the five listed rows: always-default mean **427.2**, always-champion **440.2**, hindsight per-molecule best **344.2** evaluations. The ~19.4% saving versus always-default is a **post-hoc selection opportunity**, not a demonstrated deployable gain. It also cannot exceed this finite portfolio's oracle on the same task set; a novel update rule is a different search space.
+
+`|F|_0` itself requires the initial force evaluation, not 30 warmup steps. If the eventual selector uses reset/alignment statistics from a warmup, the cost and state transition matter. Thirty probe evaluations followed by a restart and a 62-eval champion run costs 92, not 62. Continuing from the warmed state has a different trajectory and must be measured. A baseline that would finish in 75 evaluations makes an unnecessary 30-evaluation probe a substantial expense.
+
+### 17.7 What to do next for Learning to Optimize
+
+**First, test whether the observed mismatch is a horizon problem.** Use a small representative subset of parent states and correctly defined actions. Record rewards at H=16, H=64 and completion under the same continuation. Compare energy improvement, best feasible energy curve, raw-force progress and actual remaining evaluations. Compute whether action rankings agree across horizons. If short-horizon winners lose later, train longer-horizon value/advantage, not immediate energy-drop labels. If the same actions have no useful long-horizon advantage, that closes **those actions**, not all learned optimizers.
+
+**Second, test policy sequences rather than only one held action.** A few two-segment decisions can reveal delayed benefits: conservative memory-building then acceleration; aggressive traversal then cleanup; activate a mode estimate once, allow it to learn, then use it. Always compare with the matched constant-policy baseline. This is a useful offline teacher experiment because it directly tests the credit-assignment hypothesis without yet training a large network.
+
+**Third, collect states visited by the new policies.** Current parents come from the champion's state distribution. A better algorithm may take a different early route and never visit those states. Repeatedly query only the baseline path cannot establish absence of opportunity elsewhere. Train on complete rollouts/on-policy data aggregation, retaining the strong baseline as competitor. Hold out molecules and trajectory starts; do not fit and score the same branch rows.
+
+**Fourth, keep selection as a baseline, not as a premature endpoint.** Test default versus champion portfolio selection on an untouched suite, including probe cost and multiple starts. In parallel retain §13's broader recurrence/program search, scored on complete trajectories. Current branch families have not tested that space. Only if a richer, properly scored teacher repeatedly finds no useful advantage should the algorithm-discovery objective be reconsidered.
+
+For training labels, use remaining evaluation cost under a declared continuation or two-horizon normalized progress with a terminal accepted-state value. Short energy gains are still useful auxiliary signals, but not the sole target. Partial observability also matters: an instantaneous force norm may not distinguish momentum preparation, a turn, and an approaching instability. Give a recurrent policy the dynamical history needed to predict longer-term value, and measure its held-out regret relative to the finite-action oracle—not just action-label accuracy.
+
+### 17.8 Revised conclusion
+
+The evidence supports: **the tested champion is robust against many sampled short interventions on its own trajectory; some short interventions help locally but do not help when applied throughout the relaxation; configuration choice matters across starts; a selector is worth testing.**
+
+It does not support: **per-step optimality, exhaustion of all learnable dynamics, proven unseen-landscape predictability, or a proof that program search can only rediscover FIRE.** The strongest next scientific question is whether the missed opportunity is longer-horizon control, missing memory/proposals, or genuinely little remaining headroom. The experiments above separate those explanations.
+
+No molecular relaxation or training was run for this review. Read-only analyses used the three existing strong-branch NPZ files; the quadratic example was evaluated algebraically. Backup: `/tmp/GradientMetaOptimization_before_headroom_interpretation.md`.
+
+## 18. §17 experiments executed — corrected baseline, Q-scan, sequences, on-policy states
+
+### 18.0 Blocking bug found first: step-API vs `run_FIRE` parity (367 vs 267)
+
+Before interpreting any sequence result, the step-API baseline had to reproduce `run_FIRE`. It did not: MMFF-propandiol champion converged at **367 evals** through the step API vs **267** via `run_FIRE`, with trajectories identical early and diverging late. Root cause: `lib.set_opt` (called by every `_eval_mmff` replay) sets `minLastNeg=5`, while `DynamicOpt`'s field default is **3** — the step API never set it, so it ran a *different* FIRE variant. (`eFF::run` never sets `minLastNeg` → eFF champions genuinely ran 3; only MMFF/UFF evals used 5.) Fix: `minLastNeg` added to `setOptParam` in both libs + `fp['minLastNeg']=5` in `branch_lab`'s MMFF/UFF driver. **Verified: step API now converges at exactly 267 = run_FIRE.**
+
+Consequence: all previous `--strong`/`--qscan` MMFF/UFF numbers were measured on a minLastNeg=3 pseudo-champion and had to be re-run.
+
+### 18.1 Q-scan re-run on the corrected baseline (answers §17.7-first)
+
+Per-action evals-to-convergence from champion-path parents, plus ΔE@16/ΔE@64 for rank comparison:
+
+| system | baseline remaining | best action | verdict vs previous run |
+|---|---:|---|---|
+| MMFF (minLN=5, am=2) | mean 140 | massMet1 **−63** | was **+18** — the apparent headroom was entirely the minLastNeg artifact |
+| UFF (minLN=5, am=0) | mean 233 | v1.5 −3, g2ts_c0.9g0.25 −51 | was −3..−82 — same conclusion |
+| eFF (minLN=3, am=2, mm=1) | mean 70 | all actions +47..+479 | unchanged (eFF baseline was already correct) |
+
+Rank-consistency rows confirm §17.2 again: e.g. on MMFF `v0.5` has the best ΔE@64 (+0.0048) yet loses 123 evals; `dt1.5` has ΔE@16 below baseline but loses only 20. On the corrected baseline **no tested action beats the champion's own continuation** on any system — the §16 "near-locally-optimal" statement now survives the narrower Q-objective too, *within this 18-action family on champion-path states*.
+
+### 18.2 Sequence tests (answers §17.7-second)
+
+`massMetric 0→1` switch on MMFF-propandiol champion: baseline 267; switching at steps {25..225} gives 295–540 (all worse), at 250 gives 237 (already past the interesting regime). `g2ts` warmup→baseline at {10..200}: 295–635 (all worse). Baseline→`g2ts` late: 524–2000 (all worse). **Every two-segment schedule tested is worse than the constant champion policy** — the delayed-benefit hypothesis fails for these action pairs. Memory built under one rule does not transfer profitably to the other, likely because each policy's memory (vSlow EMA, metric history) is only optimal under its own continuation.
+
+### 18.3 On-policy states (answers §17.7-third) — the one positive result
+
+Parents collected on the **default-FIRE** trajectory (`set_opt` defaults, ~870-eval continuation), then branched: (a) stay default vs (b) **champify** — switch `finc/fdec/falpha/dt_max/massMetric` + enable `autoMass=2` mid-run:
+
+```
+ix= 10: default 860 -> champify 331   saved +529
+ix=100: default 770 -> champify 407   saved +363
+ix=250: default 620 -> champify 248   saved +372
+ix=500: default 370 -> champify 206   saved +164
+```
+
+**Config-switching mid-run recovers most of the champion advantage from every visited state** (+103 to +529 evals) — autoMass re-seeds its secant estimate within a few steps and works even on states it didn't generate. This is the first verified instance of a *non-champion-path* state where a learned decision has real value — and it directly supports the §16.5 regime-selector direction: an online rule that detects "this landscape wants adaptive masses" captures most of the champion's benefit without knowing it a priori.
+
+### 18.4 What the corrected evidence now supports
+
+- On champion-path states, the 18-action family has **zero convergence-time headroom** on all three systems (was already true for eFF/UFF; MMFF's apparent +18 was the minLastNeg artifact).
+- Two-segment action sequences of the tested pairs do **not** unlock delayed benefits.
+- The exploitable signal is at **config-selection granularity**, and it is **recoverable online** (champify from any default-path state saves 100–500 evals).
+- The selector hypothesis (|F|₀ split, §16.5) is now the only mechanism with verified headroom — still awaiting the ≥15-molecule + multiple-start suite.
+- Open per §17.8: states from *alternative trained policies* (not just default-FIRE) remain untested; program search over update rules is untouched; and nothing here rules out a learned controller finding value that 18 hand-picked actions missed.
+
+### 18.5 Methodological note (keep for all future branch work)
+
+`minLastNeg` shows that **the same field default silently differs between `lib.set_opt` and `DynamicOpt`** — any step-API experiment that doesn't byte-compare its baseline against `run_FIRE`'s trajectory can measure artifacts for weeks without noticing. The blob-diff check (`save → restore → continue → compare`) caught the shift artifact, but scalar-field parity needed the eval-count comparison to surface. Both checks are now standard: trajectory-shift check *and* fresh-process eval-count parity before any branch experiment is trusted.

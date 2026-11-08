@@ -230,7 +230,12 @@ void initOpt( double dt, double damping, double f_limit, bool bMass ){
 void setAutoMass( int mode, double kref ){
     if(mode>0) opt.saveMassesOnce(); else opt.restoreMasses();   // §11.2B: mode-0 candidates must not inherit adaptive invMasses
     opt.autoMass = mode; opt.am_kref = kref; opt.am_init = false;
-    printf("setAutoMass(mode=%i, kref=%g)\n", mode, kref );
+    if(mode>0){ opt.am_nBlocks = ff.na + ff.ne; opt.am_nScalars = ff.ne; }   // same [apos|epos|esize] layout as run()/run_GH() — needed when autoMass is enabled outside run()
+    if(mode>0 && opt.n>0){  // eager-alloc so optStateSize() is stable from the start (updateAutoMasses still seeds on am_init)
+        int nb=opt.am_nBlocks+opt.am_nScalars; _realloc(opt.am_k,nb); _realloc(opt.am_xold,opt.n); _realloc(opt.am_fold,opt.n);
+        for(int i=0;i<nb;i++)opt.am_k[i]=0;
+    }
+    printf("setAutoMass(mode=%i, kref=%g) nBlocks=%i nScalars=%i\n", mode, kref, opt.am_nBlocks, opt.am_nScalars );
 }
 // Opt-in mass-consistent FIRE metric (see §7.3). 0=legacy v.(invM.f); 1=P=v.f power test + sqrt(V2/G2) mixing.
 void setMassMetric( int m ){ opt.massMetric = m; printf("setMassMetric(%i)\n", m ); }
@@ -238,7 +243,16 @@ void setMassMetric( int m ){ opt.massMetric = m; printf("setMassMetric(%i)\n", m
 // generic scalar optimizer-parameter setter for sweeps/meta-optimization; returns previous value, exits loudly on unknown name
 double setOptParam( const char* name, double val ){
     double old;
-    if     (!strcmp(name,"lsMomBeta")){ old=opt.lsMomBeta; opt.lsMomBeta=val; }
+    if     (!strcmp(name,"dt"))       { old=opt.dt;        opt.dt=val;        }
+    else if(!strcmp(name,"damping"))  { old=opt.damping;   opt.damping=val;   }
+    else if(!strcmp(name,"lastNeg"))  { old=opt.lastNeg;   opt.lastNeg=(int)val; }
+    else if(!strcmp(name,"dt_min"))   { old=opt.dt_min;    opt.dt_min=val;    }
+    else if(!strcmp(name,"damp_max")) { old=opt.damp_max;  opt.damp_max=val;  }
+    else if(!strcmp(name,"f_limit"))  { old=opt.f_limit;   opt.f_limit=val;   }
+    else if(!strcmp(name,"gate_cos")) { old=opt.gate_cos;  opt.gate_cos=val;  }
+    else if(!strcmp(name,"gate_g"))   { old=opt.gate_g;    opt.gate_g=val;    }
+    else if(!strcmp(name,"vs_ema"))   { old=opt.vs_ema;    opt.vs_ema=val;    }
+    else if(!strcmp(name,"lsMomBeta")){ old=opt.lsMomBeta; opt.lsMomBeta=val; }
     else if(!strcmp(name,"lsMomGain")){ old=opt.lsMomGain; opt.lsMomGain=val; }
     else if(!strcmp(name,"lsTurnCos")){ old=opt.lsTurnCos; opt.lsTurnCos=val; }
     else if(!strcmp(name,"lsEmaCoef")){ old=opt.lsEmaCoef; opt.lsEmaCoef=val; }
@@ -254,6 +268,7 @@ double setOptParam( const char* name, double val ){
     else if(!strcmp(name,"damp_max")) { old=opt.damp_max;  opt.damp_max=val;  }
     else if(!strcmp(name,"cvf_min"))  { old=opt.cvf_min;   opt.cvf_min=val;   }
     else if(!strcmp(name,"cvf_max"))  { old=opt.cvf_max;   opt.cvf_max=val;   }
+    else if(!strcmp(name,"minLastNeg")){ old=opt.minLastNeg;opt.minLastNeg=(int)val; }
     else if(!strcmp(name,"lsEtaLo"))  { old=opt.lsEtaLo;   opt.lsEtaLo=val;   }
     else if(!strcmp(name,"lsEtaHi"))  { old=opt.lsEtaHi;   opt.lsEtaHi=val;   }
     else if(!strcmp(name,"lsAmax"))   { old=opt.lsAmax;    opt.lsAmax=val;    }
@@ -261,6 +276,29 @@ double setOptParam( const char* name, double val ){
     else { printf("ERROR setOptParam: unknown param '%s'\n", name); exit(1); }
     return old;
 }
+
+// ================= Branch-lab step API (§13.4): stepwise FIRE driving + fat optimizer-state checkpoint =================
+// Segmented stepping is trajectory-identical to run(): all FIRE state lives in opt fields; optEval replicates the
+// per-iteration eval path (clearForce + eval + fixed-DOF cleanup via _eff_eval_E). initOpt must be called first.
+static double _eff_eval_E( int n, double* xs, double* dfs );   // fwd decl (defined below with run_GH)
+void optBind(){
+    if( !opt_initialized || (opt.pos!=ff.pDOFs) || (opt.force!=ff.fDOFs) || (opt.n!=ff.nDOFs) ){
+        printf("WARNING optBind(): optimizer not bound to current ff buffers => call initOpt() first\n"); exit(1);
+    }
+    opt.getForce = _eff_eval_E;
+    opt.xmin = 0;
+}
+void   optInitOpt( double dt, double damping ){ opt.initOpt(dt,damping); opt.damping=opt.damp_max; opt.lastNeg=0; }  // same fresh-start semantics as run()
+double optEval(){ if(!opt.getForce)optBind(); return opt.getForce( opt.n, opt.pos, opt.force ); }
+double optMoveFIRE(){ return opt.move_FIRE(); }
+int    optNDOFs(){ return opt.n; }
+double* optBuffer( int which ){   // 0=pos 1=vel 2=force 3=invMasses — direct numpy views for branch actions
+    switch(which){ case 0:return opt.pos; case 1:return opt.vel; case 2:return opt.force; case 3:return opt.invMasses; }
+    printf("ERROR optBuffer(%i) out of range\n",which); exit(1);
+}
+int  optStateSize(){ return opt.stateSize(); }
+int  optSaveState( double* buf ){ return opt.saveState(buf); }
+void optRestoreState( const double* buf ){ opt.restoreState(buf); }
 
 //int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0, double* outE, double* outF ){ 
 int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF ){
