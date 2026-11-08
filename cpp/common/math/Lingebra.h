@@ -48,6 +48,33 @@ namespace Lingebra{
 	void linSolve_BCG        ( int n, int m, double ** A, double * b, double * x );
 	void leastSquareFit_Gauss( int n, int m, double ** A, double * b, double * x );
 
+	// Flat-array least squares min|A*x - b| via modified Gram-Schmidt with column pivoting (CPQR).
+	// A is n x m stored COLUMN-MAJOR (m columns of length n: A + j*n). Workspaces: Q[n*m], R[m*m],
+	// piv[m], vwork[n]. rcond: columns whose post-orthogonalization norm < rcond*|col| are dropped
+	// (their x stays 0). Returns numerical rank. No normal equations, no internal allocation.
+	inline int leastSquareFit_QR( int n, int m, const double* A, const double* b, double* x, double* Q, double* R, int* piv, double* vwork, double rcond ){
+		for(int j=0;j<m;j++)x[j]=0;
+		for(int j=0;j<m*m;j++)R[j]=0;
+		double nrm[64]; int ord[64];
+		if(m>64){ printf("ERROR leastSquareFit_QR: m=%i > 64\n", m); exit(1); }
+		for(int j=0;j<m;j++){ const double* aj=A+j*n; double s=0; for(int i=0;i<n;i++)s+=aj[i]*aj[i]; nrm[j]=sqrt(s); ord[j]=j; }
+		for(int a=0;a<m;a++)for(int c=a+1;c<m;c++)if(nrm[ord[c]]>nrm[ord[a]]){ int t=ord[a];ord[a]=ord[c];ord[c]=t; }
+		int kc=0;                                            // surviving basis columns
+		for(int jo=0;jo<m;jo++){
+			int j=ord[jo]; const double* aj=A+j*n; double nyj=nrm[j];
+			for(int i=0;i<n;i++)vwork[i]=aj[i];
+			for(int k=0;k<kc;k++){ double* qk=Q+k*n; double r=0; for(int i=0;i<n;i++)r+=qk[i]*vwork[i]; R[k*m+j]=r; for(int i=0;i<n;i++)vwork[i]-=r*qk[i]; }
+			double nv=0; for(int i=0;i<n;i++)nv+=vwork[i]*vwork[i]; nv=sqrt(nv);
+			if( nv < rcond*nyj ) continue;                   // rank-deficient column -> dropped (x[j] stays 0)
+			for(int i=0;i<n;i++)Q[kc*n+i]=vwork[i]/nv;
+			R[kc*m+j]=nv; piv[kc]=j; kc++;
+		}
+		// b_k = Q_k . b ; back-substitute the upper-triangular system over kept columns
+		for(int k=0;k<kc;k++){ double* qk=Q+k*n; double s=0; for(int i=0;i<n;i++)s+=qk[i]*b[i]; vwork[k]=s; }
+		for(int k=kc-1;k>=0;k--){ double s=vwork[k]; for(int l=k+1;l<kc;l++)s-=R[k*m+piv[l]]*x[piv[l]]; x[piv[k]]=s/R[k*m+piv[k]]; }
+		return kc;
+	}
+
 	int eig_Jacobi( int n, double* A, double* V, double* es, double tol, int nMaxIter  );
 	double eig_Jacobi_init( int n, double* A, double* V, int* mjs, int& imax, int& jmax );
 	void eig_Jacobi_step  ( int n, double* A, double* V, int* mjs, int& imax, int& jmax, double& vmax );

@@ -9,7 +9,7 @@
 
 #include <globals.h>
 
-typedef void (*ForceFunction)( int n, double * xs, double * dfs );
+typedef double (*ForceFunction )( int n, double * xs, double * dfs );  // fills dfs with forces; returns energy (may be ignored by methods that only need forces)
 
 class OptLog { public:
     int n=0;
@@ -106,8 +106,44 @@ class DynamicOpt{ public:
     double renorm_vf  = 0;
     double cv,cf;
 
+    // --- opt-in relaxation preconditioner: trajectory-secant diagonal masses (see eFF_optimizer_speedup.md §7.2)
+    // Separate stiffness per particle xyz-block and per scalar (width) DOF. Fictitious relaxation masses, NOT physical MD masses.
+    int     autoMass    = 0;      // 0=off; 1=block-norm secant
+    int     am_nBlocks  = 0;      // leading 3-component blocks (atoms + electron positions)
+    int     am_nScalars = 0;      // trailing scalar DOFs (electron sizes)
+    double  am_kref     = 100.0;  // invM = kref/(kref+k_b); k_b starts at 0 => unit masses
+    double  am_ema      = 0.1;    // EMA weight of each new stiffness sample
+    double* am_k        = 0;      // [am_nBlocks+am_nScalars] smoothed stiffness estimate
+    double* am_xold     = 0;      // [n] previous EVALUATED positions
+    double* am_fold     = 0;      // [n] previous evaluated forces
+    bool    am_init     = false;
+    int     massMetric  = 0;      // 0=legacy metric (vf=v.(invM.f), vv=v.v); 1=mass-consistent (P=v.f, V2=v.(v/invM), G2=f.(invM.f)) — §7.3
 
-    ForceFunction getForce = 0;
+    // --- opt-in gradient-history optimizers (line-search, need energy => getEnergy must be set) — audit §8
+    // lsMethod: 0=off, 1=BB1 spectral GD, 2=Anderson acceleration of x->x-eta*g (multisecant, memory mHist<=mMax)
+    static const int mMax = 8;                       // absolute maximum Anderson history (typically m<=5)
+    int     lsMethod  = 0;
+    int     mHist     = 5;
+    double  lsEta     = 1e-3;                        // Anderson base step scale
+    double  lsAinit   = 1e-3;                        // BB1 first step length
+    double  lsArmijo  = 1e-4;                        // Armijo slope coefficient
+    int     lsEwin    = 5;                           // nonmonotone window (max of last N accepted energies)
+    double* xmin      = 0;                           // optional per-DOF lower bounds (caller-owned, e.g. esize floor); 0=none
+    double* lsXc=0;   // [n]   accepted state          (allocated once in allocLS, only when lsMethod>0)
+    double* lsGc=0;   // [n]   gradient at xc (-force)
+    double* lsXp=0;   // [n]   previous accepted state
+    double* lsGp=0;   // [n]   previous gradient
+    double* lsD =0;   // [n]   search direction
+    double* lsV =0;   // [n]   work vector
+    double* lsS =0;   // [n*mMax] accepted step history (Anderson)
+    double* lsY =0;   // [n*mMax] gradient-diff history
+    double* lsQ =0;   // [n*mMax] QR basis workspace
+    double* lsR =0;   // [mMax*mMax] triangular factor
+    double* lsB =0;   // [mMax] rhs/gamma
+    int*    lsPiv=0;  // [mMax] pivot map
+    double  lsEwin_[5];                              // energy ring buffer
+
+    ForceFunction getForce = 0;   // fills force; returns energy (unused by FIRE/GD, required by run_GH line search)
 
     // ==== function declarations
 
@@ -128,6 +164,9 @@ class DynamicOpt{ public:
     void   FIRE_update_params();
     double optStep();
     bool   optimize( double convF, int nMaxSteps );
+    void   updateAutoMasses();
+    void   allocLS();
+    int    run_GH( int nstepMax, double Fconv, double* outE, double* outF );
 
     double getFmaxAbs( );
     double getFsqSum( );
@@ -195,6 +234,9 @@ class DynamicOpt{ public:
         if(bOwnInvMasses){ _dealloc(invMasses); }else{ invMasses=0; }
         _dealloc(avs);
         _dealloc(avs2);
+        _dealloc(am_k); _dealloc(am_xold); _dealloc(am_fold); am_init=false;
+        _dealloc(lsXc); _dealloc(lsGc); _dealloc(lsXp); _dealloc(lsGp); _dealloc(lsD); _dealloc(lsV);
+        _dealloc(lsS);  _dealloc(lsY);  _dealloc(lsQ);  _dealloc(lsR);  _dealloc(lsB); _dealloc(lsPiv);
         n=0; bOwnPos=true; bOwnVel=true; bOwnForce=true; bOwnInvMasses=true;
     }
 

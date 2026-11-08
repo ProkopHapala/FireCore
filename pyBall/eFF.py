@@ -290,6 +290,28 @@ def initOpt(dt=0.1, damping=0.1, f_limit=1000.0, bMass=False ):
     dt_glob = dt
     return lib.initOpt(dt, damping, f_limit, bMass)
 
+# void setAutoMass( int mode, double kref ){   // opt-in trajectory-secant diagonal preconditioner
+lib.setAutoMass.argtypes  = [c_int, c_double]
+lib.setAutoMass.restype   =  None
+def setAutoMass( mode=0, kref=100.0 ):
+    return lib.setAutoMass( mode, kref )
+
+# void setMassMetric( int m ){   // opt-in mass-consistent FIRE metric (P=v.f power test)
+lib.setMassMetric.argtypes  = [c_int]
+lib.setMassMetric.restype   =  None
+def setMassMetric( m=0 ):
+    return lib.setMassMetric( m )
+
+# int run_GH( int nstepMax, double Fconv, int iMethod, int mHist, double eta, double a_init, double* outE, double* outF )
+# gradient-history optimizers: iMethod 1=BB1 spectral GD, 2=Anderson multisecant (memory mHist, base step eta)
+lib.run_GH.argtypes  = [c_int, c_double, c_int, c_int, c_double, c_double, c_double_p, c_double_p]
+lib.run_GH.restype   =  c_int
+def run_GH(nstepMax=1000, Fconv=1e-4, iMethod=1, mHist=5, eta=0.001, a_init=0.001, outE=None, outF=None):
+    if outE is None: outE=np.full(nstepMax+1, np.nan)
+    if outF is None: outF=np.full(nstepMax+1, np.nan)
+    n = lib.run_GH(nstepMax, Fconv, iMethod, mHist, eta, a_init, _np_as(outE,c_double_p), _np_as(outF,c_double_p) )
+    return n, outE, outF
+
 #  int  run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){
 lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double_p, c_double_p] 
 lib. run.restype   =  c_int

@@ -290,6 +290,13 @@ __kernel void localMD(
                 float2 fk = addKineticGauss_eFF(my_pos.w);
                 my_f.w += fk.y;
                 dbg_fK.w += fk.y;
+                // Internal Coulomb of paired orbital (spin==0): missed by the j!=i pair loop (parity w/ CPU evalEE).
+                // Single constituent e-e pair (qq=1); size force gets .z+.w since both constituent sizes = my_pos.w.
+                if (l_spins[lid - na] == 0) {
+                    float4 cgii = getCoulombGauss((float3)(0.0f,0.0f,0.0f), my_pos.w, my_pos.w, 1.0f);
+                    my_f.w += cgii.z + cgii.w;
+                    dbg_fK.w += cgii.z + cgii.w;
+                }
             }
 
             // --- B. Interaction Loop ---
@@ -325,7 +332,7 @@ __kernel void localMD(
                         // Here dR = Elec - Ion (since I am Ion). Matches ref.
                         float Ri = my_par.s1; // R_eff
                         const int   se = l_spins[j - na];
-                        const float qe = 1.0f;
+                        const float qe = (se==0) ? 2.0f : 1.0f;   // FIX: e2 occupancy (was 1.0 -> underweighted paired orbitals, parity w/ CPU echarge)
                         float4 cg = getCoulombGauss(dR, Ri, other_pos.w, -Q*qe);
                         my_f.xyz += dR * cg.y;
                         // ion has no size DOF
@@ -357,7 +364,7 @@ __kernel void localMD(
 
                         const float3 dRei = my_pos.xyz - other_pos.xyz;
                         const int    se   = l_spins[lid - na];
-                        const float  qe   = 1.0f;
+                        const float  qe   = (se==0) ? 2.0f : 1.0f;   // FIX: e2 occupancy (was 1.0, parity w/ CPU echarge)
                         const float4 cg   = getCoulombGauss(dRei, sQ, my_pos.w, -Q*qe);
 
                         my_f.xyz += -dRei * cg.y;
@@ -405,7 +412,8 @@ __kernel void localMD(
                         // --- Electron-Electron ---
                         int my_spin    = l_spins[lid - na];
                         int other_spin = l_spins[j - na];
-                        const float qij = 1.0f;
+                        // FIX: occupancy-weighted Coulomb (was qij=1 -> e2 pairs underweighted, parity w/ CPU echarge[i]*echarge[j])
+                        const float qij = ((my_spin==0) ? 2.0f : 1.0f) * ((other_spin==0) ? 2.0f : 1.0f);
                         
                         // Per-particle force accumulation: this work-item computes force on i.
                         // Therefore each pair contribution must be added once (CPU i<j loop adds to both i and j).
@@ -564,6 +572,11 @@ __kernel void localMD_energy(
             float2 fk = addKineticGauss_eFF(pi.w);
             if( !(bOffloadCore && (coreMap[ip_start + lid] >= 0)) ){
                 Ek += (double)(fk.x * qe);
+                // Internal Coulomb of paired orbital (si==0): missed by the lid<j pair loop (parity w/ CPU evalEE)
+                if( si == 0 ){
+                    float4 cgii = getCoulombGauss((float3)(0.0f,0.0f,0.0f), pi.w, pi.w, 1.0f);
+                    EeeCoul += (double)cgii.x;
+                }
             }
         }
 
@@ -771,6 +784,11 @@ __kernel void evalEnergy(
         const float  si = pi.w;
         const char spin_i = espins[ipi];
         const float qe_i = (spin_i==0) ? 2.0f : 1.0f;
+        // Internal Coulomb of paired orbital (spin_i==0): missed by the je<ie loop (parity w/ CPU evalEE)
+        if( (spin_i == 0) && !(bOffloadCore && (coreMap[ipi] >= 0)) ){
+            float4 cgii = getCoulombGauss((float3)(0.0f,0.0f,0.0f), si, si, 1.0f);
+            EeeCoul += (double)cgii.x;
+        }
         for(int je=0; je<ie; je++){
             const int ipj = ip_start + na + je;
             if(bOffloadCore){

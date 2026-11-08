@@ -224,6 +224,16 @@ void initOpt( double dt, double damping, double f_limit, bool bMass ){
     opt.bfixmask = (ff.fixmask!=0);
 };
 
+// Opt-in trajectory-secant preconditioner (fictitious relaxation masses; see eFF_optimizer_speedup.md §7.2)
+// mode: 0=off, 1=block-norm secant; kref: stiffness scale invM=kref/(kref+k). Block layout is set in run()
+// from the current na/ne (atoms + electron positions as 3D blocks; electron sizes as separate scalar DOFs).
+void setAutoMass( int mode, double kref ){
+    opt.autoMass = mode; opt.am_kref = kref; opt.am_init = false;
+    printf("setAutoMass(mode=%i, kref=%g)\n", mode, kref );
+}
+// Opt-in mass-consistent FIRE metric (see §7.3). 0=legacy v.(invM.f); 1=P=v.f power test + sqrt(V2/G2) mixing.
+void setMassMetric( int m ){ opt.massMetric = m; printf("setMassMetric(%i)\n", m ); }
+
 //int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0, double* outE, double* outF ){ 
 int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF ){
  
@@ -231,13 +241,26 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
     double F2 = 1.0;
     double Etot;
     int itr=0;
-    if( (ialg!=0)&(!opt_initialized) ){ printf("ERROR ialg(%i)>0 but optimizer not initialized => call initOpt() first !"); exit(0); };
+    if( (ialg!=0)&(!opt_initialized) ){ printf("ERROR ialg(%i)>0 but optimizer not initialized => call initOpt() first !"); exit(1); };
+    if( (ialg!=0) && ( (opt.pos!=ff.pDOFs) || (opt.force!=ff.fDOFs) || (opt.vel!=ff.vDOFs) || (opt.invMasses!=ff.invMasses) || (opt.fixmask!=ff.fixmask) || (opt.n!=ff.nDOFs) ) ){
+        printf("WARNING run(): optimizer bound to stale DOF buffers (ff.realloc after initOpt) => re-binding opt\n");
+        opt.bindOrAlloc( ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses );
+        opt.fixmask  = ff.fixmask;
+        opt.bfixmask = (ff.fixmask!=0);
+        opt.am_init  = false;   // secant history holds stale pointers/sizes => re-init
+    }
     opt.setTimeSteps(dt);
+    if(opt.autoMass){ opt.am_nBlocks = ff.na + ff.ne; opt.am_nScalars = ff.ne; }   // [apos|epos] 3D blocks + [esize] scalars
     //printf( "verbosity %i nstepMax %i Fconv %g dt %g \n", verbosity, nstepMax, Fconv, dt );
     //printf( "trj_fname %s \n", trj_fname );
     if(ialg>0){
-        //printf("run() opt.vel %p\n", opt.vel); 
-        opt.cleanVel( ); 
+        //printf("run() opt.vel %p\n", opt.vel);
+        opt.cleanVel( );
+        // fresh restart semantics: reset the whole FIRE history (velocities, adaptive mixing, positive-power streak)
+        // so a run() result cannot depend on hidden state carried over from a previous run()/scan point
+        opt.damping = opt.damp_max;
+        opt.lastNeg = 0;
+        opt.am_init = false;    // fresh start => no secant history (estimates rebuild from the first two evals)
     }
     bool bConv=false;
     if(ff.nfix>0){ ff.apply_hard_fix(); }
@@ -245,42 +268,70 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
         eff_dbg_step_current = itr;
         ff.clearForce();
         Etot = ff.eval();
+        if( !std::isfinite(Etot) ){ printf("ERROR in run(): non-finite Etot=%g at itr=%i => abort\n", Etot, itr ); exit(1); }
         if( ff.bNegativeSizes & (verbosity>0) ){ printf( "negative electron sizes in step #%i => perhaps decrease relaxation time step dt=%g[fs]? \n", itr, opt.dt ); }
         if(ff.nfix>0){ if(ialg>0){ ff.clear_fixed_dynamics(); }else{ ff.clear_fixed_force(); } }
+        // Convergence on RAW force norm of FREE DOFs, computed on the CURRENT (pre-move) state so that
+        // the returned positions/energy/forces are always consistent. move_FIRE()/move_MD() return mass-weighted
+        // ff=sum((f*invM)^2) which falsely reports convergence/divergence when invMasses != 1 (e.g. makeMasses).
+        // nfix/fixed_inds constraint forces are already zeroed by clear_fixed_*; fixmask DOFs are excluded here.
+        F2 = 0; for(int i=0;i<ff.nDOFs;i++){ if(ff.fixmask && ff.fixmask[i])continue; double f=ff.fDOFs[i]; F2+=f*f; }
+        if( !std::isfinite(F2) ){ printf("ERROR in run(): non-finite force at itr=%i => abort\n", itr ); exit(1); }
+        if(outE){ outE[itr]=Etot;     }
+        if(outF){ outF[itr]=sqrt(F2); }
+        if(verbosity>2){ printf("itr: %6i Etot[eV] %16.8f |F|[eV/A] %16.8f \n", itr, Etot, sqrt(F2) ); };
+        if(F2<F2conv){ bConv=true; break; }   // test BEFORE moving => returned state matches reported force
+
         switch(ialg){
-            case  0: F2 = ff .move_GD      (dt);      break;
-            case -1: F2 = opt.move_LeapFrog(dt);      break;
-            case  1: F2 = opt.move_MD (dt,opt.damping); break;
-            case  2: F2 = opt.move_FIRE();       break;
-            case  3: F2 = opt.move_MD_dbg(dt,opt.damping); break;
+            case  0: ff .move_GD      (dt);      break;
+            case -1: opt.move_LeapFrog(dt);      break;
+            case  1: opt.move_MD (dt,opt.damping); break;
+            case  2: opt.move_FIRE();       break;
+            case  3: opt.move_MD_dbg(dt,opt.damping); break;
         }
 
         // Match GPU localMD behavior: keep electron sizes > 0
         // (GPU test harness clamps to ~1e-3)
         if(ff.esize){
             for(int ie=0; ie<ff.ne; ie++){
-                if(ff.esize[ie] < 1e-3) ff.esize[ie] = 1e-3;
+                if(ff.esize[ie] < ff.min_esize) ff.esize[ie] = ff.min_esize;   // FIX: same floor constant as evalKinetic (was literal 1e-3 vs 0.1)
             }
         }
         if(ff.nfix>0){ ff.apply_hard_fix(); }
-        if(outE){ outE[itr]=Etot;     }
-        if(outF){ outF[itr]=sqrt(F2); }
-        if(verbosity>2){ printf("itr: %6i Etot[eV] %16.8f |F|[eV/A] %16.8f \n", itr, Etot, sqrt(F2) ); };
-     
-        // if(F2<F2conv){
-        //     //if(verbosity>0){ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
-        //     bConv=true;
-        //     break;
-        // }
         // if( (trj_fname) && (itr%savePerNsteps==0) )  ff.save_xyz( trj_fname, "a" );
-
         if( (trj_fname) && (itr%savePerNsteps==0) )  ff.save_xyz_core( trj_fname, "a", "" );
-     
-        if(F2<F2conv){ bConv=true; break; }
     }
     if(verbosity>1){ printf("run() %s in %6i iterations Etot[eV] %16.8f |F|[eV/A] %16.8f (Fconv=%g) \n", bConv ? "    CONVERGED" : "NOT-CONVERGED", itr, Etot, sqrt(F2), Fconv ); };
     //printShortestBondLengths();
     return itr;
+}
+
+// ================= Gradient-history optimizers (audit §8), opt-in alternatives to FIRE =================
+// Thin eFF wrapper over reusable DynamicOpt::run_GH. iMethod: 1 = BB1 spectral GD, 2 = Anderson (memory mHist<=8).
+// Bridges ff.eval() to opt.getForce (with constraint-force zeroing), and maps the esize floor to opt.xmin bounds.
+static double _eff_eval_E( int n, double* xs, double* dfs ){
+    ff.clearForce(); double E = ff.eval();
+    if( ff.nfix>0 ){ ff.clear_fixed_dynamics(); }
+    if(dfs!=ff.fDOFs) memcpy( dfs, ff.fDOFs, n*sizeof(double) );
+    return E;
+}
+int run_GH( int nstepMax, double Fconv, int iMethod, int mHist, double eta, double a_init, double* outE, double* outF ){
+    if( (opt.pos!=ff.pDOFs) || (opt.force!=ff.fDOFs) || (opt.vel!=ff.vDOFs) || (opt.invMasses!=ff.invMasses) || (opt.fixmask!=ff.fixmask) || (opt.n!=ff.nDOFs) ){
+        printf("WARNING run_GH(): optimizer bound to stale DOF buffers => re-binding opt\n");
+        opt.bindOrAlloc( ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses );
+        opt.fixmask  = ff.fixmask;
+        opt.bfixmask = (ff.fixmask!=0);
+    }
+    opt.lsMethod=iMethod; opt.mHist=mHist; opt.lsEta=eta; opt.lsAinit=a_init;
+    opt.getForce = _eff_eval_E;
+    // lower bounds: -inf everywhere except esize DOFs -> min_esize (electron-size floor)
+    static double* lsxmin=0; static int lsxmin_n=0;
+    if( lsxmin_n != ff.nDOFs ){ _realloc(lsxmin, ff.nDOFs); lsxmin_n=ff.nDOFs; }
+    int iSz0=(ff.na+ff.ne)*3;
+    for(int i=0;i<ff.nDOFs;i++)lsxmin[i]=-1e300;
+    for(int ie=0;ie<ff.ne;ie++)lsxmin[iSz0+ie]=ff.min_esize;
+    opt.xmin = lsxmin;
+    return opt.run_GH( nstepMax, Fconv, outE, outF );
 }
 
 void set_constrains( int nfix, Quat4d* fixed_poss, Vec2i* fixed_inds, bool bRealloc=true  ){
