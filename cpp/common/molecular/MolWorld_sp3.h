@@ -2171,7 +2171,7 @@ void pullAtom( int ia, Vec3d* apos, Vec3d* fapos, float K=-2.0 ){
 double eval_no_omp(){
     double E=0;
     double F2max = ffl.FmaxNonBonded*ffl.FmaxNonBonded;
-    ffl.bNonBonded=bNonBonded; ffl.setNonBondStrategy( bNonBondNeighs*2-1 );
+    ffl.bNonBonded=bNonBonded; ffl.setNonBondStrategy( bNonBondNeighs*2-1, bExclusion2 );
     for(int i=0; i<ffl.natoms; i++){ ffl.fapos[i]=Vec3dZero; }
     for(int ia=0; ia<ffl.natoms; ia++){ 
         {                 ffl.fapos[ia           ] = Vec3dZero; } // atom pos force
@@ -2180,7 +2180,12 @@ double eval_no_omp(){
         if(bNonBonded){
             if(bNonBondNeighs)[[likely]]{
                 if(bPBC)[[likely]]{ E+=ffl.evalLJQs_ng4_PBC_atom_omp( ia ); }
-                else              { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); } 
+                else              {
+                    // same as run_no_omp: Exclusion2 skips 1–2 and 1–3 (geminal H···H stays angle-only)
+                    if(bExclusion2){ E+=ffl.evalLJQs_ex2_atom    ( ia ); }
+                    else           { E+=ffl.evalLJQs_ng4_atom_omp( ia ); }
+                    // else              { E+=ffl.evalLJQs_ng4_atom_omp    ( ia ); }
+                }
             }else{
                 if(bPBC)[[likely]]{ E+=ffl.evalLJQs_PBC_atom_omp( ia, F2max ); }
                 else              { E+=ffl.evalLJQs_atom_omp    ( ia, F2max ); } 

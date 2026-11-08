@@ -160,7 +160,8 @@ class BrowserView : public Browser { public:
         std::string ext = fileExt(path);
         overlay.clear();
         if(ext=="npz"){
-            NpzFile npz = npz_read_file(path.c_str());
+            NpzFile npz;
+            if(!npz_try_read_file(path.c_str(), npz)) return -1; // loud NpzIO ERROR already printed; skip this tile
             if(topology_has_bbox_keys(npz)){
                 loadTopologyNpzOnce(npz, *mol, params, overlay);
             }else{
@@ -231,6 +232,12 @@ class BrowserView : public Browser { public:
             target = work_dir + "/" + newDir;
         }
         printf("BrowserView::navigateToDir: '%s' -> '%s'\n", work_dir.c_str(), target.c_str());
+        DIR* dp = opendir(target.c_str());
+        if(!dp){
+            printf("ERROR navigateToDir: cannot open '%s' (errno=%i %s), stay at '%s'\n", target.c_str(), errno, strerror(errno), work_dir.c_str());
+            return;
+        }
+        closedir(dp);
         work_dir = target;
         clearThumbnails();
         thumbRects.clear();
@@ -245,6 +252,7 @@ class BrowserView : public Browser { public:
         for(int i=0; i<(int)molecules.size(); i++){ delete molecules[i]; }
         molecules.clear();
         topologyOverlays.clear();
+        std::vector<std::string> loadedNames;
         for(int i=0; i<(int)fileNames.size(); i++){
             printf("==================\n");
             printf("readMoleculess[%i]\n", i);
@@ -259,19 +267,25 @@ class BrowserView : public Browser { public:
                 for(int j=0; j<mol->natoms; j++){ pmin.setIfLower(mol->pos[j]); pmax.setIfGreater(mol->pos[j]); }
                 Vec3d span = pmax - pmin;
                 printf("  bbox: span(%.3f,%.3f,%.3f)\n", span.x, span.y, span.z);
-                if(bOrientFlat && mol->natoms >= 3){
+                // FindRotation on Td/Oh nanocrystals has degenerate eigenvalues and collapses the cluster to a line. Keep lab frame when AABB is cubic.
+                double smin = fmin(span.x, fmin(span.y, span.z));
+                double smax = fmax(span.x, fmax(span.y, span.z));
+                if(bOrientFlat && mol->natoms >= 3 && smin > 1e-6 && (smax/smin) > 1.25){
                     mol->FindRotation( rot );
                     mol->orient( {0,0,0}, rot.a, rot.b );
                 }
                 mol->assignREQs( *params );
-                if(mol->nbonds==0) mol->findBonds_brute( 0.5, true );
+                if(mol->nbonds==0) mol->findBonds_brute( 2.4, false ); // Å; 0.5*Rvdw missed Si–Si and died when atomType was -1
                 molecules.push_back(mol);
+                loadedNames.push_back(fileNames[i]);
                 topologyOverlays.push_back(overlay);
-                printf("  loaded mol[%i] '%s' natom %i nbond %i n_groups %i\n", i, fileNames[i].c_str(), mol->natoms, mol->nbonds, overlay.n_groups);
+                printf("  loaded mol[%i] '%s' natom %i nbond %i n_groups %i\n", (int)molecules.size()-1, fileNames[i].c_str(), mol->natoms, mol->nbonds, overlay.n_groups);
             }else{
+                printf("ERROR readMoleculess: failed to load '%s'\n", path.c_str());
                 delete mol;
             }
         }
+        fileNames.swap(loadedNames);
     }
 
     void renderThumbnails( AppSDL2OGL_3D* app ){
@@ -329,7 +343,7 @@ class BrowserView : public Browser { public:
         Draw2D::drawRectangle( 0, HEIGHT-pathBarHeight, WIDTH, HEIGHT, true );
         Draw::setRGB( 0xFFFFFF );
         char str[512];
-        sprintf( str, "Dir: %s  |  dirs+files: %i", work_dir.c_str(), totalTiles() );
+        sprintf( str, "Dir: %s  |  dirs+files: %i  |  [Esc] parent  [Ctrl+Q] quit", work_dir.c_str(), totalTiles() );
         Draw2D::drawText( str, 0, {4, HEIGHT-pathBarHeight+2}, 0.0, fontTex, fontSizeDef );
 
         // ---- ACDsee-style grid: folder tiles first, then molecule thumbnails

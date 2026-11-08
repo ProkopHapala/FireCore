@@ -3,7 +3,7 @@ type: ResultsReport
 title: Si Nanocrystal Hessian Force-Field Fit
 description: Current all-Si PySCF benchmark for hierarchical bond-angle fitting and optional local valence couplings.
 tags: [fffit, silicon, hessian, vibration, forcefield]
-timestamp: 2026-07-10
+timestamp: 2026-09-03
 ---
 
 # Si Nanocrystal FFfit Results
@@ -73,3 +73,20 @@ CPP_BUILD_PATH=$PWD/cpp/Build-opt/libs python3 tests/tSiNCs/test_FFfit.py \
 - UFF torsions and 1-4 distance springs remain optional diagnostics, not recommended Si-network production terms.
 - Cross terms currently require `--equilibrium local`; their type-average prestress Hessian is intentionally not approximated.
 - A lower fit residual is accepted only after checking model stability, condition number, and held-out/independent spectra.
+
+## Pin-ladder (2026-09-03, local \(K_{ab}\), not FTIR)
+
+Run: `CPP_BUILD_PATH=$PWD/cpp/Build-opt/libs python3 tests/tSiNCs/test_FFfit.py --ladder si`
+
+Frozen-geometry LS. Hydride \(k\) from SiH₄ PBE/def2svp is **frozen** on later stages. Stage B (Si₂H₆) skipped (no PBE Hessian). L1 is PBE/ccECP-cc-pVDZ — pin-transfer, not a mixed-XC solve. Do **not** cite these frequencies as FTIR (no FIRE).
+
+| Stage | Molecule | \(k_{\mathrm{SiH}}\) | \(k_{\mathrm{HSiH}}\) | \(k_{\mathrm{SiSi}}\) | \(k_{\mathrm{SiSiSi}}\) | \(k_{\mathrm{HSiSi}}\) | stretch RMSE (nH, metric) |
+|---|---|---:|---:|---:|---:|---:|---:|
+| A | SiH₄ | 17.76 | 2.051 | — | — | — | 38 |
+| C | Si₁₀H₁₆ | *pin* | *pin* | 8.925 | 0.761 | 1.627 | 78 |
+| D | octahedron_Si | *pin* | *pin* | 8.227 | 0.453 | 1.786 | 154 |
+| E | cube_Si | *pin* | *pin* | 8.071 | 0.539 | 1.691 | 130 |
+
+\(k\) in eV/Å² (bonds) or eV/rad² (angles). \(k_{\mathrm{SiSi}}\) D vs E = **1.9%** (pass). \(k_{\mathrm{XXX}}\) **19%** (cube stiffer) — same family of cube/octa see-saw as C own-min CH vs CH₂. Plots: `tests/tSiNCs/OUT_FFfit_plots/ladder_si_pbe/`.
+
+The 2026-07-10 sphere table above is the **legacy hybrid** (mode+local+internal, joint LS, no pin). Do not mix those \(k\) with this ladder.

@@ -124,11 +124,40 @@ function parseNpy(buf) {
     const shape = shapeParts.length ? shapeParts.map(x => parseInt(x, 10)) : [];
     const dataOff = hoff + hlen;
     const raw = buf.subarray(dataOff);
-    if (descr === '<f8') return { data: new Float64Array(raw.buffer, raw.byteOffset, raw.byteLength / 8), shape, descr };
-    if (descr === '<f4') return { data: new Float32Array(raw.buffer, raw.byteOffset, raw.byteLength / 4), shape, descr };
-    if (descr === '<i4') return { data: new Int32Array(raw.buffer, raw.byteOffset, raw.byteLength / 4), shape, descr };
+    // STORED zip members sit at arbitrary offsets; typed-array views require alignment. Copy when unaligned.
+    const view = (Ctor, esz) => {
+        if (raw.byteLength % esz) throw new Error(`npzIO: payload size ${raw.byteLength} not multiple of ${esz} for ${descr}`);
+        if ((raw.byteOffset % esz) === 0) return new Ctor(raw.buffer, raw.byteOffset, raw.byteLength / esz);
+        return new Ctor(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength));
+    };
+    if (descr === '<f8') return { data: view(Float64Array, 8), shape, descr };
+    if (descr === '<f4') return { data: view(Float32Array, 4), shape, descr };
+    if (descr === '<i8') return { data: view(BigInt64Array, 8), shape, descr };
+    if (descr === '<i4') return { data: view(Int32Array, 4), shape, descr };
     if (descr === '|u1') return { data: new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength), shape, descr };
+    if (descr === '|b1') return { data: new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength), shape, descr };
     throw new Error(`npzIO: unsupported descr ${descr}`);
+}
+
+/// ZIP64 extra 0x0001 (APPNOTE 4.5.3). NumPy np.savez always uses force_zip64=True (npyio.py gh-10776).
+function zip64Sizes(extra, compSz32, rawSz32, name) {
+    const needRaw = rawSz32 === 0xFFFFFFFF;
+    const needComp = compSz32 === 0xFFFFFFFF;
+    if (!needRaw && !needComp) return { compSz: compSz32, rawSz: rawSz32 };
+    let eoff = 0;
+    while (eoff + 4 <= extra.length) {
+        const eid = extra.readUInt16LE(eoff);
+        const elen = extra.readUInt16LE(eoff + 2);
+        if (eid === 1) {
+            let po = 0;
+            let rawSz = rawSz32, compSz = compSz32;
+            if (needRaw) { rawSz = Number(extra.readBigUInt64LE(eoff + 4 + po)); po += 8; }
+            if (needComp) { compSz = Number(extra.readBigUInt64LE(eoff + 4 + po)); po += 8; }
+            return { compSz, rawSz };
+        }
+        eoff += 4 + elen;
+    }
+    throw new Error(`npzIO: local sizes 0xFFFFFFFF but no ZIP64 extra 0x0001 in ${name}`);
 }
 
 function readZipEntries(buf) {
@@ -138,13 +167,19 @@ function readZipEntries(buf) {
         const sig = buf.readUInt32LE(off);
         if (sig === 0x06054b50 || sig === 0x02014b50) break;
         if (sig !== 0x04034b50) throw new Error(`npzIO: bad zip sig at ${off}`);
+        const flags = buf.readUInt16LE(off + 6);
         const compM = buf.readUInt16LE(off + 8);
-        const compSz = buf.readUInt32LE(off + 18);
-        const rawSz = buf.readUInt32LE(off + 22);
+        const compSz32 = buf.readUInt32LE(off + 18);
+        const rawSz32 = buf.readUInt32LE(off + 22);
         const nameLen = buf.readUInt16LE(off + 26);
         const extraLen = buf.readUInt16LE(off + 28);
+        if (off + 30 + nameLen + extraLen > buf.length) throw new Error(`npzIO: local header overflow at ${off}`);
         const name = buf.toString('utf8', off + 30, off + 30 + nameLen);
+        if (flags & 0x08) throw new Error(`npzIO: entry ${name} uses ZIP data-descriptor flag (0x08)`);
+        const extra = buf.subarray(off + 30 + nameLen, off + 30 + nameLen + extraLen);
+        const { compSz, rawSz } = zip64Sizes(extra, compSz32, rawSz32, name);
         const dataStart = off + 30 + nameLen + extraLen;
+        if (dataStart + compSz > buf.length) throw new Error(`npzIO: entry ${name} truncated (dataStart=${dataStart} compSz=${compSz} fileLen=${buf.length})`);
         const comp = buf.subarray(dataStart, dataStart + compSz);
         let raw;
         if (compM === 0) raw = comp;
@@ -198,13 +233,13 @@ export function molToCrystalArrays(mol) {
 
 export function writeCrystalNpz(fs, outPath, { pos, Z, bonds_ij, gen_params = '', timing_ms = 0 }) {
     const n = Z.length;
+    if (!bonds_ij || !bonds_ij.length) throw new Error(`writeCrystalNpz: missing bonds_ij (explicit topology required) ${outPath}`);
     pos._shape = [n, 3];
     Z._shape = [n];
-    if (bonds_ij && bonds_ij.length) bonds_ij._shape = [bonds_ij.length / 2, 2];
+    bonds_ij._shape = [bonds_ij.length / 2, 2];
     const genBytes = new Uint8Array(new TextEncoder().encode(String(gen_params)));
     genBytes._shape = [genBytes.length];
-    const arrays = { pos, Z, natoms: new Int32Array([n]), gen_params: genBytes };
-    if (bonds_ij && bonds_ij.length) arrays.bonds_ij = bonds_ij;
+    const arrays = { pos, Z, natoms: new Int32Array([n]), gen_params: genBytes, bonds_ij };
     if (timing_ms > 0) arrays.timing_ms = new Float64Array([timing_ms]);
     writeNpzCompressed(outPath, arrays, fs);
 }
@@ -233,12 +268,16 @@ export function readXyzPositions(fs, xyzPath) {
     return { pos, Z, natoms: n };
 }
 
-export function crystalToXYZ(pos, Z) {
+export function crystalToXYZ(pos, Z, bonds_ij = null) {
     const n = Z.length;
-    const lines = [`${n}`, 'nanocrystal pipeline'];
+    const nb = bonds_ij ? ((bonds_ij.length / 2) | 0) : 0;
+    const lines = [nb > 0 ? `${n} ${nb}` : `${n}`, 'nanocrystal pipeline'];
     for (let i = 0; i < n; i++) {
         const sym = Z_TO_SYM[Z[i]] || 'X';
         lines.push(`${sym} ${pos[i * 3].toFixed(6)} ${pos[i * 3 + 1].toFixed(6)} ${pos[i * 3 + 2].toFixed(6)}`);
+    }
+    for (let k = 0; k < nb; k++) {
+        lines.push(`${(bonds_ij[k * 2] | 0) + 1} ${(bonds_ij[k * 2 + 1] | 0) + 1}`);
     }
     return lines.join('\n') + '\n';
 }

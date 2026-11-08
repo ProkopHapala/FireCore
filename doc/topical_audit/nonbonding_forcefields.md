@@ -90,6 +90,8 @@ Bonded neighbors (1-2: directly bonded; 1-3: angle neighbors) must be excluded f
 
 The choice is controlled at compile time or runtime via `bSubtractBonded` flags.
 
+**Cluster Morse vs GridFF Morse.** `evalLJQs_ex2_atom` is LJ (`getLJQH`) unless `NBFF::bMorseNonBond` (`setMorseNonBond`). Morse α for AFM/GridFF is a different code path. Surface H steric on diamond NCs: atlas `--nonbond surface` (LJ); fitter `nbscan`/`morse2d` — [`MMFF_C_CH_vs_CH2_kfit.md`](../Topics/FTIR_Nanocrystals/MMFF_C_CH_vs_CH2_kfit.md). Isolated-cluster `getHessian3Nx3N` keeps Exclusion2 when FIRE had it; PBC Hessians stay bonded-only.
+
 ### Test Coverage
 
 - `tests/tUFF/test_UFF_multi.py` — tests that non-bonded exclusions are handled correctly in multi-system mode.
@@ -220,6 +222,7 @@ which is naturally compatible with the geometric-mean convention used in most fo
 - [Forcefields Overview](forcefields_overview.md) — high-level taxonomy of all force field classes
 - [Intramolecular Forcefields](intramolecular_forcefields.md) — UFF, MMFFsp3, ProjectiveDynamics, XPBD, RigidBody
 - [Surface Interactions](surface_interactions.md) — GridFF, FoldedAtomicFunctions, Ewald2D
+- [`MMFF_C_CH_vs_CH2_kfit.md`](../Topics/FTIR_Nanocrystals/MMFF_C_CH_vs_CH2_kfit.md) — cluster Exclusion2 Morse vs GridFF Morse on C L1 NCs
 - [Web Force Fields](forcefields_web_implementation.md) — WebGL/WebGPU shader implementations
 
 ---

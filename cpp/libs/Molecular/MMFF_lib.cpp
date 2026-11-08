@@ -84,6 +84,7 @@ void init_buffers(){
             buffers["bKs"]    = (double*)W.ffl.bKs;     // [nnode] bond stiffness
             buffers["bLs"]    = (double*)W.ffl.bLs;     // [nnode] bond lengths
             buffers["apars"]  = (double*)W.ffl.apars;   // [nnode] angle parameters (c0, Kss, Ksp, c0_e)
+            buffers["angles"] = (double*)W.ffl.angles;  // [nnode*6] (cos θ0/2, sin θ0/2, Kss) when bEachAngle
             buffers["Ksp"]    = (double*)W.ffl.Ksp;     // [nnode] pi-sigma stiffness
             buffers["Kpp"]    = (double*)W.ffl.Kpp;     // [nnode] pi-planarization stiffness
         } // else{ // UFF-specific}
@@ -377,7 +378,8 @@ void getHessian3Nx3N(int n,int* inds,double* out_hessian,double dx){
         printf("WARNING: getHessian3Nx3N bPBC=0 — cluster Hessian; for bulk phonons use lvs xyz + nPBC>0\n");
     }
     const bool bNonBonded0 = W.bNonBonded;
-    W.bNonBonded=false;
+    // W.bNonBonded=false;  // old: always bonded Hessian. PBC 27-image NB is not a Hessian; isolated NC must share FIRE's Exclusion2 LJ.
+    if(W.bPBC) W.bNonBonded=false;
     std::vector<Vec3d> orig(n);
     int dim = n * 3;
     for(int i=0;i<dim*dim;i++){ out_hessian[i]=0.0; }
@@ -386,14 +388,14 @@ void getHessian3Nx3N(int n,int* inds,double* out_hessian,double dx){
         int ip=inds[p];
         for(int k=0;k<3;k++){
             double v=orig[p].array[k];
-            W.nbmol.apos[ip].array[k]=v+dx; W.eval();
+            W.nbmol.apos[ip].array[k]=v+dx; if(W.bNonBonded){ W.eval_no_omp(); }else{ W.eval(); }
             for(int o=0; o<n; o++){
                 int io = inds[o];
                 for(int l=0; l<3; l++){
                     out_hessian[(o*3+l)*dim + (p*3+k)] = -W.nbmol.fapos[io].array[l];
                 }
             }
-            W.nbmol.apos[ip].array[k]=v-dx; W.eval();
+            W.nbmol.apos[ip].array[k]=v-dx; if(W.bNonBonded){ W.eval_no_omp(); }else{ W.eval(); }
             for(int o=0; o<n; o++){
                 int io = inds[o];
                 for(int l=0; l<3; l++){
@@ -543,6 +545,41 @@ void setSwitches2( int CheckInvariants, int PBC, int NonBonded, int NonBondNeigh
     );
 
     #undef _setbool
+}
+
+/// 0=keep, >0 enable 1-2+1-3 exclusions (rebuilds excl), <0 disable. Needed for surface H steric without geminal CH₂ LJ.
+void setExclusion2( int i ){
+    if(i==0) return;
+    const bool b = (i>0);
+    W.bExclusion2 = b;
+    W.ffl.bExclusion2 = b;
+    if(W.bUFF) W.ffu.bExclusion2 = b;
+    if(b){
+        if(W.bUFF){ W.ffu.makeSecondNeighs(); }
+        else      { W.ffl.makeSecondNeighs(); }
+    }
+    printf( "setExclusion2() bExclusion2=%i excl=%p\n", (int)W.bExclusion2, (void*)(W.bUFF ? W.ffu.excl : W.ffl.excl) );
+}
+
+/// Cluster Exclusion2 NB: i>0 Morse, i<0 LJ. K>0 sets alphaMorse (K_Morse). Do not call assignAngles here.
+void setMorseNonBond( int i, double K ){
+    if(i!=0){
+        const bool b = (i>0);
+        W.ffl.bMorseNonBond = b;
+        if(W.bUFF) W.ffu.bMorseNonBond = b;
+    }
+    if(K>0.0){
+        W.ffl.alphaMorse = K;
+        if(W.bUFF) W.ffu.alphaMorse = K;
+    }
+    printf("setMorseNonBond() bMorseNonBond=%i alphaMorse=%g\n", (int)W.ffl.bMorseNonBond, W.ffl.alphaMorse);
+}
+
+/// i>0: per-angle Kss (angles[nnode*6]). Python copies apars so magnitude stays AtomTypes Kss*4, not AngleTypes 5.1.
+void setEachAngle( int i ){
+    if(i==0) return;
+    W.ffl.bEachAngle = (i>0);
+    printf("setEachAngle() bEachAngle=%i angles=%p\n", (int)W.ffl.bEachAngle, (void*)W.ffl.angles);
 }
 
 void setSwitchesUFF( int DoBond, int DoAngle, int DoDihedral, int DoInversion, int DoAssemble, int SubtractBondNonBond, int ClampNonBonded ){

@@ -74,7 +74,8 @@ export function toXYZString(mol, opts = {}) {
     const bQ = !!qs;
     const lvec = (opts.lvec !== undefined) ? opts.lvec : (mol.lvec || null);
     const out = [];
-    out.push(String(mol.atoms.length));
+    const nBn = mol.bonds ? mol.bonds.length : 0;
+    out.push(nBn > 0 ? `${mol.atoms.length} ${nBn}` : String(mol.atoms.length));
     if (lvec && lvec.length === 3) {
         const a = lvec[0], b = lvec[1], c = lvec[2];
         out.push(`lvs ${a.x} ${a.y} ${a.z}   ${b.x} ${b.y} ${b.z}   ${c.x} ${c.y} ${c.z}`);
@@ -89,6 +90,11 @@ export function toXYZString(mol, opts = {}) {
         const z = at.pos.z.toFixed(6);
         if (bQ) out.push(`${sym} ${x} ${y} ${z} ${(qs[i] !== undefined) ? qs[i] : 0.0}`);
         else out.push(`${sym} ${x} ${y} ${z}`);
+    }
+    for (let i = 0; i < nBn; i++) {
+        const b = mol.bonds[i];
+        b.ensureIndices(mol);
+        out.push(`${b.a + 1} ${b.b + 1}`);
     }
     return out.join('\n') + '\n';
 }
@@ -179,28 +185,49 @@ export function parseMol2(text) {
     return { pos: new Float32Array(apos), types: new Uint8Array(types), bonds, lvec };
 }
 
-/// Parse XYZ text into parsed arrays.
+/// Parse XYZ text into parsed arrays. Optional `nAtoms nBonds` header; 1-based bond pairs after the atom block (5-ring closers are too long for distance guessing).
 export function parseXYZ(text) {
     const lines = text.split(/\r?\n/);
-    let i0 = 0;
-    if (lines.length >= 2) i0 = 2;
+    let iLine = 0;
+    while (iLine < lines.length && !lines[iLine].trim()) iLine++;
+    if (iLine >= lines.length) throw new Error('parseXYZ: empty file');
+    const hdr = lines[iLine].trim().split(/\s+/);
+    const n = parseInt(hdr[0], 10);
+    const nBn = (hdr.length >= 2) ? (parseInt(hdr[1], 10) | 0) : 0;
+    if (!(n > 0)) throw new Error(`parseXYZ: bad natoms '${lines[iLine]}'`);
+    if (nBn < 0) throw new Error(`parseXYZ: bad nbonds ${nBn}`);
+    iLine++;
+    if (iLine < lines.length) iLine++; // comment
     const pos = [];
     const types = [];
-    for (let i = i0; i < lines.length; i++) {
-        const line = lines[i].trim();
+    let nRead = 0;
+    while (nRead < n && iLine < lines.length) {
+        const line = lines[iLine++].trim();
         if (!line) continue;
         const parts = line.split(/\s+/);
-        if (parts.length < 4) continue;
-        const sym = parts[0];
-        const x = parseFloat(parts[1]);
-        const y = parseFloat(parts[2]);
-        const z = parseFloat(parts[3]);
-        if (!isFinite(x) || !isFinite(y) || !isFinite(z)) continue;
-        const Z = asZ(sym);
+        if (parts.length < 4) throw new Error(`parseXYZ: atom ${nRead + 1} needs symbol x y z, got '${line}'`);
+        const Z = asZ(parts[0]);
+        const x = parseFloat(parts[1]), y = parseFloat(parts[2]), z = parseFloat(parts[3]);
+        if (!isFinite(x) || !isFinite(y) || !isFinite(z)) throw new Error(`parseXYZ: non-finite coords on atom ${nRead + 1}`);
         pos.push(x, y, z);
         types.push(Z);
+        nRead++;
     }
-    return { pos: new Float32Array(pos), types: new Uint8Array(types), bonds: [], lvec: null };
+    if (nRead !== n) throw new Error(`parseXYZ: read ${nRead}/${n} atoms`);
+    const bonds = [];
+    let nB = 0;
+    while (nB < nBn && iLine < lines.length) {
+        const line = lines[iLine++].trim();
+        if (!line) continue;
+        const parts = line.split(/\s+/);
+        const a = (parseInt(parts[0], 10) | 0) - 1;
+        const b = (parseInt(parts[1], 10) | 0) - 1;
+        if (a < 0 || b < 0 || a >= n || b >= n) throw new Error(`parseXYZ: bond ${nB + 1} atoms ${a + 1} ${b + 1} out of range n=${n}`);
+        bonds.push([a, b]);
+        nB++;
+    }
+    if (nB !== nBn) throw new Error(`parseXYZ: read ${nB}/${nBn} bonds`);
+    return { pos: new Float32Array(pos), types: new Uint8Array(types), bonds, lvec: null };
 }
 
 /// Normalize element symbols (e.g., "cl" -> "Cl").

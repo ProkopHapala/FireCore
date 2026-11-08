@@ -103,6 +103,9 @@ This is motivated by quantum chemistry: in sp-hybridized atoms, the three σ-bon
 **Recoil Force Assembly**:
 For a bond A–B where B is a capping atom, the force on B is not computed independently. Instead, the force on A is computed, and B receives the equal-and-opposite recoil. This avoids divergent threads (capping atoms would otherwise execute empty angle kernels).
 
+**One \(K_{\mathrm{ss}}\) per node vs `bEachAngle`**:
+Default `apars[ia].z` is one stiffness for all angles on that heavy atom (H–C–H, C–C–H, C–C–C share it). `setEachAngle(+1)` uses `angles[nnode×6]`. Python `MMFFMolecularSession.enable_each_angle` copies from `apars` so scale=1 is not a silent jump to `AngleTypes.dat` 5.1. C L1 cube vs octahedron still failed with that extra knob: [`MMFF_C_CH_vs_CH2_kfit.md`](../Topics/FTIR_Nanocrystals/MMFF_C_CH_vs_CH2_kfit.md).
+
 ### Performance Considerations
 
 - **Localized Data Layout**: All parameters for a node atom (bonds, angles, π-orientation) are stored in a contiguous struct, enabling coalesced GPU memory access.
@@ -332,6 +335,7 @@ The user selects the active force field at runtime (`bMMFF`, `bUFF`, `bRigid`). 
 - [Web Force Fields](forcefields_web_implementation.md) — WebGL/WebGPU shader implementations
 - [Molecular Topology](molecular_topology.md) — topology and graph representations underlying FF evaluation
 - [Molecular Topology Types](molecular_topology_types.md) — atom type assignment and parameter loading
+- [`MMFF_C_CH_vs_CH2_kfit.md`](../Topics/FTIR_Nanocrystals/MMFF_C_CH_vs_CH2_kfit.md) — C L1: one \(K_{\mathrm{ss}}\) per node vs split HXH; surface Morse
 
 ---
 

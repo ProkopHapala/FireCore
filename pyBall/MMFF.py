@@ -853,7 +853,7 @@ def getBuffs( NEIGH_MAX=4 ):
     nDOFs=ndims[0]; natoms=ndims[1];  nnode=ndims[2]; ncap=ndims[3]; npi=ndims[4]; nbonds=ndims[5]; nvecs=ndims[6]; ne=ndims[7]; ie0=ndims[8]
     print( "getBuffs(): nDOFs=%i nvecs=%i  natoms=%i nnode=%i ncap=%i npi=%i nbonds=%i nvecs=%i ne=%i ie0=%i " %(nDOFs,nvecs,natoms,nnode,ncap,npi,nbonds,nvecs,ne,ie0) )
     Es    = getBuff ( "Es",    (6,) )  # [ Etot,Eb,Ea, Eps,EppT,EppI; ]
-    global DOFs,fDOFs,vDOFs,apos,fapos,REQs,PLQs,pipos,fpipos,bond_l0,bond_k, bond2atom,neighs,selection,atypes,bKs,bLs,apars,Ksp,Kpp
+    global DOFs,fDOFs,vDOFs,apos,fapos,REQs,PLQs,pipos,fpipos,bond_l0,bond_k, bond2atom,neighs,selection,atypes,bKs,bLs,apars,angles,Ksp,Kpp
     #Ebuf     = getEnergyTerms( )
     apos      = getBuff ( "apos",     (natoms,3) )
     fapos     = getBuff ( "fapos",    (natoms,3) )
@@ -869,7 +869,8 @@ def getBuffs( NEIGH_MAX=4 ):
         atypes    = getIBuff( "atypes",   (natoms,)   )
         bKs       = getBuff ( "bKs",      (nnode,4)  )  # [nnode] bond stiffness (per neighbor)
         bLs       = getBuff ( "bLs",      (nnode,4)  )  # [nnode] bond lengths (per neighbor)
-        apars     = getBuff ( "apars",    (nnode,4)  )  # [nnode] angle parameters (c0, Kss, Ksp, c0_e)
+        apars     = getBuff ( "apars",    (nnode,4)  )  # [nnode] (cos(θ0/2), sin(θ0/2), Kss, piC0) — NOT (c0, Kss, …); kernel uses apar.z as K
+        angles    = getBuff ( "angles",   (nnode,6,3) )  # per-slot (cos θ0/2, sin θ0/2, Kss) when bEachAngle
         Ksp       = getBuff ( "Ksp",      (nnode,4)  )  # [nnode] pi-sigma stiffness
         Kpp       = getBuff ( "Kpp",      (nnode,4)  )  # [nnode] pi-planarization stiffness
         #bond_l0   = getBuff ( "bond_l0",  (nbonds)   )
@@ -1130,6 +1131,24 @@ lib.setSwitchesUFF_NB.restype  = None
 def setSwitchesUFF_NB( NonBonded=0, NonBondNeighs=0, SubtractAngleNonBond=0 ):
     return lib.setSwitchesUFF_NB( NonBonded, NonBondNeighs, SubtractAngleNonBond )
 
+# void setExclusion2( int i )
+lib.setExclusion2.argtypes = [c_int]
+lib.setExclusion2.restype  = None
+def setExclusion2(i=0):
+    return lib.setExclusion2(int(i))
+
+# void setMorseNonBond( int i, double K )  # Exclusion2 Morse α; i>0 on, i<0 off; K=alpha. Distinct from GridFF Morse.
+lib.setMorseNonBond.argtypes = [c_int, c_double]
+lib.setMorseNonBond.restype  = None
+def setMorseNonBond(i=0, K=0.0):
+    return lib.setMorseNonBond(int(i), float(K))
+
+# void setEachAngle( int i )  # per-slot angles[nnode*6] Kss; default is one apars[:,2] per node
+lib.setEachAngle.argtypes = [c_int]
+lib.setEachAngle.restype  = None
+def setEachAngle(i=0):
+    return lib.setEachAngle(int(i))
+
 # int getUFFTypeCode( const char* type_name )
 lib.getUFFTypeCode.argtypes = [c_char_p]
 lib.getUFFTypeCode.restype  = c_int
@@ -1211,8 +1230,7 @@ def setAngleParamsByType( type_i, type_j, type_k, k=None, c0=None, c1=None, c2=N
         cj = getUFFTypeCode(type_j) if isinstance(type_j,str) else type_j
         ck = getUFFTypeCode(type_k) if isinstance(type_k,str) else type_k
         n_matched = 0
-        # MMFF stores angle params per node (apars[nnode,4] = [c0, Kss, Ksp, c0_e])
-        # We set Kss (column 1) if k is provided, c0 (column 0) if c0 is provided
+        # MMFF apars[nnode,4] = (cos(θ0/2), sin(θ0/2), Kss, piC0). Stiffness is column 2 (apar.z).
         for i in range(nnode):
             ti = atypes[i]
             if ti == cj:  # central atom matches
@@ -1225,8 +1243,8 @@ def setAngleParamsByType( type_i, type_j, type_k, k=None, c0=None, c1=None, c2=N
                             if a1 < natoms and a2 < natoms:
                                 t1, t2 = atypes[a1], atypes[a2]
                                 if ((t1==ci and t2==ck) or (t1==ck and t2==ci)):
-                                    if k is not None: apars[i, 1] = k  # Kss
-                                    if c0 is not None: apars[i, 0] = c0  # cosθ0
+                                    if k is not None: apars[i, 2] = k  # Kss (apar.z); col 1 is sin(θ0/2)
+                                    if c0 is not None: apars[i, 0] = c0  # only if caller passes half-angle cos
                                     n_matched += 1
         print(f"setAngleParamsByType MMFF('{type_i}'[{ci}],'{type_j}'[{cj}],'{type_k}'[{ck}]): {n_matched} angles matched")
     else:

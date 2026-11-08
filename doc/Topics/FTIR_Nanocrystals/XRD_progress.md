@@ -1,5 +1,9 @@
 # XRD Simulation on GPU — Progress Report
 
+**Science / inventory SSOT (Kusová strain gradient, checkboxes, all files):** [`../../topical_audit/XRD.md`](../../topical_audit/XRD.md).
+
+This note is the 2026-06 **engine** writeup (Debye histogram, Hessian \(\sigma\), WebGL 2D viewer). It does **not** cover the 2026-09-03 product: radial \(a(\mathbf{r})\) maps on relaxed L2/L3 crystals vs experimental effective size.
+
 ## 1. What was built
 
 ### Source files (add to git)

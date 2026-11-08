@@ -66,6 +66,7 @@ If combined fails but isolation passes, the bug is in interaction logic, not eit
 
 ## Pitfalls
 
+- **Hessian / spectrum only at that FF’s own minimum.** Relax with the same switches and scales, check \(f_{\max}\), then FD Hessian. MMFF at a DFTB geometry is not an MMFF spectrum (residual forces; scaled-FF imaginaries). See `doc/Topics/FTIR_Nanocrystals/Hessian_at_own_minimum.md`.
 - Pi-orbitals: In SPFF, `apos` contains atoms AND pi-nodes. Loop bounds: `natoms` vs `natoms+nnode`.
 - Node/cap layout: Current C++ builder sets `nnode=natoms`, allocates one pi slot per atom. Caps have `Ksp/Kpp=0` but occupy `nvecs`. `bkNeighs` sized `nSystems*nvecs`.
 

@@ -12,17 +12,85 @@ Separation of concerns:
 """
 
 from collections import deque
+from pathlib import Path
+import json
 import numpy as np
 
 # === Unit conversion constants ===
 BOHR_TO_ANG = 0.5291772109
 HARTREE_TO_EV = 27.211386245988
+HARTREE_TO_CM1 = 219474.6313705  # ħω in Hartree → wavenumber
 BOHR_TO_ANG_INV = 1.0 / BOHR_TO_ANG
 HARTREE_PER_BOHR2_TO_EV_PER_ANG2 = HARTREE_TO_EV * BOHR_TO_ANG_INV**2
+# DFTB+ L1 run.py MASS — use for PDOS of those jobs (same AMU as the modes bake)
+DFTBPLUS_AMU = {1: 1.008, 6: 12.011, 14: 28.085}
+SYMBOL_Z = {"H": 1, "C": 6, "Si": 14}
+PYSCF_SMALL_NC = Path("/home/prokop/SIMULATIONS/jobs_pyscf_vib_OUT_small_nc/results")
+CCU_CAGE_PYSCF = Path("/home/prokop/git/CompChemUtils/examples/tSiNCs/jobs_dftb_vib_cages")
 
 def hessian_ha_bohr_to_ev_ang2(H):
     """Convert Hessian from Hartree/Bohr^2 to eV/Angstrom^2."""
     return H * HARTREE_PER_BOHR2_TO_EV_PER_ANG2
+
+# Canonical L1 PBE/ccECP-cc-pVDZ bank (2026-09-03 tight Si). Prefixed dirs: luna_ / tight_ / modefollow_.
+PYSCF_VIB_L1_ROOT = Path("/home/prokop/SIMULATIONS/SiNCs/pyscf_vib_results")
+PYSCF_VIB_L1_LEGACY = Path("/home/prokop/SIMULATIONS/SiNCs/pySCF/jobs/results")  # Batch-1; Si off-min — superseded
+_PYSCF_VIB_BATCH_RANK = {"modefollow": 3, "tight": 2, "luna": 1, "": 0}
+
+def pyscf_vib_job_case_name(job_dir):
+    """Canonical crystal id: status.json['case'], else directory name with luna_/tight_/modefollow_ stripped."""
+    p = Path(job_dir)
+    case = None
+    st = p / "status.json"
+    if st.is_file():
+        case = json.loads(st.read_text()).get("case")
+    name = p.name
+    batch = ""
+    for pref in ("modefollow_", "tight_", "luna_"):
+        if name.startswith(pref):
+            batch = pref[:-1]
+            name = name[len(pref):]
+            break
+    return str(case) if case else name, batch
+
+def n_imag_from_omega_cm(omega_cm, cut=10.0):
+    w = as_signed_wavenumbers_cm1(omega_cm)
+    return int(np.sum(w < -float(cut))), float(w.min()) if w.size else float("nan")
+
+def resolve_pyscf_vib_case_dir(root, case):
+    """Best job dir for a canonical name (cube_Si, …). Prefers fewer imaginaries, then later batch (modefollow>tight>luna)."""
+    root = Path(root)
+    if not root.is_dir():
+        raise FileNotFoundError(root)
+    case = str(case)
+    cand = []
+    for p in root.iterdir():
+        if not p.is_dir() or not (p / "frequencies_cm1.npy").is_file():
+            continue
+        name, batch = pyscf_vib_job_case_name(p)
+        if name != case:
+            continue
+        n_imag, wmin = n_imag_from_omega_cm(np.load(p / "frequencies_cm1.npy"))
+        cand.append((n_imag, -_PYSCF_VIB_BATCH_RANK.get(batch, 0), p, batch, wmin))
+    if not cand:
+        raise FileNotFoundError(f"{root}: no PySCF vib job for case={case!r} (looked for {case}/ and luna_/tight_/modefollow_ prefixes)")
+    cand.sort(key=lambda t: (t[0], t[1]))
+    return cand[0][2]
+
+def list_pyscf_vib_cases(root):
+    """Unique canonical case names under a results root (best-of prefixes)."""
+    root = Path(root)
+    if not root.is_dir():
+        raise FileNotFoundError(root)
+    names = set()
+    for p in root.iterdir():
+        if p.is_dir() and (p / "frequencies_cm1.npy").is_file():
+            names.add(pyscf_vib_job_case_name(p)[0])
+    return sorted(names)
+
+def list_pyscf_vib_case_dirs(root):
+    """One Path per canonical case (best batch)."""
+    return [resolve_pyscf_vib_case_dir(root, c) for c in list_pyscf_vib_cases(root)]
 
 # === Type system ===
 
@@ -51,6 +119,764 @@ def assign_si_environment_types(symbols, bonds, enabled=False):
             raise ValueError(f"Si atom {i} has impossible H coordination {nH[i]}")
         labels[i] = 'SiH3' if nH[i] >= 3 else ('SiH2' if nH[i] == 2 else ('SiH' if nH[i] == 1 else 'Si'))
     return labels
+
+def hydride_counts_from_coords(pos, Z, r_SiH=1.70, r_CH=1.25):
+    """Count XH/XH2/XH3 groups from coordinates (distance cutoff, no topology file)."""
+    pos = np.asarray(pos, float); Z = np.asarray(Z, int)
+    H = np.flatnonzero(Z == 1)
+    out = {'natoms': int(len(Z)), 'nH': int(len(H)), 'SiH': 0, 'SiH2': 0, 'SiH3': 0, 'CH': 0, 'CH2': 0, 'CH3': 0}
+    for z, rcut, keys in ((14, r_SiH, ('SiH', 'SiH2', 'SiH3')), (6, r_CH, ('CH', 'CH2', 'CH3'))):
+        heavies = np.flatnonzero(Z == z)
+        if len(heavies) == 0 or len(H) == 0: continue
+        d = np.linalg.norm(pos[heavies][:, None, :] - pos[H][None, :, :], axis=2)
+        nH = (d < rcut).sum(axis=1)
+        out[keys[0]] = int((nH == 1).sum()); out[keys[1]] = int((nH == 2).sum()); out[keys[2]] = int((nH >= 3).sum())
+        bad = nH[nH > 4]
+        if bad.size: raise ValueError(f"hydride_counts_from_coords: Z={z} atom has nH={int(bad.max())} > 4")
+    return out
+
+def xh_bonds_from_topology(Z, bonds_ij):
+    """Group explicit X–H bonds by hydride class of the heavy (XH / XH2 / XH3). Distance cutoffs are forbidden here — 5-ring closers are topology, not a cutoff."""
+    Z = np.asarray(Z, dtype=int).reshape(-1)
+    from pyBall.io.crystal_npz import as_bonds_ij
+    bonds = as_bonds_ij(bonds_ij, n_atoms=len(Z), ctx='xh_bonds_from_topology')
+    nH = np.zeros(len(Z), dtype=int)
+    pairs = []
+    for i, j in bonds:
+        zi, zj = int(Z[i]), int(Z[j])
+        if zi == 1 and zj == 1:
+            raise ValueError("xh_bonds_from_topology: H–H covalent bond")
+        if zi == 1:
+            i, j, zi, zj = j, i, zj, zi
+        if zj != 1:
+            continue
+        if zi not in (6, 14):
+            raise ValueError(f"xh_bonds_from_topology: H bonded to Z={zi} (want C or Si)")
+        nH[i] += 1
+        pairs.append((i, j))
+    groups = {'XH': [], 'XH2': [], 'XH3': []}
+    for i, j in pairs:
+        nh = int(nH[i])
+        if nh <= 0 or nh > 4:
+            raise ValueError(f"xh_bonds_from_topology: heavy {i} has nH={nh}")
+        key = 'XH3' if nh >= 3 else ('XH2' if nh == 2 else 'XH')
+        groups[key].append((i, j))
+    out = {}
+    for k, v in groups.items():
+        out[k] = np.asarray(v, dtype=np.int32).reshape(-1, 2) if v else np.zeros((0, 2), dtype=np.int32)
+    return out, nH
+
+def stretch_mode_weights(pos, modes_cart, bond_groups):
+    """Project Cartesian modes onto X–H stretch: q_b = rhat·(u_H−u_X); W[name,mode] = Σ_b q_b²."""
+    pos = np.asarray(pos, dtype=np.float64)
+    U = np.asarray(modes_cart, dtype=np.float64)
+    natoms = pos.shape[0]
+    if pos.ndim != 2 or pos.shape[1] != 3:
+        raise ValueError(f"stretch_mode_weights: pos.shape={pos.shape}")
+    if U.ndim != 2 or U.shape[0] != 3 * natoms:
+        raise ValueError(f"stretch_mode_weights: modes_cart.shape={U.shape} expected ({3*natoms}, nmode)")
+    U3 = U.reshape(natoms, 3, U.shape[1])
+    out = {}
+    for name, bij in bond_groups.items():
+        bij = np.asarray(bij, dtype=np.int32)
+        w = np.zeros(U.shape[1], dtype=np.float64)
+        if bij.size == 0:
+            out[name] = w
+            continue
+        if bij.ndim != 2 or bij.shape[1] != 2:
+            raise ValueError(f"stretch_mode_weights: {name} bonds shape {bij.shape}")
+        for a, b in bij:
+            r = pos[b] - pos[a]
+            nrm = float(np.linalg.norm(r))
+            if nrm < 1e-12:
+                raise ValueError(f"stretch_mode_weights: zero X–H length atoms {a},{b}")
+            q = ((r / nrm)[:, None] * (U3[b] - U3[a])).sum(axis=0)
+            w += q * q
+        out[name] = w
+    return out
+
+def gaussian_spectrum(omega_cm, grid, sigma, weights=None):
+    """Gaussian-broadened DOS on a shared grid. Vectorized; used for overlay and ΔS."""
+    om = np.asarray(omega_cm, dtype=np.float64).reshape(-1)
+    g = np.asarray(grid, dtype=np.float64).reshape(-1)
+    w = np.ones(om.shape[0], dtype=np.float64) if weights is None else np.asarray(weights, dtype=np.float64).reshape(-1)
+    if w.shape != om.shape:
+        raise ValueError(f"gaussian_spectrum: weights {w.shape} != omega {om.shape}")
+    if sigma <= 0:
+        raise ValueError(f"gaussian_spectrum: sigma={sigma}")
+    if om.size == 0:
+        return np.zeros(g.shape[0], dtype=np.float64)
+    d = (g[:, None] - om[None, :]) / float(sigma)
+    return np.exp(-0.5 * d * d) @ w
+
+def weighted_mean_cm1(omega_cm, weights, lo=None, hi=None):
+    om = np.asarray(omega_cm, dtype=np.float64).reshape(-1)
+    w = np.asarray(weights, dtype=np.float64).reshape(-1)
+    if w.shape != om.shape:
+        raise ValueError("weighted_mean_cm1: shape mismatch")
+    m = np.ones(om.shape[0], dtype=bool)
+    if lo is not None: m &= om >= lo
+    if hi is not None: m &= om <= hi
+    ww = w[m]
+    s = float(ww.sum())
+    if s < 1e-18:
+        return float('nan'), 0.0
+    return float((om[m] * ww).sum() / s), s
+
+def modes_as_3N(modes, natoms):
+    """Cartesian modes as (3N, nmode). Accepts (nmode,N,3) DFTB/PySCF or (3N, nmode) pipeline."""
+    m = np.asarray(modes, dtype=np.float64)
+    n = int(natoms)
+    if m.ndim == 3 and m.shape[1] == n and m.shape[2] == 3:
+        return np.transpose(m, (1, 2, 0)).reshape(3 * n, m.shape[0])
+    if m.ndim == 2 and m.shape[0] == 3 * n:
+        return m
+    raise ValueError(f"modes_as_3N: shape {m.shape} incompatible with natoms={n}")
+
+def masses_amu_from_Z(Z, table=None):
+    """Atomic masses (amu) from Z. Default table = DFTB+ L1 run.py MASS."""
+    tab = DFTBPLUS_AMU if table is None else table
+    Z = np.asarray(Z, dtype=int).reshape(-1)
+    missing = sorted({int(z) for z in Z if int(z) not in tab})
+    if missing:
+        raise KeyError(f"masses_amu_from_Z: no AMU for Z={missing}")
+    return np.array([tab[int(z)] for z in Z], dtype=np.float64)
+
+def masses_amu_from_symbols(symbols, table=None):
+    """Atomic masses (amu) from element symbols. Fail if a symbol is not in SYMBOL_Z."""
+    missing = sorted({s for s in symbols if s not in SYMBOL_Z})
+    if missing:
+        raise KeyError(f"masses_amu_from_symbols: no Z for {missing}")
+    return masses_amu_from_Z([SYMBOL_Z[s] for s in symbols], table=table)
+
+def flatten_cartesian_hessian(H):
+    """(N,N,3,3) or (N,3,N,3) or (3N,3N) → (3N,3N) with atom-xyz blocking H[3i+α, 3j+β] = H_ijαβ."""
+    H = np.asarray(H, dtype=np.float64)
+    if H.ndim == 2:
+        if H.shape[0] != H.shape[1] or H.shape[0] % 3 != 0:
+            raise ValueError(f"2D Hessian shape {H.shape} is not 3N×3N")
+        return H
+    if H.ndim != 4:
+        raise ValueError(f"Hessian ndim={H.ndim} want 2 or 4, got shape {H.shape}")
+    n0, n1, n2, n3 = H.shape
+    if n2 == 3 and n3 == 3 and n0 == n1:
+        n = n0
+        return np.transpose(H, (0, 2, 1, 3)).reshape(3 * n, 3 * n)
+    if n1 == 3 and n3 == 3 and n0 == n2:
+        return np.reshape(H, (3 * n0, 3 * n0))
+    raise ValueError(f"unrecognized 4D Hessian shape {H.shape}")
+
+def read_xyz_symbols_positions(path):
+    """Standard XYZ → (symbols, positions Å)."""
+    lines = Path(path).read_text().splitlines()
+    n = int(lines[0].strip())
+    if len(lines) < n + 2:
+        raise ValueError(f"{path}: expected {n} atom lines, file too short")
+    symbols, pos = [], np.zeros((n, 3), dtype=np.float64)
+    for i in range(n):
+        parts = lines[2 + i].split()
+        symbols.append(parts[0])
+        pos[i] = [float(parts[1]), float(parts[2]), float(parts[3])]
+    return symbols, pos
+
+def load_pyscf_hessian_case(case_dir, geometry_only=False):
+    """Load a PySCF vib directory: relaxed.xyz + hessian.npy (Ha/Bohr²). masses.npy optional."""
+    d = Path(case_dir)
+    xyz = d / "relaxed.xyz"
+    if not xyz.is_file():
+        raise FileNotFoundError(xyz)
+    symbols, positions = read_xyz_symbols_positions(xyz)
+    natoms = len(symbols)
+    out = {"dir": d, "symbols": symbols, "positions": positions, "natoms": natoms}
+    mp = d / "masses.npy"
+    out["masses"] = np.load(mp).astype(np.float64) if mp.is_file() else masses_amu_from_symbols(symbols)
+    if out["masses"].shape != (natoms,):
+        raise ValueError(f"{d}: masses {out['masses'].shape} vs natoms={natoms}")
+    st = d / "status.json"
+    out["status"] = json.loads(st.read_text()) if st.is_file() else {}
+    if geometry_only:
+        return out
+    hp = d / "hessian.npy"
+    if not hp.is_file():
+        raise FileNotFoundError(hp)
+    out["hessian"] = np.load(hp)
+    H3 = flatten_cartesian_hessian(out["hessian"])
+    if H3.shape != (3 * natoms, 3 * natoms):
+        raise ValueError(f"{d}: flattened Hessian {H3.shape} vs 3N={3 * natoms}")
+    out["H_ref"] = hessian_ha_bohr_to_ev_ang2(H3)
+    fp, mpde = d / "frequencies_cm1.npy", d / "modes.npy"
+    if fp.is_file():
+        out["freqs"] = np.load(fp)
+    if mpde.is_file():
+        out["modes"] = np.load(mpde)
+    return out
+
+def parse_dftb_tagged(path):
+    """DFTB+ tagged data file → dict of numpy arrays. Rank≥2 is Fortran column-major (`order='F'`)."""
+    from pathlib import Path
+    tokens = Path(path).read_text().split()
+    i, out = 0, {}
+    while i < len(tokens):
+        if i + 1 >= len(tokens):
+            break
+        spec = tokens[i + 1]
+        if not (spec.startswith(':') and spec.count(':') >= 3):
+            i += 1
+            continue
+        name = tokens[i]
+        parts = spec.split(':')  # ['', type, rank, dims]
+        typ, rank, dims = parts[1], int(parts[2]), parts[3]
+        shape = tuple(int(x) for x in dims.split(',') if x)
+        n = 1
+        for s in shape:
+            n *= s
+        i += 2
+        raw = tokens[i:i + n]
+        if len(raw) < n:
+            raise ValueError(f"parse_dftb_tagged: {path} field {name!r} short {len(raw)}<{n}")
+        i += n
+        if typ == 'real':
+            arr = np.array(raw, dtype=np.float64)
+        elif typ == 'integer':
+            arr = np.array(raw, dtype=np.int64)
+        else:
+            raise ValueError(f"parse_dftb_tagged: {path} unsupported type {typ!r} for {name!r}")
+        if rank >= 2:
+            arr = arr.reshape(shape, order='F')
+        elif rank == 1:
+            arr = arr.reshape(shape[0] if shape else n)
+        else:
+            arr = arr.reshape(())
+        if name in out:
+            raise ValueError(f"parse_dftb_tagged: {path} duplicate field {name!r}")
+        out[name] = arr
+    if not out:
+        raise ValueError(f"parse_dftb_tagged: {path} no tagged records")
+    return out
+
+def load_dftb_vibrations_tag(path, natoms):
+    """Cartesian modes + signed cm⁻¹ from DFTB+ `vibrations.tag`.
+
+    Tag `frequencies` are ħω in Hartree (convert with HARTREE_TO_CM1).
+    `eigenmodes_scaled` columns are Euclidean-unit Cartesian displacements — same convention as
+    L2 DFTB `modes.npy` after `modes_as_3N` (not the mass-weighted `eigenmodes` block).
+    """
+    rec = parse_dftb_tagged(path)
+    n3 = 3 * int(natoms)
+    if 'frequencies' not in rec or 'eigenmodes_scaled' not in rec:
+        raise KeyError(f"{path}: need frequencies + eigenmodes_scaled, have {sorted(rec)}")
+    omega = np.asarray(rec['frequencies'], dtype=np.float64).reshape(-1) * HARTREE_TO_CM1
+    U = np.asarray(rec['eigenmodes_scaled'], dtype=np.float64)
+    if U.ndim != 2 or U.shape[0] != n3 or U.shape[1] != omega.size:
+        raise ValueError(f"{path}: eigenmodes_scaled {U.shape} vs natoms={natoms} nfreq={omega.size} (want ({n3}, nmode))")
+    if omega.size != n3:
+        raise ValueError(f"{path}: nfreq={omega.size} != 3N={n3} (RemoveTranslation/Rotation should still write 3N, six ~0)")
+    phys = np.abs(omega) > 10.0
+    if not np.any(phys):
+        raise ValueError(f"{path}: no |ν|>10 cm⁻¹ modes")
+    norms = np.linalg.norm(U[:, phys], axis=0)
+    err = float(np.max(np.abs(norms - 1.0)))
+    if err > 1e-6:
+        raise ValueError(f"{path}: eigenmodes_scaled physical columns not unit Euclidean (max |‖u‖−1|={err:.3e})")
+    if not np.all(np.isfinite(omega)) or not np.all(np.isfinite(U)):
+        raise ValueError(f"{path}: non-finite frequencies or modes")
+    return omega, U
+
+def xh_bonds_from_coords(pos, Z, r_SiH=1.70, r_CH=1.25):
+    """XH pairs from distance (L2 DFTB xyz with no 5-ring). Prefer xh_bonds_from_topology when bonds exist."""
+    pos = np.asarray(pos, dtype=np.float64); Z = np.asarray(Z, dtype=int).reshape(-1)
+    H = np.flatnonzero(Z == 1)
+    pairs = []; nH = np.zeros(len(Z), dtype=int)
+    for z, rcut in ((14, r_SiH), (6, r_CH)):
+        heavies = np.flatnonzero(Z == z)
+        if heavies.size == 0 or H.size == 0: continue
+        d = np.linalg.norm(pos[heavies][:, None, :] - pos[H][None, :, :], axis=2)
+        for a, row in enumerate(d):
+            js = H[row < rcut]
+            if js.size > 4:
+                raise ValueError(f"xh_bonds_from_coords: Z={z} atom {heavies[a]} nH={js.size}")
+            nH[heavies[a]] = js.size
+            for j in js:
+                pairs.append((int(heavies[a]), int(j)))
+    groups = {'XH': [], 'XH2': [], 'XH3': []}
+    for i, j in pairs:
+        nh = int(nH[i])
+        key = 'XH3' if nh >= 3 else ('XH2' if nh == 2 else 'XH')
+        groups[key].append((i, j))
+    out = {k: (np.asarray(v, dtype=np.int32).reshape(-1, 2) if v else np.zeros((0, 2), dtype=np.int32)) for k, v in groups.items()}
+    return out, nH
+
+def facet_kind_from_vec(r, families=('100', '111', '110')):
+    """Nearest Wulff family via support function. Restrict `families` to the crystal's actual faces (cube has no {111} facets)."""
+    r = np.asarray(r, dtype=np.float64).reshape(3)
+    if float(np.linalg.norm(r)) < 1e-9:
+        return 'bulk'
+    scores = {}
+    if '100' in families:
+        scores['100'] = float(np.max(np.abs(r)))
+    if '111' in families:
+        n111 = np.array([[1.0, 1.0, 1.0], [1.0, 1.0, -1.0], [1.0, -1.0, 1.0], [1.0, -1.0, -1.0]])
+        scores['111'] = float(np.max(np.abs(n111 @ r))) / np.sqrt(3.0)
+    if '110' in families:
+        n110 = []
+        for i, j in ((0, 1), (0, 2), (1, 2)):
+            for s1 in (1.0, -1.0):
+                for s2 in (1.0, -1.0):
+                    v = np.zeros(3); v[i] = s1; v[j] = s2
+                    n110.append(v)
+        scores['110'] = float(np.max(np.asarray(n110) @ r)) / np.sqrt(2.0)
+    if not scores:
+        raise ValueError("facet_kind_from_vec: empty families")
+    return max(scores, key=scores.get)
+
+def miller_111_unit_normals():
+    """Eight outward ⟨111⟩ unit vectors in the crystal/Cartesian frame. Unrotated crystals only."""
+    n = np.array([[s0, s1, s2] for s0 in (-1.0, 1.0) for s1 in (-1.0, 1.0) for s2 in (-1.0, 1.0)], dtype=np.float64)
+    return n / np.sqrt(3.0)
+
+def miller_110_unit_normals():
+    """Twelve signed unit ⟨110⟩ in the crystal/Cartesian frame (unrotated)."""
+    n = []
+    for i, j in ((0, 1), (0, 2), (1, 2)):
+        for s1 in (1.0, -1.0):
+            for s2 in (1.0, -1.0):
+                v = np.zeros(3); v[i] = s1; v[j] = s2
+                n.append(v)
+    return np.asarray(n, dtype=np.float64) / np.sqrt(2.0)
+
+def miller_110_unsigned_axes():
+    """Six unsigned ⟨110⟩ unit axes (sign ignored). Same 12 ends as ``miller_110_unit_normals``."""
+    n = np.array([[1.0, 1.0, 0.0], [1.0, -1.0, 0.0], [1.0, 0.0, 1.0], [1.0, 0.0, -1.0], [0.0, 1.0, 1.0], [0.0, 1.0, -1.0]], dtype=np.float64)
+    return n / np.sqrt(2.0)
+
+def heavies_near_110_extrema(pos, Z, below_A=0.5):
+    """C/Si within ``below_A`` (Å) of the max or min projection on any of the 6 ⟨110⟩ axes.
+
+    Those atoms are the ⟨110⟩ silhouette — intended as edges/vertices, not {111} terraces.
+    On a flat {110} rhombic face the whole facet sits at the extremum, so this may paint the face as edge.
+    """
+    pos = np.asarray(pos, dtype=np.float64); Z = np.asarray(Z, dtype=int).reshape(-1)
+    if pos.shape != (len(Z), 3):
+        raise ValueError(f"heavies_near_110_extrema: pos {pos.shape} vs N={len(Z)}")
+    below_A = float(below_A)
+    if below_A < 0.0:
+        raise ValueError(f"heavies_near_110_extrema: below_A={below_A} must be ≥ 0")
+    heavies = np.flatnonzero(Z > 1)
+    if heavies.size < 1:
+        raise ValueError("heavies_near_110_extrema: no C/Si atoms")
+    ph = pos[heavies]
+    near = np.zeros(len(Z), dtype=bool)
+    for n in miller_110_unsigned_axes():
+        s = ph @ n
+        near[heavies] |= (float(s.max()) - s) <= below_A
+        near[heavies] |= (s - float(s.min())) <= below_A
+    return near
+
+def xh_miller_111_cosine(uh):
+    """max n·û over the 8 ⟨111⟩. ``uh`` is C→H (need not be unit)."""
+    uh = np.asarray(uh, dtype=np.float64).reshape(3)
+    nrm = float(np.linalg.norm(uh))
+    if nrm < 1e-12:
+        raise ValueError("xh_miller_111_cosine: zero X–H")
+    return float(np.max(miller_111_unit_normals() @ (uh / nrm)))
+
+def is_xh_on_miller_111(uh, r_from_com, align_cos=0.90):
+    """X–H sits on a {111} face iff it points along that face’s ⟨111⟩ (cos ≥ align_cos).
+
+    Sitting face = argmax_n (r·n) among the 8 axis-aligned ⟨111⟩ from the heavy’s COM vector
+    (the octant the atom sits in). Then require û_XH · n_sit ≥ align_cos.
+    Default 0.90 = cosine within 10% of 1; 0.95 is 5%. Unrotated crystals only.
+    This is not Wulff morphology and does not replace ``is_xh_align_terrace`` / ``facet_kind_from_vec``.
+    """
+    r = np.asarray(r_from_com, dtype=np.float64).reshape(3)
+    if float(np.linalg.norm(r)) < 1e-12:
+        raise ValueError("is_xh_on_miller_111: zero r_from_com")
+    uh = np.asarray(uh, dtype=np.float64).reshape(3)
+    nrm = float(np.linalg.norm(uh))
+    if nrm < 1e-12:
+        raise ValueError("is_xh_on_miller_111: zero X–H")
+    u = uh / nrm
+    N = miller_111_unit_normals()
+    k = int(np.argmax(N @ r))
+    return float(N[k] @ u) >= float(align_cos)
+
+
+def heavy_neighbor_lists(pos, Z, bonds_ij=None, r_CC=1.85, r_SiSi=2.50):
+    """Heavy–heavy adjacency. Prefer explicit bonds; else C–C / Si–Si distance (not for 5-ring closers). Fail if a heavy has >4 neighbors."""
+    pos = np.asarray(pos, dtype=np.float64); Z = np.asarray(Z, dtype=int).reshape(-1)
+    n = len(Z)
+    adj = [[] for _ in range(n)]
+    if bonds_ij is not None:
+        from pyBall.io.crystal_npz import as_bonds_ij
+        for i, j in as_bonds_ij(bonds_ij, n_atoms=n, ctx='heavy_neighbor_lists'):
+            if int(Z[i]) > 1 and int(Z[j]) > 1:
+                adj[int(i)].append(int(j)); adj[int(j)].append(int(i))
+    else:
+        heavies = np.flatnonzero(Z > 1)
+        for a in range(len(heavies)):
+            i = int(heavies[a]); zi = int(Z[i])
+            rcut = r_SiSi if zi == 14 else r_CC
+            for b in range(a + 1, len(heavies)):
+                j = int(heavies[b])
+                if int(Z[j]) != zi:
+                    continue
+                if float(np.linalg.norm(pos[i] - pos[j])) < rcut:
+                    adj[i].append(j); adj[j].append(i)
+    for i in range(n):
+        if int(Z[i]) > 1 and len(adj[i]) > 4:
+            raise ValueError(f"heavy_neighbor_lists: atom {i} Z={int(Z[i])} has {len(adj[i])} heavy neighbors")
+        adj[i] = sorted(set(adj[i]))
+    return adj
+
+
+def xh_unit_dirs(pos, xh_groups):
+    """Heavy → (n_XH, 3) unit X–H vectors. Fail on zero length."""
+    pos = np.asarray(pos, dtype=np.float64)
+    dirs = {}
+    for bij in xh_groups.values():
+        for i, j in np.asarray(bij, dtype=np.int32).reshape(-1, 2):
+            r = pos[int(j)] - pos[int(i)]
+            nrm = float(np.linalg.norm(r))
+            if nrm < 1e-12:
+                raise ValueError(f"xh_unit_dirs: zero X–H {i},{j}")
+            dirs.setdefault(int(i), []).append(r / nrm)
+    return {k: np.asarray(v, dtype=np.float64).reshape(-1, 3) for k, v in dirs.items()}
+
+
+def _xh_dirs_aligned(A, B, align_cos):
+    """Every bond in A has a partner in B with |n·n'| >= align_cos, and vice versa."""
+    A = np.asarray(A, dtype=np.float64).reshape(-1, 3)
+    B = np.asarray(B, dtype=np.float64).reshape(-1, 3)
+    dots = np.abs(A @ B.T)
+    return bool(np.all(dots.max(axis=1) >= align_cos) and np.all(dots.max(axis=0) >= align_cos))
+
+
+def is_xh_align_terrace(i, nH, adj, dirs, align_cos=0.9, max_misaligned=1, xh2_rim_terrace=False):
+    """Terrace vs ridge from hydride-neighbor chemistry (not Wulff).
+
+    Diamond {111}: terrace CH bond only to bulk C, not to other hydrides — isolated => terrace.
+    Diamond {100}: terrace CH₂ are not bonded to each other; one CH at the face rim is allowed (``xh2_rim_terrace``).
+    Do not use that CH₂-rim rule on rhombic {110}: those CH₂ are vertices, not the face.
+    Ridge: tetrahedral X–H (|n·n'|~1/3) or too many mixed XH/XH₂ contacts.
+    """
+    i = int(i)
+    nh = int(nH[i])
+    if nh <= 0:
+        return False
+    if i not in dirs:
+        raise ValueError(f"is_xh_align_terrace: heavy {i} has nH={nh} but no X–H vectors")
+    hyd_nbs = [int(j) for j in adj[i] if int(nH[j]) > 0]
+    if not hyd_nbs:
+        return True
+    n_good = 0
+    n_bad = 0
+    n_same = 0
+    for j in hyd_nbs:
+        if j not in dirs:
+            raise ValueError(f"is_xh_align_terrace: neighbor {j} has nH={int(nH[j])} but no X–H vectors")
+        if int(nH[j]) != nh:
+            n_bad += 1
+            continue
+        n_same += 1
+        if _xh_dirs_aligned(dirs[i], dirs[j], align_cos):
+            n_good += 1
+        else:
+            n_bad += 1
+    if n_good >= 1 and n_bad <= int(max_misaligned):
+        return True
+    if xh2_rim_terrace and nh >= 2 and n_same == 0 and n_bad <= int(max_misaligned):
+        return True
+    return False
+
+
+def wulff_families_from_name(name):
+    s = str(name).lower()
+    if 'trunc' in s:
+        return ('100', '111', '110')
+    if 'rhombic' in s:
+        return ('110',)
+    if 'cube' in s:
+        return ('100', '110')
+    if 'octa' in s:
+        return ('111', '110')
+    return ('100', '111', '110')
+
+def heavy_cycles(Z, bonds_ij, length):
+    """Simple cycles of given length on C/Si only (5-ring / 7-ring atoms)."""
+    from pyBall.io.crystal_npz import as_bonds_ij
+    Z = np.asarray(Z, dtype=int).reshape(-1)
+    bonds = as_bonds_ij(bonds_ij, n_atoms=len(Z), ctx='heavy_cycles')
+    adj = {i: [] for i in range(len(Z)) if int(Z[i]) > 1}
+    for i, j in bonds:
+        if i not in adj or j not in adj:
+            continue
+        adj[i].append(int(j)); adj[j].append(int(i))
+    cycles = []
+    for start in sorted(adj):
+        stack = [(start, [start])]
+        while stack:
+            node, path = stack.pop()
+            if len(path) == length:
+                if start in adj[path[-1]] and path[1] < path[-1]:
+                    cycles.append(tuple(path))
+                continue
+            for nb in adj[node]:
+                if nb > start and nb not in path:
+                    stack.append((nb, path + [nb]))
+    return cycles
+
+def neighborhood_xh_groups(pos, Z, xh_groups, nH, bonds_ij=None, ring_lengths=(), families=('100', '111', '110'),
+                           facet_mode='wulff', face_families=None, align_cos=0.9, max_misaligned=1, ridge_below_A=0.5):
+    """Split X–H bonds into XH@{111}, XH2@{100}, ring5, ring7, plus leftovers.
+
+    ``facet_mode='wulff'``: Miller family from COM support (``facet_kind_from_vec``).
+    ``facet_mode='xh_align'``: terrace vs edge from neighbor hydride class + X–H alignment;
+    terrace Miller index still from Wulff among ``face_families`` (primary faces only).
+    ``facet_mode='miller_111'``: sitting {111} octant from heavy−COM, then X–H vs that same ⟨111⟩ (``is_xh_on_miller_111``).
+    ``facet_mode='ridge_110'``: C/Si within ridge_below_A of a ⟨110⟩ extremity are edge; leftover Miller from ``face_families``.
+    Does not replace wulff / xh_align / miller_111.
+    """
+    if facet_mode not in ('wulff', 'xh_align', 'miller_111', 'ridge_110'):
+        raise ValueError(f"neighborhood_xh_groups: facet_mode={facet_mode!r} want wulff|xh_align|miller_111|ridge_110")
+    pos = np.asarray(pos, dtype=np.float64); Z = np.asarray(Z, dtype=int).reshape(-1)
+    nH = np.asarray(nH, dtype=int).reshape(-1)
+    com = pos[Z > 1].mean(axis=0) if np.any(Z > 1) else pos.mean(axis=0)
+    ring5 = set(); ring7 = set()
+    if bonds_ij is not None:
+        if 5 in ring_lengths:
+            for cyc in heavy_cycles(Z, bonds_ij, 5):
+                ring5.update(cyc)
+        if 7 in ring_lengths:
+            for cyc in heavy_cycles(Z, bonds_ij, 7):
+                ring7.update(cyc)
+    adj = dirs = None
+    ridge_mask = None
+    ff = face_families if face_families is not None else tuple(f for f in families if f != '110') or families
+    if facet_mode == 'xh_align':
+        adj = heavy_neighbor_lists(pos, Z, bonds_ij=bonds_ij)
+        dirs = xh_unit_dirs(pos, xh_groups)
+    elif facet_mode == 'ridge_110':
+        ridge_mask = heavies_near_110_extrema(pos, Z, below_A=ridge_below_A)
+    out = {}
+    def _add(name, pair):
+        out.setdefault(name, []).append(pair)
+    for cls, bij in xh_groups.items():
+        for i, j in np.asarray(bij, dtype=np.int32).reshape(-1, 2):
+            if facet_mode == 'wulff':
+                fac = facet_kind_from_vec(pos[int(i)] - com, families=families)
+            elif facet_mode == 'miller_111':
+                fac = '111' if is_xh_on_miller_111(pos[int(j)] - pos[int(i)], pos[int(i)] - com, align_cos=align_cos) else 'edge'
+            elif facet_mode == 'ridge_110':
+                fac = 'edge' if ridge_mask[int(i)] else facet_kind_from_vec(pos[int(i)] - com, families=ff)
+            elif is_xh_align_terrace(int(i), nH, adj, dirs, align_cos=align_cos, max_misaligned=max_misaligned, xh2_rim_terrace=('100' in ff)):
+                fac = facet_kind_from_vec(pos[int(i)] - com, families=ff)
+            else:
+                fac = 'edge'
+            _add(f"{cls}@{fac}", (int(i), int(j)))
+            if int(i) in ring5:
+                _add('ring5', (int(i), int(j)))
+            if int(i) in ring7:
+                _add('ring7', (int(i), int(j)))
+    empty = np.zeros((0, 2), dtype=np.int32)
+    return {k: (np.asarray(v, dtype=np.int32).reshape(-1, 2) if v else empty) for k, v in out.items()}, {'ring5': sorted(ring5), 'ring7': sorted(ring7)}
+
+# Face ≠ edge hues. {111} CH = blue, {100} CH₂ = red, {110} face (rhombic) = purple, ridge = orange / brown.
+NBHD_TAG_RGB = {
+    "XH@111": np.array([0.13, 0.44, 0.71]), "XH2@100": np.array([0.80, 0.09, 0.11]),
+    "XH@100": np.array([0.42, 0.68, 0.84]), "XH2@111": np.array([0.98, 0.42, 0.29]),
+    "XH@110": np.array([0.42, 0.24, 0.60]), "XH2@110": np.array([0.68, 0.00, 0.40]),
+    "XH@edge": np.array([0.90, 0.33, 0.05]), "XH2@edge": np.array([0.55, 0.32, 0.04]),
+    "XH3@100": np.array([0.55, 0.35, 0.15]), "XH3@111": np.array([0.55, 0.35, 0.15]), "XH3@110": np.array([0.55, 0.35, 0.15]),
+    "XH3@edge": np.array([0.55, 0.35, 0.15]),
+    "bulk": np.array([0.78, 0.78, 0.78]),
+    "ring5": np.array([0.14, 0.55, 0.27]), "ring7": np.array([0.85, 0.28, 0.00]),
+}
+NBHD_PLOT_STYLE = {
+    "bulk": dict(color="#c6c6c6", ls="-"),
+    "XH@111": dict(color="#2171b5", ls="-"), "XH2@100": dict(color="#cb181d", ls="-"),
+    "XH@100": dict(color="#6baed6", ls="--"), "XH2@111": dict(color="#fb6a4a", ls="--"),
+    "XH@110": dict(color="#6a51a3", ls="-"), "XH2@110": dict(color="#ae017e", ls="-"),
+    "XH@edge": dict(color="#e6550d", ls=":"), "XH2@edge": dict(color="#8c510a", ls=":"),
+    "ring5": dict(color="#238b45", ls="-"), "ring7": dict(color="#d94801", ls="-."),
+}
+_HYDRIDE_NAME = {"C": {"XH": "CH", "XH2": "CH₂", "XH3": "CH₃"}, "Si": {"XH": "SiH", "XH2": "SiH₂", "XH3": "SiH₃"}}
+
+def primary_face_families_from_name(name):
+    """Wulff *faces* (not edges). Cube {100}; octa {111}; trunc {100}+{111}; rhombic {110} is the face."""
+    s = str(name).lower()
+    if 'rhombic' in s:
+        return ('110',)
+    if 'trunc' in s:
+        return ('100', '111')
+    if 'cube' in s:
+        return ('100',)
+    if 'octa' in s:
+        return ('111',)
+    return ('100', '111', '110')
+
+def nbhd_legend_label(tag, elem='C', face_families=('100', '111')):
+    """e.g. CH@{111} face, CH@{110} edge. {110} is a face only on rhombic (pass face_families=('110',))."""
+    if tag in ('ring5', 'ring7'):
+        return '5-ring' if tag == 'ring5' else '7-ring'
+    if tag == 'bulk':
+        return 'bulk / core'
+    if '@' not in tag:
+        return tag
+    cls, fac = tag.split('@', 1)
+    hyd = _HYDRIDE_NAME.get(elem, _HYDRIDE_NAME['C']).get(cls, cls)
+    if fac == 'edge':
+        return f"{hyd} edge"
+    kind = 'face' if fac in face_families else 'edge'
+    return f"{hyd}@{{{fac}}} {kind}"
+
+def halogen_symbol_for_nbhd_tag(tag, face_families):
+    """Jmol: F = XH face, Cl = XH edge, Br = XH₂ face, I = XH₂ edge. Miller face vs edge from ``face_families``."""
+    if tag in ('bulk', 'ring5', 'ring7') or '@' not in str(tag):
+        raise ValueError(f"halogen_symbol_for_nbhd_tag: not a hydride tag {tag!r}")
+    cls, fac = str(tag).split('@', 1)
+    is_face = (fac != 'edge') and (fac in face_families)
+    if cls == 'XH':
+        return 'F' if is_face else 'Cl'
+    if cls == 'XH2':
+        return 'Br' if is_face else 'I'
+    if cls == 'XH3':
+        return 'At'
+    raise ValueError(f"halogen_symbol_for_nbhd_tag: class {cls}")
+
+def write_hydride_halogen_xyz(path, pos, Z, owner, face_families, comment=''):
+    """Replace each H with a halogen so Jmol element colors show neighborhood groups. Heavies unchanged."""
+    pos = np.asarray(pos, dtype=np.float64); Z = np.asarray(Z, dtype=int).reshape(-1)
+    n = len(Z)
+    if pos.shape != (n, 3):
+        raise ValueError(f"write_hydride_halogen_xyz: pos {pos.shape} vs N={n}")
+    heav = {6: 'C', 14: 'Si'}
+    counts = {}
+    body = []
+    for i in range(n):
+        zi = int(Z[i])
+        if zi != 1:
+            if zi not in heav:
+                raise ValueError(f"write_hydride_halogen_xyz: unexpected Z={zi} atom {i}")
+            body.append(f"{heav[zi]}  {pos[i,0]:.6f}  {pos[i,1]:.6f}  {pos[i,2]:.6f}")
+            continue
+        tag = owner.get(i)
+        if tag is None:
+            raise ValueError(f"write_hydride_halogen_xyz: H {i} has no neighborhood tag")
+        sym = halogen_symbol_for_nbhd_tag(tag, face_families)
+        key = f"{sym}:{tag}"
+        counts[key] = counts.get(key, 0) + 1
+        body.append(f"{sym}  {pos[i,0]:.6f}  {pos[i,1]:.6f}  {pos[i,2]:.6f}")
+    bits = " ".join(f"{k}={v}" for k, v in sorted(counts.items()))
+    hdr = "F=XH-face Cl=XH-edge Br=XH2-face I=XH2-edge. " + bits
+    if comment:
+        hdr = str(comment) + " | " + hdr
+    from pathlib import Path
+    p = Path(path); p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(f"{n}\n{hdr}\n" + "\n".join(body) + "\n")
+    return p
+
+def cartesian_modes_from_hessian(H, masses, freq_floor_cm1=10.0):
+    """Mass-weighted eigh (eV/Å²). Returns vibrational ω(cm⁻¹) and Cartesian modes. Fails if the Hessian is indefinite (|ν|>floor)."""
+    conv = 521.5
+    masses = np.asarray(masses, dtype=np.float64).reshape(-1)
+    inv_sqrt_m = 1.0 / np.sqrt(np.repeat(masses, 3))
+    D = (inv_sqrt_m[:, None] * inv_sqrt_m[None, :]) * np.asarray(H, dtype=np.float64)
+    lam, V = np.linalg.eigh(D)
+    om_all = np.sign(lam) * conv * np.sqrt(np.abs(lam))
+    assert_harmonic_spectrum_at_minimum(om_all, ctx="cartesian_modes_from_hessian: ")
+    mask = om_all > float(freq_floor_cm1)
+    if not np.any(mask):
+        raise RuntimeError("cartesian_modes_from_hessian: no vibrational modes above floor — not a spectrum")
+    return om_all[mask], (V * inv_sqrt_m[:, None])[:, mask]
+
+def atom_tags_from_owner(n, owner):
+    """(N,) object tags; untagged atoms are 'bulk'. Partition of {0..N-1}."""
+    tags = np.empty(int(n), dtype=object)
+    tags[:] = 'bulk'
+    for i, t in owner.items():
+        tags[int(i)] = t
+    return tags
+
+def apply_ring_tags(owner, nbhd, rings):
+    """Exclusive PDOS partition: ring heavies (``heavy_cycles``) and their X–H hydrogens steal hydride tags.
+
+    ``rings`` / ``nbhd['ring5'|'ring7']`` come from ``neighborhood_xh_groups`` (do not re-detect).
+    """
+    owner = {int(i): t for i, t in owner.items()}
+    s5 = {int(i) for i in rings.get('ring5', ())}
+    s7 = {int(i) for i in rings.get('ring7', ())}
+    both = s5 & s7
+    if both:
+        raise ValueError(f"apply_ring_tags: atoms in both 5- and 7-ring: {sorted(both)}")
+    for tag, atoms in (('ring5', s5), ('ring7', s7)):
+        for i in atoms:
+            owner[i] = tag
+        bij = nbhd.get(tag)
+        if bij is None or len(bij) == 0:
+            continue
+        for i, j in np.asarray(bij, dtype=np.int32).reshape(-1, 2):
+            owner[int(i)] = tag
+            owner[int(j)] = tag
+    return owner
+
+def atom_group_mode_weights(modes_cart, masses, atom_tags):
+    """Per-mode mass-weighted |u|² partitioned by atom tag. Each returned array sums with the others to 1.
+
+    p_i = m_i |u_i|² / Σ_j m_j |u_j|². Groups must partition the atoms. Fail-loud if the partition is incomplete.
+    """
+    U = np.asarray(modes_cart, dtype=np.float64)
+    m = np.asarray(masses, dtype=np.float64).reshape(-1)
+    tags = np.asarray(atom_tags).reshape(-1)
+    n = m.size
+    if tags.shape[0] != n:
+        raise ValueError(f"atom_group_mode_weights: tags {tags.shape} vs N={n}")
+    if U.ndim != 2 or U.shape[0] != 3 * n:
+        raise ValueError(f"atom_group_mode_weights: modes_cart {U.shape} want ({3*n}, nmode)")
+    if np.any(~np.isfinite(m)) or np.any(m <= 0):
+        raise ValueError("atom_group_mode_weights: masses must be finite and positive")
+    U3 = U.reshape(n, 3, U.shape[1])
+    p = m[:, None] * np.sum(U3 * U3, axis=1)
+    s = p.sum(axis=0)
+    bad = s < 1e-18
+    if np.any(bad):
+        raise ValueError(f"atom_group_mode_weights: {int(bad.sum())} zero-norm modes")
+    p = p / s[None, :]
+    out = {}
+    for t in tags:
+        key = str(t)
+        if key in out:
+            continue
+        out[key] = p[tags == t].sum(axis=0)
+    tot = np.zeros(U.shape[1], dtype=np.float64)
+    for v in out.values():
+        tot += v
+    err = float(np.max(np.abs(tot - 1.0)))
+    if err > 1e-6:
+        raise ValueError(f"atom_group_mode_weights: group weights do not sum to 1 (max |Δ|={err:.3e})")
+    return out
+
+def atom_stretch_in_window(pos, modes_cart, om_cm, bonds_xh, lo, hi):
+    """Per-atom Σ q² of listed X–H bonds, summed over modes in [lo,hi]."""
+    pos = np.asarray(pos, dtype=np.float64)
+    U = np.asarray(modes_cart, dtype=np.float64)
+    om = np.asarray(om_cm, dtype=np.float64).reshape(-1)
+    natoms = pos.shape[0]
+    if U.shape[0] != 3 * natoms or U.shape[1] != om.shape[0]:
+        raise ValueError(f"atom_stretch_in_window: U {U.shape} om {om.shape} N={natoms}")
+    w = np.zeros(natoms, dtype=np.float64)
+    sel = np.flatnonzero((om >= lo) & (om <= hi))
+    if sel.size == 0 or bonds_xh is None or len(bonds_xh) == 0:
+        return w
+    U3 = U.reshape(natoms, 3, U.shape[1])[:, :, sel]
+    for a, b in np.asarray(bonds_xh, dtype=np.int32).reshape(-1, 2):
+        r = pos[b] - pos[a]
+        nrm = float(np.linalg.norm(r))
+        if nrm < 1e-12:
+            raise ValueError(f"atom_stretch_in_window: zero X–H {a},{b}")
+        q = ((r / nrm)[:, None] * (U3[b] - U3[a])).sum(axis=0)
+        s = float((q * q).sum())
+        w[a] += s; w[b] += s
+    return w
 
 def interaction_type_counts(systems):
     """Count observations supporting each environment-resolved interaction type."""
@@ -873,7 +1699,8 @@ def get_reference_modes_and_freqs(H_ref, masses, data=None, freq_floor_cm1=10.0)
     H_ref: (3N, 3N) eV/Å² (fallback if PySCF modes not available)
     masses: (N,) amu
     data: dict with optional 'modes' (nmodes, natoms, 3) and 'freqs' (nmodes,) in cm^-1
-    freq_floor_cm1: modes with |freq| < floor are skipped (translations/rotations)
+    freq_floor_cm1: modes with |freq| < floor are skipped (translations/rotations).
+    FFfit-only: this path uses sqrt(max(λ,0)). Harmonic *spectra* must use signed_frequencies_cm1 + assert_harmonic_spectrum_at_minimum.
 
     Returns:
         V: (3N, n_modes)  mass-weighted eigenvectors, normalized to 1
@@ -953,6 +1780,55 @@ def get_frequencies_cm1(H, masses, data=None, freq_floor=10.0, positions=None, p
         freqs_cm1 = conv * np.sqrt(np.maximum(0, lam))
     return np.sort(freqs_cm1[freqs_cm1 > freq_floor])
 
+def signed_frequencies_cm1(H, masses):
+    """All 3N frequencies (cm^-1); imaginary eigenvalues returned as negative. Do not hide them with sqrt(max(λ,0))."""
+    conv = 521.5
+    masses = np.asarray(masses, dtype=np.float64).reshape(-1)
+    inv_sqrt_m = 1.0 / np.sqrt(np.repeat(masses, 3))
+    D = (inv_sqrt_m[:, None] * inv_sqrt_m[None, :]) * np.asarray(H, dtype=np.float64)
+    lam = np.linalg.eigvalsh(D)
+    return np.sign(lam) * conv * np.sqrt(np.abs(lam))
+
+def as_signed_wavenumbers_cm1(omega_cm):
+    """Real signed cm⁻¹, or complex (PySCF/DFTB: unstable modes stored as i|ν| → negative)."""
+    w = np.asarray(omega_cm)
+    if np.iscomplexobj(w):
+        re = np.real(w); im = np.imag(w)
+        return np.where(np.abs(im) > 1e-8, -np.abs(im), re).astype(np.float64)
+    return np.asarray(w, dtype=np.float64).reshape(-1)
+
+def assert_harmonic_spectrum_at_minimum(omega_cm, ctx="", imag_cut_cm1=10.0, n_rigid_min=6):
+    """Fail loud if this is not a harmonic spectrum at that energy's own minimum.
+
+    |ν|>imag_cut imaginary = negative curvature (off-minimum). Do not clamp, drop, or plot.
+    Fewer than n_rigid_min modes below imag_cut = leftover torque (typical: MMFF Hessian at DFTB q).
+    """
+    w = as_signed_wavenumbers_cm1(omega_cm)
+    if w.size == 0:
+        raise RuntimeError(f"{ctx}empty frequency array")
+    if not np.all(np.isfinite(w)):
+        raise RuntimeError(f"{ctx}non-finite frequencies ({int(np.sum(~np.isfinite(w)))} bad)")
+    cut = float(imag_cut_cm1)
+    n_imag = int(np.sum(w < -cut))
+    n_rigid = int(np.sum(np.abs(w) < cut))
+    if n_imag:
+        worst = np.sort(w[w < -cut])[:8]
+        raise RuntimeError(
+            f"{ctx}{n_imag} imaginary modes with |ν|>{cut:.0f} cm⁻¹ (most negative {float(w.min()):.1f} cm⁻¹; "
+            f"sample {np.array2string(worst, precision=1)}). "
+            "Hessian is not at a stationary point of this forcefield. "
+            "Do not sqrt(max(λ,0)), do not drop modes, do not plot a spectrum. "
+            "Relax with the SAME energy (same scales, same switches), check |F|max, then recompute. "
+            "See doc/Topics/FTIR_Nanocrystals/Hessian_at_own_minimum.md"
+        )
+    if n_rigid < int(n_rigid_min):
+        raise RuntimeError(
+            f"{ctx}only {n_rigid} modes with |ν|<{cut:.0f} cm⁻¹ (need ≥{int(n_rigid_min)} rigid-body). "
+            "Missing rotations/translations mean leftover forces/torques — typically MMFF Hessian at a DFTB/DFT geometry. "
+            "Not a spectrum. Relax this FF first. See doc/Topics/FTIR_Nanocrystals/Hessian_at_own_minimum.md"
+        )
+    return {"n_imag": 0, "n_rigid": n_rigid, "nu_min": float(w.min()), "nu_max": float(w.max()), "n_modes": int(w.size)}
+
 def compare_frequencies(H_ref, H_model, masses, data=None, label="", freq_floor=10.0, positions=None):
     """Compare vibrational frequencies from reference and model Hessians.
 
@@ -985,6 +1861,397 @@ def one_to_one_frequency_metrics(freq_ref, freq_model):
     return np.sqrt(np.mean(diff*diff)), np.mean(np.abs(diff)), abs(len(freq_ref) - len(freq_model))
 
 # === C++ bridge ===
+
+def param_names_from_maps(bmap, amap, b3map=None, dmap=None):
+    """Ordered parameter names matching global indices from build_global_param_map."""
+    b3map = {} if b3map is None else b3map
+    dmap = {} if dmap is None else dmap
+    npar = len(bmap) + len(b3map) + len(amap) + len(dmap)
+    names = [""] * npar
+    for key, t in bmap.items():
+        names[t] = "bond:" + "-".join(key)
+    for key, t in b3map.items():
+        names[t] = "1-4:" + "-".join(key)
+    for key, t in amap.items():
+        names[t] = "angle:" + "-".join(key)
+    for key, t in dmap.items():
+        names[t] = "torsion:" + "/".join(("-".join(key[0]), "-".join(key[1])))
+    if any(n == "" for n in names):
+        raise RuntimeError(f"param name map has holes: {names}")
+    return names
+
+def freeze_indices_from_names(names, pin):
+    """Map {param_name: value} → {index: value}. Missing names fail loud."""
+    idx = {n: i for i, n in enumerate(names)}
+    freeze = {}
+    missing = [n for n in pin if n not in idx]
+    if missing:
+        raise KeyError(f"pin names {missing} not in this system {names}")
+    for n, val in pin.items():
+        v = float(val)
+        if not np.isfinite(v):
+            raise ValueError(f"non-finite pin for {n}")
+        freeze[idx[n]] = v
+    return freeze
+
+def assert_relative_param_shift(old, new, names, tol=0.05, ctx=""):
+    """Fail if any overlapping named k moved by more than tol (relative)."""
+    bad = []
+    for n in names:
+        if n not in old or n not in new:
+            raise KeyError(f"{ctx}param {n} missing in old={n in old} new={n in new}")
+        a, b = float(old[n]), float(new[n])
+        if abs(a) < 1e-12:
+            if abs(b) > 1e-12:
+                bad.append(f"{n}: 0 → {b}")
+            continue
+        rel = abs(b - a) / abs(a)
+        if rel > tol:
+            bad.append(f"{n}: {a:.6g} → {b:.6g} ({100.0*rel:.1f}%)")
+    if bad:
+        raise RuntimeError(f"{ctx}parameters moved by more than {100.0*tol:.1f}%:\n  " + "\n  ".join(bad))
+
+def stretch_rmse_nH(omega_a, omega_b, nH, floor=10.0):
+    """RMSE of the nH highest frequencies above floor. Metric only — not an LS loss."""
+    nH = int(nH)
+    a = np.sort(np.asarray(omega_a, dtype=np.float64))
+    b = np.sort(np.asarray(omega_b, dtype=np.float64))
+    a = a[a > float(floor)]; b = b[b > float(floor)]
+    if nH < 1 or a.size < nH or b.size < nH:
+        raise ValueError(f"stretch_rmse_nH: nH={nH} a={a.size} b={b.size}")
+    d = a[-nH:] - b[-nH:]
+    return float(np.sqrt(np.mean(d * d))), float(a[-nH:].mean()), float(b[-nH:].mean())
+
+def fit_local_kab_system(sys, freeze_names=None, prior_by_name=None, regularization=2e-3,
+                         local_weight=1.0, wilson_kab_weight=1.0, wilson_rows="hydride", bond_cutoff=2.5):
+    """One-system local Cartesian + raw Wilson K_ab fit. No mode projection, no full-Wilson Q."""
+    from pyBall import FFfit as FFfit_cpp
+    freeze_names = {} if freeze_names is None else dict(freeze_names)
+    prior_by_name = {} if prior_by_name is None else dict(prior_by_name)
+    symbols = list(sys["symbols"])
+    positions = np.asarray(sys["positions"], dtype=np.float64)
+    H_ref = np.asarray(sys["H_ref"], dtype=np.float64)
+    masses = np.asarray(sys["masses"], dtype=np.float64)
+    bonds = sys.get("bonds")
+    angles = sys.get("angles")
+    if bonds is None or angles is None:
+        bonds, angles, _ = build_topology(symbols, positions, bond_cutoff)
+    bonds3 = sys.get("bonds3") or []
+    bmap, b3map, amap, dmap, npar = build_global_param_map([bonds], [angles], [symbols], [bonds3], [[]], [symbols])
+    if dmap:
+        raise RuntimeError("fit_local_kab_system: torsions are not on the pin-ladder path")
+    names = param_names_from_maps(bmap, amap, b3map, dmap)
+    rec = {"name": sys.get("name", ""), "positions": positions, "symbols": symbols, "bonds": bonds, "angles": angles,
+           "bonds3": bonds3, "atom_types": symbols, "angle_central_only": False}
+    fitter = make_cpp_fitter(rec, (bmap, b3map, amap), npar)
+    A = FFfit_cpp.collect_sensitivity_matrices(fitter)
+    hybrid = [{"A": A, "H_ref": H_ref, "positions": positions, "masses": masses, "bonds": bonds, "angles": angles, "symbols": symbols}]
+    prior = np.ones(npar)
+    for t in bmap.values():
+        prior[t] = 5.0
+    for t in amap.values():
+        prior[t] = 1.0
+    for t in b3map.values():
+        prior[t] = 0.1
+    for n, v in prior_by_name.items():
+        if n in names:
+            prior[names.index(n)] = float(v)
+    freeze = freeze_indices_from_names(names, freeze_names) if freeze_names else None
+    k, diag = FFfit_cpp.fit_hybrid_hessian(
+        hybrid, mode_weight=0.0, local_weight=local_weight, internal_weight=0.0,
+        wilson_kab_weight=wilson_kab_weight, wilson_rows=wilson_rows, freeze=freeze,
+        prior=prior, regularization=regularization, parameter_scale=np.maximum(np.abs(prior), 0.1),
+        bounds=(0.0, np.inf))
+    fitter.set_params(k)
+    H_model = fitter.compute_model_hessian()
+    nH = int(sum(s == "H" for s in symbols))
+    om_ref = signed_frequencies_cm1(H_ref, masses)
+    om_model = signed_frequencies_cm1(H_model, masses)
+    rmse_st, mean_st_m, mean_st_r = stretch_rmse_nH(om_model, om_ref, nH)
+    n_imag_m = int(np.sum(om_model < -10.0))
+    k_by_name = {n: float(v) for n, v in zip(names, k)}
+    return {"k": k, "names": names, "k_by_name": k_by_name, "diag": diag, "H_model": H_model, "H_ref": H_ref,
+            "masses": masses, "nH": nH, "om_ref": om_ref, "om_model": om_model, "rmse_stretch": rmse_st,
+            "mean_stretch_model": mean_st_m, "mean_stretch_ref": mean_st_r, "n_imag_model": n_imag_m,
+            "bonds": bonds, "angles": angles, "bmap": bmap, "amap": amap, "fitter": fitter}
+
+def run_si_two_phase_fit(plot_dir, reg_phase1=0.0, reg_phase2=1e-3, bond_cutoff=2.5,
+                         include_13=False, si_subtypes=False, l1_root=None):
+    """Two-phase joint Si fit:
+    Phase 1: SiH4 alone → k_H-Si, k_H-Si-H (+ optionally k_H..H 1-3 spring).
+    Phase 2: all L1 Si crystals (0-imag), hydride k frozen → fit k_Si-Si, k_Si-Si-Si, k_H-Si-Si.
+
+    include_13:  add H..H 1-3 neighbour spring to Phase 1 to split T2/A1 bends.
+    si_subtypes: split H-Si bond type by Si coordination (H-SiH3 vs H-SiH vs H-SiH2).
+                 Phase 1 pins k(H-SiH3) only; Phase 2 fits k(H-SiH) and k(H-SiH2) freely.
+    """
+    import os, json
+    from pyBall import FFfit as FFfit_cpp
+    from pyBall.FFfit_plots import plot_spectrum
+    plot_dir = Path(plot_dir); plot_dir.mkdir(parents=True, exist_ok=True)
+    l1_root = PYSCF_VIB_L1_ROOT if l1_root is None else Path(l1_root)
+
+    # ── Phase 1: SiH4 alone ───────────────────────────────────────────────────
+    print("\n=== Phase 1: SiH4 alone (pin hydride params) ===")
+    d_sih4 = PYSCF_SMALL_NC / "SiH4"
+    data1 = load_pyscf_hessian_case(d_sih4)
+    bonds1, angles1, _ = build_topology(data1["symbols"], data1["positions"], bond_cutoff)
+    if include_13:
+        # Add geminal (1-3) H..H springs: pairs connected through common Si.
+        from pyBall.FFfit_utils import shortest_path_distances
+        bond_pairs1 = [(b[0], b[1]) for b in bonds1]
+        dist1 = shortest_path_distances(bond_pairs1, len(data1["symbols"]))
+        import numpy as _np
+        bonds3_1 = [(i, j, float(_np.linalg.norm(data1["positions"][j] - data1["positions"][i])))
+                    for i in range(len(data1["symbols"])) for j in range(i+1, len(data1["symbols"]))
+                    if dist1[i, j] == 2 and data1["symbols"][i] == "H" and data1["symbols"][j] == "H"]
+        print(f"  include_13: added {len(bonds3_1)} geminal H..H springs at ~{bonds3_1[0][2]:.3f} A" if bonds3_1 else "  include_13: no geminal H..H pairs found!")
+    else:
+        bonds3_1 = []
+    atom_types1 = data1["symbols"]
+    bmap1, b3map1, amap1, dmap1, npar1 = build_global_param_map(
+        [bonds1], [angles1], [atom_types1], [bonds3_1], [[]], [atom_types1], False)
+    print(f"  Phase1 params: bond={len(bmap1)} angle={len(amap1)} 1-3={len(b3map1)} total={npar1}")
+    for k, t in {**bmap1, **amap1, **b3map1}.items(): print(f"    {'-'.join(k) if isinstance(k,tuple) else k} -> idx {t}")
+    f1 = make_cpp_fitter({"bonds": bonds1, "angles": angles1, "bonds3": bonds3_1,
+                           "atom_types": atom_types1, "symbols": atom_types1, "positions": data1["positions"]},
+                          (bmap1, b3map1, amap1), npar1)
+    A1 = FFfit_cpp.collect_sensitivity_matrices(f1, extra={})
+    prior1 = np.ones(npar1)
+    for t in bmap1.values(): prior1[t] = 5.0
+    for t in amap1.values(): prior1[t] = 1.0
+    for t in b3map1.values(): prior1[t] = 0.5
+    hs1 = [{"A": A1, "H_ref": data1["H_ref"], "positions": data1["positions"],
+             "masses": data1["masses"], "bonds": bonds1, "angles": angles1, "symbols": atom_types1}]
+    k1, diag1 = FFfit_cpp.fit_hybrid_hessian(hs1, mode_weight=1.0, local_weight=0.0, internal_weight=0.0,
+        prior=prior1, regularization=reg_phase1, parameter_scale=prior1, bounds=(0.0, np.inf))
+    print(f"  solver={diag1['solver']} residual={diag1['relative_residual']:.4e} cond={diag1['condition']:.4e}")
+    hydride_names = set()
+    hydride_freeze = {}
+    for key, t in bmap1.items():
+        nm = "bond:" + "-".join(key)
+        print(f"  {nm} = {k1[t]:.6f} eV/A^2")
+        hydride_names.add(nm); hydride_freeze[nm] = float(k1[t])
+    for key, t in amap1.items():
+        nm = "angle:" + "-".join(key)
+        print(f"  {nm} = {k1[t]:.6f} eV/rad^2")
+        hydride_names.add(nm); hydride_freeze[nm] = float(k1[t])
+    for key, t in b3map1.items():
+        nm = "1-3:" + "-".join(key)
+        print(f"  {nm} = {k1[t]:.6f} eV/A^2")
+        hydride_names.add(nm); hydride_freeze[nm] = float(k1[t])
+    f1.set_params(k1)
+    om_ref1 = signed_frequencies_cm1(data1["H_ref"], data1["masses"])
+    om_mod1 = signed_frequencies_cm1(f1.compute_model_hessian(), data1["masses"])
+    rmse1, mae1, _ = one_to_one_frequency_metrics(om_ref1[om_ref1>10], om_mod1[om_mod1>10])
+    print(f"  SiH4  phase1: freq RMSE={rmse1:.1f} cm-1  MAE={mae1:.1f} cm-1")
+    out1 = str(plot_dir / "phase1_SiH4_spectrum.png")
+    plot_spectrum(om_ref1[om_ref1>10], om_mod1[om_mod1>10], "Phase1_SiH4", outdir=str(plot_dir))
+
+    # ── Phase 2: all L1 Si crystals, hydride frozen ────────────────────────────
+    print("\n=== Phase 2: L1 Si crystals (hydride frozen) ===")
+    crystal_dirs = []
+    for case in sorted(list_pyscf_vib_cases(l1_root)):
+        if "Si" not in case: continue
+        try: d = resolve_pyscf_vib_case_dir(l1_root, case)
+        except FileNotFoundError: continue
+        nim, _ = n_imag_from_omega_cm(np.load(d / "frequencies_cm1.npy"))
+        if nim == 0: crystal_dirs.append(d)
+    print(f"  {len(crystal_dirs)} L1 systems: {[d.name for d in crystal_dirs]}")
+
+    crystal_systems = []
+    for d in crystal_dirs:
+        data = load_pyscf_hessian_case(d)
+        bonds, angles, bonds3 = build_topology(data["symbols"], data["positions"], bond_cutoff, third_bonds=include_13)
+        atom_types = assign_si_environment_types(data["symbols"], bonds, enabled=si_subtypes)
+        crystal_systems.append({
+            "name": d.name, "symbols": data["symbols"], "atom_types": atom_types,
+            "positions": data["positions"], "masses": data["masses"],
+            "H_ref": data["H_ref"], "bonds": bonds, "angles": angles, "bonds3": bonds3,
+            "dihedrals": [], "angle_central_only": False, "data": data,
+        })
+    all_bonds2  = [s["bonds"]      for s in crystal_systems]
+    all_angles2 = [s["angles"]     for s in crystal_systems]
+    all_bonds3_2= [s["bonds3"]     for s in crystal_systems]
+    all_syms2   = [s["atom_types"] for s in crystal_systems]
+    all_elems2  = [s["symbols"]    for s in crystal_systems]
+    bmap2, b3map2, amap2, dmap2, npar2 = build_global_param_map(
+        all_bonds2, all_angles2, all_syms2, all_bonds3_2, [[]]*len(crystal_systems), all_elems2, False)
+    print(f"  Phase2 params: bond={len(bmap2)} angle={len(amap2)} total={npar2}")
+    for k_, t in bmap2.items(): print(f"    bond:{'-'.join(k_)} -> idx {t}")
+    for k_, t in amap2.items(): print(f"    angle:{'-'.join(k_)} -> idx {t}")
+
+    # Build freeze dict: indices of hydride params that also appear in phase2 global map
+    names2 = [""] * npar2
+    for key, t in bmap2.items():  names2[t] = "bond:"  + "-".join(key)
+    for key, t in amap2.items():  names2[t] = "angle:" + "-".join(key)
+    for key, t in b3map2.items(): names2[t] = "1-3:"   + "-".join(key)
+    freeze2 = {t: hydride_freeze[names2[t]] for t in range(npar2) if names2[t] in hydride_freeze}
+    print(f"  Frozen: {[names2[t] for t in freeze2]}")
+
+    fitters2 = [make_cpp_fitter(sys, (bmap2, b3map2, amap2), npar2) for sys in crystal_systems]
+    prior2 = np.ones(npar2)
+    for t in bmap2.values(): prior2[t] = 5.0
+    for t in amap2.values(): prior2[t] = 1.0
+    hs2 = []
+    for f, sys in zip(fitters2, crystal_systems):
+        A = FFfit_cpp.collect_sensitivity_matrices(f, extra={})
+        hs2.append({"A": A, "H_ref": sys["H_ref"], "positions": sys["positions"],
+                    "masses": sys["masses"], "bonds": sys["bonds"], "angles": sys["angles"],
+                    "symbols": sys["symbols"]})
+    k2, diag2 = FFfit_cpp.fit_hybrid_hessian(hs2, mode_weight=1.0, local_weight=0.0, internal_weight=0.0,
+        prior=prior2, regularization=reg_phase2, parameter_scale=prior2, bounds=(0.0, np.inf), freeze=freeze2)
+    print(f"  solver={diag2['solver']} residual={diag2['relative_residual']:.4e} cond={diag2['condition']:.4e}")
+    print("\n=== Phase 2 fitted parameters ===")
+    for key, t in bmap2.items():  print(f"  k_bond[{'-'.join(key)}] = {k2[t]:.6f} eV/A^2  {'(FROZEN)' if t in freeze2 else ''}")
+    for key, t in amap2.items():  print(f"  k_angle[{'-'.join(key)}] = {k2[t]:.6f} eV/rad^2  {'(FROZEN)' if t in freeze2 else ''}")
+
+    print("\n=== Phase 2 per-system frequency RMSE ===")
+    results = []
+    for f, sys in zip(fitters2, crystal_systems):
+        f.set_params(k2)
+        H_model = f.compute_model_hessian()
+        om_ref = signed_frequencies_cm1(sys["H_ref"], sys["masses"])
+        om_mod = signed_frequencies_cm1(H_model, sys["masses"])
+        rmse, mae, _ = one_to_one_frequency_metrics(om_ref[om_ref>10], om_mod[om_mod>10])
+        relF = 100.0 * np.linalg.norm(H_model - sys["H_ref"]) / np.linalg.norm(sys["H_ref"])
+        print(f"  {sys['name']:35s}: RMSE={rmse:.1f} cm-1  MAE={mae:.1f} cm-1  relFrob={relF:.2f}%")
+        results.append({"name": sys["name"], "rmse": rmse, "mae": mae, "relFrob": relF})
+        plot_spectrum(om_ref[om_ref>10], om_mod[om_mod>10], sys["name"], outdir=str(plot_dir))
+    # Save JSON summary
+    summary = {"phase1": {nm: v for nm, v in hydride_freeze.items()},
+               "phase2": {names2[t]: float(k2[t]) for t in range(npar2)},
+               "per_system": results}
+    out_json = plot_dir / "two_phase_si_summary.json"
+    out_json.write_text(json.dumps(summary, indent=2))
+    print(f"\n  Summary: {out_json}")
+    return summary
+
+def load_joint_si_systems(bond_cutoff=2.5, si_subtypes=False, l1_root=None):
+    """Load SiH4 (PBE/def2svp) + all 0-imag tight-Si L1 (PBE/ccECP-cc-pVDZ) for joint fitting.
+
+    Both use PBE; basis differs. Caveat printed. Returns list of system dicts compatible
+    with build_global_param_map / make_cpp_fitter / fit_hybrid_hessian.
+    """
+    l1_root = PYSCF_VIB_L1_ROOT if l1_root is None else Path(l1_root)
+    dirs = [PYSCF_SMALL_NC / "SiH4"]
+    for case in sorted(list_pyscf_vib_cases(l1_root)):
+        if "Si" not in case:
+            continue
+        try:
+            d = resolve_pyscf_vib_case_dir(l1_root, case)
+        except FileNotFoundError:
+            continue
+        nim, _ = n_imag_from_omega_cm(np.load(d / "frequencies_cm1.npy"))
+        if nim == 0:
+            dirs.append(d)
+    print(f"  joint Si: {len(dirs)} systems: {[d.name for d in dirs]}")
+    print("  CAVEAT: SiH4 is PBE/def2svp; L1 crystals are PBE/ccECP-cc-pVDZ. Separate basis — pin-transfer only, not a mixed-XC LS.")
+    systems = []
+    for d in dirs:
+        data = load_pyscf_hessian_case(d)
+        bonds, angles, _ = build_topology(data["symbols"], data["positions"], bond_cutoff)
+        atom_types = assign_si_environment_types(data["symbols"], bonds, enabled=si_subtypes)
+        systems.append({
+            "name": d.name, "dir": d,
+            "symbols": data["symbols"], "atom_types": atom_types,
+            "positions": data["positions"], "masses": data["masses"],
+            "H_ref": data["H_ref"], "bonds": bonds, "angles": angles, "bonds3": [],
+            "dihedrals": [], "angle_central_only": si_subtypes, "data": data,
+        })
+        nH = int(sum(s == "H" for s in data["symbols"]))
+        print(f"    {d.name}: N={data['natoms']} nH={nH} bonds={len(bonds)} angles={len(angles)}")
+    return systems
+
+def si_pbe_ladder_stages():
+    """Si PBE pin-ladder. Stage B (Si2H6) is skipped — no PBE/def2svp Hessian in the bank."""
+    return [
+        {"stage": "A", "label": "SiH4", "xc": "PBE/def2svp",
+         "dir": PYSCF_SMALL_NC / "SiH4", "note": "owns k_XH and k_HXH"},
+        {"stage": "C", "label": "Si10H16", "xc": "PBE/def2svp",
+         "dir": CCU_CAGE_PYSCF / "Si10H_pyscf_pbe_def2svp", "note": "unlock XX / XXX / XXH; pin hydride from A"},
+        {"stage": "D", "label": "octahedron_Si", "xc": "PBE/ccECP-cc-pVDZ",
+         "l1_case": "octahedron_Si", "note": "pin hydride from A; basis transfer from def2svp"},
+        {"stage": "E", "label": "cube_Si", "xc": "PBE/ccECP-cc-pVDZ",
+         "l1_case": "cube_Si", "note": "same pin as D; compare k_XX to D"},
+    ]
+
+def run_si_pbe_pin_ladder(plot_dir, regularization=2e-3, pin_tol=0.05, bond_cutoff=2.5, l1_root=None):
+    """Si PBE A→C→D→E: freeze hydride k from SiH4; do not mix Hessians in one LS; no rigid-P."""
+    from pyBall.FFfit_plots import plot_spectrum
+    l1_root = PYSCF_VIB_L1_ROOT if l1_root is None else Path(l1_root)
+    plot_dir = Path(plot_dir)
+    plot_dir.mkdir(parents=True, exist_ok=True)
+    pin = {}
+    k_history = {}
+    stages_out = []
+    print("=== Si PBE pin-ladder (local Hessian + raw Wilson K_ab; mode_weight=0, internal_weight=0) ===")
+    print("  Stage B (Si2H6) skipped: no PBE/def2svp Hessian in the bank.")
+    print("  Do not cite these frozen-q frequencies as FTIR. Own-min FIRE is a later gate.")
+    for spec in si_pbe_ladder_stages():
+        if "l1_case" in spec:
+            case_dir = resolve_pyscf_vib_case_dir(l1_root, spec["l1_case"])
+        else:
+            case_dir = Path(spec["dir"])
+        data = load_pyscf_hessian_case(case_dir)
+        if "freqs" in data:
+            n_imag_ref, wmin = n_imag_from_omega_cm(data["freqs"])
+        else:
+            om = signed_frequencies_cm1(data["H_ref"], data["masses"])
+            n_imag_ref, wmin = int(np.sum(om < -10.0)), float(om.min())
+        print(f"\n--- Stage {spec['stage']} {spec['label']}  {spec['xc']}  N={data['natoms']}  n_imag_ref={n_imag_ref}  νmin={wmin:.2f} ---")
+        print(f"  dir={case_dir}")
+        print(f"  {spec['note']}")
+        if n_imag_ref:
+            raise RuntimeError(f"{spec['label']}: n_imag={n_imag_ref} — not a fit target (saddle).")
+        if spec["stage"] in ("D", "E"):
+            print("  CAVEAT: L1 basis is ccECP-cc-pVDZ; hydride k is a pin-transfer from PBE/def2svp, not a stacked LS mix.")
+        rec = fit_local_kab_system({"name": spec["label"], "symbols": data["symbols"], "positions": data["positions"],
+                                    "H_ref": data["H_ref"], "masses": data["masses"]},
+                                   freeze_names=pin if pin else None, prior_by_name=k_history.get("C", {}).get("k_by_name") if spec["stage"] in ("D", "E") else None,
+                                   regularization=regularization, bond_cutoff=bond_cutoff)
+        for n, v in zip(rec["names"], rec["k"]):
+            print(f"  {n} = {v:.6g}")
+        print(f"  condition={rec['diag']['condition']:.3g} residual={rec['diag']['relative_residual']:.3g} n_imag_model(frozen-q)={rec['n_imag_model']}")
+        print(f"  stretch RMSE (nH={rec['nH']} highest, metric): {rec['rmse_stretch']:.2f} cm-1  <st>_FF={rec['mean_stretch_model']:.1f} <st>_DFT={rec['mean_stretch_ref']:.1f}")
+        if spec["stage"] == "A":
+            pin = dict(rec["k_by_name"])
+            print(f"  pin from A (frozen thereafter): {pin}")
+        k_history[spec["stage"]] = rec
+        om_ref = np.sort(rec["om_ref"][rec["om_ref"] > 10.0])
+        om_model = np.sort(rec["om_model"][rec["om_model"] > 10.0])
+        plot_spectrum(om_ref, om_model, f"ladder_{spec['stage']}_{spec['label']}", outdir=str(plot_dir), xmax=2500.0)
+        stages_out.append({
+            "stage": spec["stage"], "label": spec["label"], "xc": spec["xc"], "dir": str(case_dir),
+            "natoms": int(data["natoms"]), "nH": rec["nH"], "n_imag_ref": int(n_imag_ref),
+            "k": rec["k_by_name"], "condition": float(rec["diag"]["condition"]),
+            "relative_residual": float(rec["diag"]["relative_residual"]),
+            "rmse_stretch_nH": rec["rmse_stretch"], "mean_stretch_model": rec["mean_stretch_model"],
+            "mean_stretch_ref": rec["mean_stretch_ref"], "n_imag_model_frozen_q": rec["n_imag_model"],
+            "note": spec["note"],
+        })
+    d_k = k_history["D"]["k_by_name"]
+    e_k = k_history["E"]["k_by_name"]
+    overlap = sorted(set(d_k) & set(e_k) - set(pin))
+    xx_names = [n for n in overlap if n.startswith("bond:") and "H" not in n]
+    print(f"\n=== D vs E unfrozen overlap (k_XX fail-loud tol={100.0*pin_tol:.1f}%; angles diagnostic) ===")
+    d_vs_e = {}
+    for n in overlap:
+        a, b = d_k[n], e_k[n]
+        rel = abs(b - a) / abs(a) if abs(a) > 1e-12 else float("inf")
+        d_vs_e[n] = {"D": a, "E": b, "rel": rel}
+        print(f"  {n}: D={a:.6g}  E={b:.6g}  Δ={100.0*rel:.2f}%")
+    angle_bad = [n for n in overlap if n.startswith("angle:") and d_vs_e[n]["rel"] > pin_tol]
+    if angle_bad:
+        print("  NOTE: unfrozen angles differ by more than tol (not a pin failure; cube vs octa see-saw): " + ", ".join(angle_bad))
+    summary = {"protocol": "Si PBE pin-ladder A(SiH4)→C(Si10H16)→D(octa)→E(cube); hydride freeze; local+K_ab; no PDP",
+               "pin": pin, "stages": stages_out, "pin_tol": pin_tol, "d_vs_e": d_vs_e}
+    js = plot_dir / "ladder_si_pbe.json"
+    js.write_text(json.dumps(summary, indent=2))
+    print(f"  wrote {js}")
+    if xx_names:
+        assert_relative_param_shift(d_k, e_k, xx_names, tol=pin_tol, ctx="D vs E k_XX: ")
+    return summary
 
 def make_cpp_fitter(sys, maps, n_total):
     """Build one C++ linear bond/angle/1-4 sensitivity model with global indices."""

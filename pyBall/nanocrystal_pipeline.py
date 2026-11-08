@@ -4,6 +4,10 @@ Design: per-crystal cache files 01→05 (see doc/Topics/FTIR_Nanocrystals/NPZ_Cr
 Topology/FF params in 03_topology.npz are fixed at export; relax updates coordinates only.
 Hessian default (--source topology) assembles exported springs at 02_relaxed.pos.
 
+Relax --nonbond: off = bonded+angles; surface = H + undercoordinated heavies (REQs=0 on 4-coordinated X, same set as CollisionWorkgroups.surfaceAtomIndices) + Exclusion2 (skip 1–2/1–3); all = full-crystal LJ. Atlas uses surface + mol2 init.
+Harmonic spectrum: Hessian only after relax with the SAME FF/scales/switches (doc/Topics/FTIR_Nanocrystals/Hessian_at_own_minimum.md). Shared-geometry Hessian is FFfit, not a spectrum.
+Crystal 01/02 NPZ always stores explicit bonds_ij from mol2/xyz (never distance-guessed).
+
 Open issues:
 - Relax uses C++ MMFF; Hessian uses MMFFL linear sticks — full FF parity at relax pending LFF path.
 - Eigenvectors not written to 05_spectrum.npz (v1.2); viewers use solve_normal_modes_from_hessian_npz.
@@ -55,13 +59,19 @@ def ensure_mmff_data() -> Path:
     return tmmff
 
 
-def write_xyz(path: Path, pos: np.ndarray, Z: np.ndarray) -> None:
+def write_xyz(path: Path, pos: np.ndarray, Z: np.ndarray, bonds_ij: np.ndarray | None = None) -> None:
+    from pyBall.io.crystal_npz import as_bonds_ij
     sym_map = {1: "H", 6: "C", 14: "Si"}
     n = len(Z)
-    lines = [str(n), "nanocrystal pipeline"]
+    bij = as_bonds_ij(bonds_ij, n_atoms=n, ctx=f"write_xyz({path})") if bonds_ij is not None else None
+    nb = 0 if bij is None else int(bij.shape[0])
+    lines = [f"{n} {nb}" if nb > 0 else str(n), "nanocrystal pipeline"]
     for i in range(n):
         s = sym_map.get(int(Z[i]), "C")
         lines.append(f"{s} {pos[i,0]:.6f} {pos[i,1]:.6f} {pos[i,2]:.6f}")
+    if bij is not None:
+        for a, b in bij:
+            lines.append(f"{int(a)+1} {int(b)+1}")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n")
 
@@ -75,14 +85,12 @@ def init_path_from_crystal_npz(npz_path: Path, work_dir: Path) -> tuple[Path, di
     crystal = load_crystal_npz(npz_path)
     work_dir = Path(work_dir)
     work_dir.mkdir(parents=True, exist_ok=True)
-    bonds_ij = crystal.get("bonds_ij")
-    if bonds_ij is not None and len(bonds_ij) > 0:
-        mol2 = work_dir / "_init_from_npz.mol2"
-        save_mol2(str(mol2), enames_from_Z(crystal["Z"]), crystal["pos"], bonds_ij, comment=f"from {npz_path.name}")
-        return mol2, crystal
-    xyz = work_dir / "_init_from_npz.xyz"
-    write_xyz(xyz, crystal["pos"], crystal["Z"])
-    return xyz, crystal
+    from pyBall.io.crystal_npz import as_bonds_ij
+    bonds_ij = as_bonds_ij(crystal.get("bonds_ij"), n_atoms=len(crystal["Z"]), ctx=f"init_path_from_crystal_npz({npz_path})")
+    mol2 = work_dir / "_init_from_npz.mol2"
+    save_mol2(str(mol2), enames_from_Z(crystal["Z"]), crystal["pos"], bonds_ij, comment=f"from {npz_path.name}")
+    crystal = {**crystal, "bonds_ij": bonds_ij}
+    return mol2, crystal
 
 
 def write_status(out_npz: Path, status: dict) -> None:
@@ -100,6 +108,81 @@ def atom_Z_from_mmff(MMFF, natoms: int) -> np.ndarray:
     return Z
 
 
+def bonds_ij_from_mmff_neighs(MMFF, natoms: int) -> np.ndarray:
+    """Covalent pairs in MMFF atom order (MMFF may pack heavies-then-H vs mol2 file order)."""
+    from pyBall.io.crystal_npz import as_bonds_ij
+    neighs = np.asarray(MMFF.neighs)
+    if neighs.shape[0] != natoms:
+        raise ValueError(f"bonds_ij_from_mmff_neighs: neighs {neighs.shape} vs natoms={natoms}")
+    pairs = []
+    for i in range(natoms):
+        for k in range(neighs.shape[1]):
+            j = int(neighs[i, k])
+            if j < 0:
+                continue
+            if j >= natoms:
+                j -= 1
+            if j < 0 or j >= natoms:
+                raise ValueError(f"bonds_ij_from_mmff_neighs: neighbor {j} of {i} out of range")
+            if i < j:
+                pairs.append((i, j))
+    return as_bonds_ij(pairs, n_atoms=natoms, ctx="bonds_ij_from_mmff_neighs")
+
+
+def mask_bulk_nonbond(MMFF, Z: np.ndarray) -> tuple[int, int]:
+    """Zero REQs of 4-coordinated heavies so NB is surface-only (H + nHeavy<4), matching CollisionWorkgroups.surfaceAtomIndices."""
+    natoms = int(MMFF.natoms)
+    if Z.shape[0] != natoms:
+        raise ValueError(f'mask_bulk_nonbond: Z length {Z.shape[0]} != natoms {natoms}')
+    neighs = np.asarray(MMFF.neighs)
+    if neighs.shape[0] != natoms:
+        raise ValueError(f'mask_bulk_nonbond: neighs shape {neighs.shape} != ({natoms},*)')
+    n_surf = 0
+    n_bulk = 0
+    for ia in range(natoms):
+        if int(Z[ia]) == 1:
+            n_surf += 1
+            continue
+        n_heavy = 0
+        for k in range(neighs.shape[1]):
+            ja = int(neighs[ia, k])
+            if ja < 0:
+                continue
+            if int(Z[ja]) > 1:
+                n_heavy += 1
+        if n_heavy >= 4:
+            MMFF.REQs[ia, :] = 0.0
+            n_bulk += 1
+        else:
+            n_surf += 1
+    if n_surf == 0:
+        raise RuntimeError('mask_bulk_nonbond: no surface atoms (H or undercoordinated heavies)')
+    return n_surf, n_bulk
+
+
+def mmff_assert_stationary(MMFF, natoms: int, fconv: float = 1e-4, ctx: str = "") -> float:
+    """Fail loud if |F|_∞ is above Fconv. A Hessian here is not a harmonic spectrum of this MMFF."""
+    fmax = float(np.max(np.abs(np.asarray(MMFF.fapos[:natoms]))))
+    if fmax >= float(fconv):
+        raise RuntimeError(
+            f"{ctx}MMFF |F|max={fmax:.3e} >= Fconv={float(fconv):.3e}. "
+            "Relax with this same FF (same scales, same switches) before the Hessian. "
+            "See doc/Topics/FTIR_Nanocrystals/Hessian_at_own_minimum.md"
+        )
+    return fmax
+
+
+def mmff_fire_relax(MMFF, natoms: int, nstep_max: int = 8000, fconv: float = 1e-4, dt: float = 0.05, damping: float = 0.1) -> dict:
+    """FIRE on an already-initialized MMFF (current bKs/apars/switches). Call before any spectrum Hessian."""
+    MMFF.set_opt(dt_max=0.05, dt_min=0.01, damp_max=0.1, cvf_min=-0.1, cvf_max=+0.1)
+    n_steps = int(MMFF.run(nstepMax=int(nstep_max), dt=float(dt), Fconv=float(fconv), damping=float(damping), ialg=2, omp=False))
+    pos_max = float(np.max(np.abs(MMFF.apos[:natoms])))
+    if pos_max > 80.0:
+        raise RuntimeError(f"MMFF relax exploded: max|xyz|={pos_max:.3e} Å after {n_steps} steps")
+    fmax = mmff_assert_stationary(MMFF, natoms, fconv=fconv, ctx="after relax: ")
+    return {"n_steps": n_steps, "fmax": fmax}
+
+
 def relax(
     init_path: Path,
     out_npz: Path,
@@ -109,10 +192,13 @@ def relax(
     allow_unconverged: bool = False,
     bonds_ij: np.ndarray | None = None,
     Z_init: np.ndarray | None = None,
+    nonbond: str = "off",
 ) -> dict:
     init_path = Path(init_path).resolve()
     if not init_path.is_file():
         raise FileNotFoundError(init_path)
+    if nonbond not in ("off", "surface", "all"):
+        raise ValueError(f"relax: nonbond must be off|surface|all, got {nonbond!r}")
     tmmff = ensure_mmff_data()
     orig = os.getcwd()
     t0 = time.perf_counter()
@@ -122,6 +208,8 @@ def relax(
     fmax = float("nan")
     n_steps = 0
     converged = False
+    n_surf = 0
+    n_bulk = 0
     try:
         os.chdir(tmmff)
         from pyBall import MMFF
@@ -130,18 +218,26 @@ def relax(
         MMFF.init(xyz_name=str(init_path), bEpairs=False, bMMFF=True, nPBC=(0, 0, 0))
         MMFF.getBuffs()
         natoms = MMFF.natoms
-        MMFF.setSwitches(NonBonded=-1, MMFF=+1, Angles=+1, SurfAtoms=-1, GridFF=-1, PiSigma=-1, PiPiI=-1)
+        Z = np.asarray(Z_init, dtype=np.int32).reshape(-1) if Z_init is not None else atom_Z_from_mmff(MMFF, natoms)
+        if Z.shape[0] != natoms:
+            raise ValueError(f"relax: Z_init length {Z.shape[0]} != natoms {natoms}")
+        if nonbond == "off":
+            MMFF.setSwitches(NonBonded=-1, NonBondNeighs=-1, MMFF=+1, Angles=+1, PBC=-1, SurfAtoms=-1, GridFF=-1, PiSigma=-1, PiPiI=-1)
+        else:
+            MMFF.setSwitches(NonBonded=+1, NonBondNeighs=+1, MMFF=+1, Angles=+1, PBC=-1, SurfAtoms=-1, GridFF=-1, PiSigma=-1, PiPiI=-1)
+            MMFF.setExclusion2(+1)
+            if nonbond == "surface":
+                n_surf, n_bulk = mask_bulk_nonbond(MMFF, Z)
         MMFF.set_opt(dt_max=0.05, dt_min=0.01, damp_max=0.1, cvf_min=-0.1, cvf_max=+0.1)
         n_steps = int(MMFF.run(nstepMax=nstep_max, dt=0.05, Fconv=fconv, damping=0.1, ialg=2, omp=False))
         pos = MMFF.apos[:natoms].copy()
         fapos = MMFF.fapos[:natoms].copy()
         fmax = float(np.max(np.abs(fapos)))
         converged = fmax < fconv
+        if np.max(np.abs(pos)) > 80.0:
+            raise RuntimeError(f"MMFF relax coordinates exploded: max|xyz|={float(np.max(np.abs(pos))):.3e} Å after {n_steps} steps (fmax={fmax:.3e})")
         if not converged and not allow_unconverged:
             raise RuntimeError(f"MMFF relax did not converge: fmax={fmax:.3e} after {n_steps} steps")
-        Z = np.asarray(Z_init, dtype=np.int32).reshape(-1) if Z_init is not None else atom_Z_from_mmff(MMFF, natoms)
-        if Z.shape[0] != natoms:
-            raise ValueError(f"relax: Z_init length {Z.shape[0]} != natoms {natoms}")
     finally:
         os.chdir(orig)
     if pos is None:
@@ -149,13 +245,13 @@ def relax(
     timing_ms = (time.perf_counter() - t0) * 1000.0
     out_npz = Path(out_npz)
     out_npz.parent.mkdir(parents=True, exist_ok=True)
-    status = {"status": "ok", "natoms": int(natoms), "fmax": fmax, "converged": converged, "n_steps": n_steps, "timing_ms": timing_ms}
-    save_kw = {"pos": pos, "Z": Z, "fmax": fmax, "n_steps": n_steps, "converged": converged, "timing_ms": timing_ms, "natoms": natoms}
-    if bonds_ij is not None and len(bonds_ij) > 0:
-        save_kw["bonds_ij"] = np.asarray(bonds_ij, dtype=np.int32)
+    status = {"status": "ok", "natoms": int(natoms), "fmax": fmax, "converged": converged, "n_steps": n_steps, "timing_ms": timing_ms, "nonbond": nonbond, "n_surf": int(n_surf), "n_bulk": int(n_bulk)}
+    from pyBall.io.crystal_npz import as_bonds_ij
+    bij = as_bonds_ij(bonds_ij, n_atoms=natoms, ctx=f"relax({out_npz})")
+    save_kw = {"pos": pos, "Z": Z, "fmax": fmax, "n_steps": n_steps, "converged": converged, "timing_ms": timing_ms, "natoms": natoms, "bonds_ij": bij}
     np.savez(out_npz, **save_kw)
     if out_xyz:
-        write_xyz(Path(out_xyz), pos, Z)
+        write_xyz(Path(out_xyz), pos, Z, bonds_ij=bij)
     write_status(out_npz, status)
     return status
 
@@ -278,17 +374,40 @@ def build_hessian_bundle(
     return status
 
 
-def build_hessian_mmff(relaxed_xyz: Path, out_npz: Path, dx: float = 1e-4, rigid_shift: float = 1e6) -> dict:
-    """Legacy: MMFF FD from bare xyz (re-infers bonds). Prefer build_hessian_bundle."""
-    from pyBall import FTIR
+def build_hessian_mmff(init_path: Path, out_npz: Path, dx: float = 1e-4, rigid_shift: float = 1e6, bonds_ij=None) -> dict:
+    """MMFF finite-difference Hessian at mol2/xyz geometry.
 
-    H, M, pos, Z, natoms = _mmff_hessian_fd(relaxed_xyz, dx=dx)
+    Prefer ``.mol2`` (or pass ``bonds_ij``): MMFF.init uses that topology, so 5-ring closers are kept.
+    Bare xyz without explicit bonds re-infers connectivity and is recorded as ``mmff_fd_xyz``.
+    """
+    from pyBall import FTIR
+    from pyBall.io.crystal_npz import as_bonds_ij, load_bonds_ij_from_mol2, map_atoms_by_position, remap_bonds_ij
+    from pyBall.atomicUtils import loadMol2
+
+    init_path = Path(init_path)
+    t0 = time.perf_counter()
+    H, M, pos, Z, natoms = _mmff_hessian_fd(init_path, dx=dx)
     H_proj = FTIR.project_rigid_modes(H, M, pos, shift=rigid_shift)
-    timing_ms = 0.0
+    timing_ms = (time.perf_counter() - t0) * 1000.0
+    if init_path.suffix.lower() == '.mol2':
+        apos, _atypes, _enames, _qs, _bonds, *_rest = loadMol2(str(init_path))
+        mapping = map_atoms_by_position(np.asarray(apos, dtype=np.float64), pos)
+        bij = remap_bonds_ij(load_bonds_ij_from_mol2(init_path), mapping, n_atoms=len(apos))
+        src = 'mmff_fd_mol2'
+        warning = None
+    else:
+        bij = None
+        src = 'mmff_fd_xyz'
+        warning = 'xyz path: no mol2 remap; pass .mol2 for explicit bonds'
     out = Path(out_npz)
     out.parent.mkdir(parents=True, exist_ok=True)
-    status = {'status': 'ok', 'natoms': int(natoms), 'ndof': int(3 * natoms), 'timing_ms': timing_ms, 'hessian_source': 'mmff_fd_xyz', 'warning': 'bonds re-inferred from xyz'}
-    np.savez(out, K=H, K_projected=H_proj, M=M, pos=pos, Z=Z, source=np.array('mmff_fd_xyz'), timing_ms=timing_ms, natoms=natoms)
+    status = {'status': 'ok', 'natoms': int(natoms), 'ndof': int(3 * natoms), 'timing_ms': timing_ms, 'hessian_source': src, 'init_path': str(init_path)}
+    if warning:
+        status['warning'] = warning
+    save_kw = dict(K=H, K_projected=H_proj, M=M, pos=pos, Z=Z, source=np.array(src), timing_ms=timing_ms, natoms=natoms)
+    if bij is not None:
+        save_kw['bonds_ij'] = bij
+    np.savez(out, **save_kw)
     write_status(out, status)
     return status
 
@@ -366,19 +485,34 @@ def load_spectrum_npz(path) -> dict:
 def solve_normal_modes_from_hessian_npz(hessian_npz, rigid_shift: float = 1e6) -> dict:
     """Mass-weighted eigh of K_projected — eigenvectors for mode visualization (not stored in 05 v1.2)."""
     from pyBall import FTIR
+    from pyBall.FFfit_utils import assert_harmonic_spectrum_at_minimum, signed_frequencies_cm1
 
     data = np.load(hessian_npz, allow_pickle=True)
-    K = np.asarray(data["K_projected"] if "K_projected" in data else data["K"], dtype=np.float64)
+    if "K" not in data.files:
+        raise RuntimeError(
+            f"{hessian_npz}: missing unprojected K. Cannot test negative curvature on K_projected "
+            "(rigid modes are shifted). See doc/Topics/FTIR_Nanocrystals/Hessian_at_own_minimum.md"
+        )
+    K_raw = np.asarray(data["K"], dtype=np.float64)
     M = np.asarray(data["M"], dtype=np.float64)
     pos = np.asarray(data["pos"], dtype=np.float64)
     natoms = int(data["natoms"]) if "natoms" in data else pos.shape[0]
+    m = np.diag(M).reshape(natoms, 3)[:, 0]
+    assert_harmonic_spectrum_at_minimum(signed_frequencies_cm1(K_raw, m), ctx=f"{hessian_npz}: ")
+    K = np.asarray(data["K_projected"] if "K_projected" in data else data["K"], dtype=np.float64)
     if "K_projected" not in data:
         K = FTIR.project_rigid_modes(K, M, pos, shift=rigid_shift)
-    m = np.diag(M).reshape(natoms, 3)[:, 0]
     m_sqrt = np.repeat(np.sqrt(m), 3)
     m_inv_sqrt = 1.0 / m_sqrt
     K_mw = (m_inv_sqrt[:, None] * K) * m_inv_sqrt[None, :]
     w, v = np.linalg.eigh(K_mw)
+    lam_cut = (10.0 / 521.5) ** 2
+    n_imag = int(np.sum(w < -lam_cut))
+    if n_imag:
+        raise RuntimeError(
+            f"{hessian_npz}: K_projected still has {n_imag} eigenvalues < -{lam_cut:.2e} "
+            "(imaginary |ν|>10 cm⁻¹). Not a spectrum. See doc/Topics/FTIR_Nanocrystals/Hessian_at_own_minimum.md"
+        )
     omegas_modes = np.sqrt(np.maximum(w, 0.0))
     omegas_cm = omega_internal_to_cm1(omegas_modes)
     modes_cart = v * m_inv_sqrt[:, None]
@@ -566,6 +700,7 @@ def main(argv=None):
     p_relax.add_argument("--nstep-max", type=int, default=2000)
     p_relax.add_argument("--fconv", type=float, default=1e-4)
     p_relax.add_argument("--allow-unconverged", action="store_true")
+    p_relax.add_argument("--nonbond", choices=("off", "surface", "all"), default="off", help="off=bonded only; surface=H+undercoordinated heavies (collision-group policy); all=full-crystal LJ")
 
     p_hess = sub.add_parser("hessian", help="Hessian → 04_hessian.npz (requires relaxed + topology NPZ bundle)")
     p_hess.add_argument("--relaxed-npz", default=None, help="02_relaxed.npz (pos, Z, bonds_ij)")
@@ -593,18 +728,19 @@ def main(argv=None):
 
     args = ap.parse_args(argv)
     if args.cmd == "relax":
-        bonds_ij = None
+        from pyBall.io.crystal_npz import load_bonds_ij_from_init
         if args.init_npz:
             work = Path(args.work_dir) if args.work_dir else Path(args.out_npz).parent / "work_relax"
             init, crystal = init_path_from_crystal_npz(args.init_npz, work)
-            bonds_ij = crystal.get("bonds_ij")
+            bonds_ij = crystal["bonds_ij"]
             Z_init = crystal.get("Z")
         else:
             init = args.init_xyz or args.init_mol2
             Z_init = None
             if not init:
                 raise ValueError("need --init-npz, --init-xyz, or --init-mol2")
-        relax(init, args.out_npz, out_xyz=args.out_xyz, nstep_max=args.nstep_max, fconv=args.fconv, allow_unconverged=args.allow_unconverged, bonds_ij=bonds_ij, Z_init=Z_init)
+            bonds_ij = load_bonds_ij_from_init(init)
+        relax(init, args.out_npz, out_xyz=args.out_xyz, nstep_max=args.nstep_max, fconv=args.fconv, allow_unconverged=args.allow_unconverged, bonds_ij=bonds_ij, Z_init=Z_init, nonbond=args.nonbond)
     elif args.cmd == "hessian":
         if args.relaxed_npz and args.topology_npz:
             build_hessian_bundle(args.relaxed_npz, args.topology_npz, args.out_npz, work_dir=args.work_dir, dx=args.dx, rigid_shift=args.rigid_shift, source=args.source, compare_mmff=args.compare_mmff)

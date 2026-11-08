@@ -418,7 +418,7 @@ def plotAtoms( apos=None, es=None, atoms=None, bNumbers=False, labels=None, size
         if es is not None: es = es  [selection]
     #print( "apos.shape ", apos.shape )
     #print( "apos ", apos )
-    plt.scatter( apos[:,ax1],apos[:,ax2], marker=marker, c=colors, s=sizes, cmap='seismic', zorder=2 ); plt.axis('equal'); #plt.grid()
+    plt.scatter( apos[:,ax1],apos[:,ax2], marker=marker, c=colors, s=sizes, cmap=(None if np.asarray(colors).ndim == 2 else 'seismic'), zorder=2 ); plt.axis('equal'); #plt.grid()
     bLabels = labels is not None
     if bNumbers or bLabels:
         na = len(apos)
@@ -449,8 +449,64 @@ def plotBonds( lps=None, links=None, ps=None, lws=None, axes=(0,1), colors='k', 
         for i, s in enumerate(labels):
             p = (lps[i,0,:]+lps[i,1,:])*0.5
             ax.annotate( str(s), p, size=fnsz, color=fnclr, fontweight=fontweight )
-    #ax.autoscale()
-    #ax.margins(0.1)
+
+
+def plot_nc_views(fname, pos, colors, sizes, bonds_ij=None, highlight=None, title='', view_labels=('xy', 'xz', 'yz'), axes=None, close=True):
+    """Equal-aspect projections of a nanocrystal. Reuses plotAtoms / plotBonds.
+
+    ``axes`` length must match ``view_labels`` (1–3). If ``axes`` is None, create a figure.
+    """
+    import matplotlib.pyplot as plt
+    pos = np.asarray(pos, dtype=np.float64)
+    n = pos.shape[0]
+    colors = np.asarray(colors)
+    sizes = np.asarray(sizes, dtype=np.float64).reshape(-1)
+    if sizes.shape[0] != n:
+        raise ValueError(f"plot_nc_views: sizes {sizes.shape} vs N={n}")
+    all_views = ((0, 1), (0, 2), (1, 2))
+    nview = len(view_labels)
+    if nview < 1 or nview > 3:
+        raise ValueError(f"plot_nc_views: view_labels length {nview} want 1–3")
+    views = all_views[:nview]
+    own = axes is None
+    if own:
+        fig, axes = plt.subplots(1, nview, figsize=(3.8 * nview, 3.7))
+        if nview == 1:
+            axes = [axes]
+    else:
+        axes = list(axes)
+        if len(axes) != nview:
+            raise ValueError(f"plot_nc_views: need {nview} axes for view_labels={view_labels}, got {len(axes)}")
+        fig = axes[0].figure
+    for ax, axpair, lab in zip(axes, views, view_labels):
+        i0, i1 = axpair
+        if bonds_ij is not None and len(bonds_ij):
+            links = np.asarray(bonds_ij, dtype=np.int32)
+            segs = np.asarray(pos, dtype=np.float64)[links][:, :, (i0, i1)]
+            ax.add_collection(mc.LineCollection(segs, colors='#444444', linewidths=0.7, zorder=1))
+        ax.scatter(pos[:, i0], pos[:, i1], s=sizes, c=colors, marker='o', linewidths=0, zorder=2)
+        if highlight is not None and len(highlight):
+            hi = np.asarray(list(highlight), dtype=int)
+            ax.scatter(pos[hi, i0], pos[hi, i1], s=sizes[hi] * 1.15, facecolors='none', edgecolors='k', linewidths=0.9, zorder=4)
+        ax.autoscale_view()
+        ax.set_aspect('equal', adjustable='box')
+        if lab:
+            ax.set_title(lab, fontsize=8)
+        ax.set_xticks([]); ax.set_yticks([])
+        for sp in ax.spines.values():
+            sp.set_linewidth(0.4)
+    if title:
+        if own:
+            fig.suptitle(title, fontsize=11)
+        else:
+            axes[min(1, nview - 1)].set_title(title, fontsize=11)
+    if own:
+        fig.tight_layout()
+    if fname:
+        fig.savefig(fname, dpi=140, bbox_inches='tight')
+    if own and close:
+        plt.close(fig)
+    return fname
 
 def plotAngles( iangs, angs, ps, axes=(0,1), colors='k', labels=None, bPoly=True, alpha=0.2 ):
     ax1,ax2=axes

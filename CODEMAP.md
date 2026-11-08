@@ -63,12 +63,12 @@ FireCore is a multi-component computational chemistry and physics repository con
 - **`Forces.py`**, **`Forces_cpp.py`** — Force field interfaces (Python and C++ bindings).
 - **`plotUtils.py`**, **`VispyUtils.py`** — Shared plotting and visualization helpers.
 - **`io/crystal_npz.py`** — Crystal/topology NPZ loaders (mmap), `validate_topology_crystal_parity`, viewer listing helpers (`is_viewer_listable_basename`, `find_nanocrystal_pipeline_stages`); schema v1.2 in `doc/Topics/FTIR_Nanocrystals/NPZ_Crystal_Schema.md`.
-- **`nanocrystal_pipeline.py`** — NPZ pipeline CLI: `relax` → `hessian` (topology-linear K) → `spectrum` → `accumulate`; writes `02`–`05` stage files; `load_spectrum_npz`, `solve_normal_modes_from_hessian_npz` for viewers.
+- **`nanocrystal_pipeline.py`** — NPZ pipeline CLI: `relax` (`--nonbond off|surface|all`; surface = collision-group atom set) → `hessian` (topology-linear K) → `spectrum` → `accumulate`; writes `02`–`05` stage files; `load_spectrum_npz`, `solve_normal_modes_from_hessian_npz` for viewers. Atlas report: [`doc/Topics/FTIR_Nanocrystals/ChemAtlas_MMFF_relax.md`](doc/Topics/FTIR_Nanocrystals/ChemAtlas_MMFF_relax.md).
 - **`GUI/VispyMolBrowser.py`** — PyQt5 + Vispy NPZ/XYZ molecular file browser with plugin host (parallel to C++ MolecularBrowser). Guide: [`doc/Topics/FTIR_Nanocrystals/Python_Vispy_MolBrowser_Plugins.md`](doc/Topics/FTIR_Nanocrystals/Python_Vispy_MolBrowser_Plugins.md).
 - **`GUI/mol_browser_plugins/`** — Extensible analysis panels (`VibrationSpectrumPlugin`: FTIR plot, mode pick, 3D arrows/animation). See [`pyBall/GUI/mol_browser_plugins/README.md`](pyBall/GUI/mol_browser_plugins/README.md).
 - **`buildUtils.py`**, **`gen_makefile.py`**, **`config_utils.py`** — Build system helpers.
 - **`eFF.py`**, **`eFF_terms.py`** — Electron force field Python implementation.
-- **`FitREQ.py`**, **`FFFit.py`** — Force field parameter fitting. `FFfit.py` is the C++ ctypes wrapper; `FFfit_utils.py` contains the high-level Python fitting pipeline (type system, topology, sensitivity matrices, fitting, frequency analysis); `FFfit_plots.py` contains visualization (spectra, stiffness maps). `tests/tSiNCs/test_FFfit.py` is a thin CLI wrapper importing from both.
+- **`FitREQ.py`**, **`FFFit.py`** — Force field parameter fitting. `FFfit.py` is the C++ ctypes wrapper; `FFfit_utils.py` contains the high-level Python fitting pipeline (type system, topology, sensitivity matrices, fitting, frequency analysis); `FFfit_plots.py` contains visualization (spectra, stiffness maps). `tests/tSiNCs/test_FFfit.py` is a thin CLI wrapper importing from both. Own-min NC stretch RMSE vs PBE: `tests/tSiNCs/fit_mmff_kss_pyscf.py` ([`MMFF_C_CH_vs_CH2_kfit.md`](doc/Topics/FTIR_Nanocrystals/MMFF_C_CH_vs_CH2_kfit.md)).
 - **`Kekule.py`**, **`KekuleBackend.py`**, **`KekuleExplorerGUI.py`** — Kekule structure enumeration and GUI.
 - **`MolecularPlacer.py`**, **`SequencePlacer.py`** — On-surface molecular assembly.
 - **`AFMExtension.py`** — AFM simulation extensions.
@@ -134,7 +134,7 @@ Each test directory is a self-contained workspace with its own `run.sh` and `AGE
 - **`tests/tFF2D/`** — 2D force field tests.
 - **`tests/tLattice2D/`** — 2D lattice dynamics.
 - **`tests/tSchroedinger1D/`**, **`tests/tSchroedinger2D/`** — Quantum scattering tests.
-- **`tests/tSiNCs/`** — Si/diamond nanocrystal vibration hub: **canonical Node orchestration** (`nanocrystals.mjs`, ensemble configs), QM references, generator parity, **NPZ pipeline gallery** (`fixtures/si_1nm_passivation/` with `01`–`05` per crystal), viewers (`test_cpp_npz_load.sh`, `run_cpp_mol_browser.sh`, `run_vispy_mol_browser.sh`, `test_mol_browser_plugins.py`). Start at `tests/tSiNCs/README.md` + `tests/tSiNCs/AGENTS.md`; NPZ contract: `doc/Topics/FTIR_Nanocrystals/Nanocrystal_NPZ_Pipeline.guide.md`; Python plugin guide: `doc/Topics/FTIR_Nanocrystals/Python_Vispy_MolBrowser_Plugins.md`.
+- **`tests/tSiNCs/`** — Si/diamond nanocrystal vibration hub: **canonical Node orchestration** (`nanocrystals.mjs`, `chem_atlas.json`), QM references, generator parity, **NPZ pipeline gallery** (`fixtures/si_1nm_passivation/` with `01`–`05` per crystal), **Wulff chem atlas** (`OUT_chem_atlas/atlas/`, gitignored; L0/L1 MMFF surface-NB relax), **PySCF L1 neighborhood PDOS** (`plot_hydride_motif_spectra.py --pyscf` → `OUT_pyscf_jobs/`; `--dftb-l1` → `OUT_dftb_vs_pyscf_l1/`; template [`PySCF_L1_neighborhood_PDOS.md`](doc/Topics/FTIR_Nanocrystals/PySCF_L1_neighborhood_PDOS.md)), **C L1 MMFF k-fit** (`fit_mmff_kss_pyscf.py` → `OUT_mmff_kss_fit/`; report [`MMFF_C_CH_vs_CH2_kfit.md`](doc/Topics/FTIR_Nanocrystals/MMFF_C_CH_vs_CH2_kfit.md) — cube CH₂ vs octa CH not unified), viewers (`test_cpp_npz_load.sh`, `run_cpp_mol_browser.sh`, `run_vispy_mol_browser.sh`, `test_mol_browser_plugins.py`). Start at `tests/tSiNCs/README.md` + `tests/tSiNCs/AGENTS.md`; atlas results: [`doc/Topics/FTIR_Nanocrystals/ChemAtlas_MMFF_relax.md`](doc/Topics/FTIR_Nanocrystals/ChemAtlas_MMFF_relax.md); NPZ contract: `doc/Topics/FTIR_Nanocrystals/Nanocrystal_NPZ_Pipeline.guide.md`; Python plugin guide: `doc/Topics/FTIR_Nanocrystals/Python_Vispy_MolBrowser_Plugins.md`.
 - **`tests/tQuadrature/`** — Numerical quadrature tests.
 - **`tests/tMQCA/`** — MQCA (molecular quantum cellular automata) tests.
 - **`tests/tCUDA/`** — CUDA-specific tests.
@@ -162,6 +162,9 @@ Cross-language, cross-framework audits of scattered implementations. These are t
 - **`molecular_topology_editors.md`** — Interactive molecular editors across languages.
 - **`Htransfer_Kekule_DFTB.md`** — H-transfer NEB and Kekule structure calculations.
 - **`Nanocrystal_Vibrations.md`** — Topical audit: nanocrystal generation, Hessian, FTIR/phonons. See also `doc/Topics/FTIR_Nanocrystals/README.md` and `tests/tSiNCs/README.md`.
+- **`Hessian_fitting.md`** — Bonded Hessian / Wilson FFfit inventory + method checklist (not FitREQ/GridFF).
+- **`SiNCs.md`** — Project briefing (FTIR + XRD + FFfit) including chem-atlas surface-nonbond policy and PySCF L1 PDOS status.
+- **`XRD.md`** — Powder Debye / pair-distribution inventory + Kusová strain-gradient checklist (effective size vs \(a(\mathbf{r})\)).
 - **`file_descriptions.md`** — Detailed file-to-topic mapping across the entire repository.
 
 ### `/doc/DevNotes/` — Deep developer notes and design discussions
@@ -169,7 +172,8 @@ Cross-language, cross-framework audits of scattered implementations. These are t
 
 ### `/doc/Topics/` — Topic-specific deep documentation
 - **`AFM/`** — AFM simulation theory and methods.
-- **`FTIR_Nanocrystals/`** — Si/diamond nanocrystal vibrations, FTIR, phonons (`README.md` indexes guides). **NPZ contracts:** [`NPZ_Crystal_Schema.md`](doc/Topics/FTIR_Nanocrystals/NPZ_Crystal_Schema.md), [`Nanocrystal_NPZ_Pipeline.guide.md`](doc/Topics/FTIR_Nanocrystals/Nanocrystal_NPZ_Pipeline.guide.md). **NPZ viewers:** [`CPP_MolecularBrowser_NPZ.md`](doc/Topics/FTIR_Nanocrystals/CPP_MolecularBrowser_NPZ.md), [`Python_Vispy_MolBrowser_Plugins.md`](doc/Topics/FTIR_Nanocrystals/Python_Vispy_MolBrowser_Plugins.md).
+- **`FTIR_Nanocrystals/`** — Si/diamond nanocrystal vibrations, FTIR, phonons (`README.md` indexes guides). **XRD / PDF:** [`doc/topical_audit/XRD.md`](doc/topical_audit/XRD.md). **Lead PDOS template:** [`PySCF_L1_neighborhood_PDOS.md`](doc/Topics/FTIR_Nanocrystals/PySCF_L1_neighborhood_PDOS.md). **Hessian FFfit audit:** [`doc/topical_audit/Hessian_fitting.md`](doc/topical_audit/Hessian_fitting.md). **C L1 MMFF k-fit (CH vs CH₂, negative result):** [`MMFF_C_CH_vs_CH2_kfit.md`](doc/Topics/FTIR_Nanocrystals/MMFF_C_CH_vs_CH2_kfit.md). **NPZ contracts:** [`NPZ_Crystal_Schema.md`](doc/Topics/FTIR_Nanocrystals/NPZ_Crystal_Schema.md), [`Nanocrystal_NPZ_Pipeline.guide.md`](doc/Topics/FTIR_Nanocrystals/Nanocrystal_NPZ_Pipeline.guide.md). **NPZ viewers:** [`CPP_MolecularBrowser_NPZ.md`](doc/Topics/FTIR_Nanocrystals/CPP_MolecularBrowser_NPZ.md), [`Python_Vispy_MolBrowser_Plugins.md`](doc/Topics/FTIR_Nanocrystals/Python_Vispy_MolBrowser_Plugins.md).
+- **`FFfit/`** — Hessian fitting theory (`HessianFitting_Theory.md`). Inventory/checklist: [`doc/topical_audit/Hessian_fitting.md`](doc/topical_audit/Hessian_fitting.md).
 - **`ForceFields/`** — Force field derivations and theory.
 - **`Kekule_Topology/`** — Kekule structure enumeration and optimization.
 - **`OnSurfaceAssembly/`** — On-surface molecular assembly.
@@ -224,7 +228,10 @@ cd tests/dftb
 ./tests/tSiNCs/test_cpp_npz_load.sh          # headless verify
 ./tests/tSiNCs/run_cpp_mol_browser.sh        # GUI — 01/02/03 NPZ only
 ./tests/tSiNCs/run_cpp_mol_browser.sh tests/tSiNCs/fixtures/si_1nm_passivation
+./tests/tSiNCs/run_cpp_mol_browser.sh tests/tSiNCs/OUT_chem_atlas/atlas/L1_dft   # Wulff L1 + *_relaxed.mol2
 ```
+
+Guide: [`doc/Topics/FTIR_Nanocrystals/ChemAtlas_MMFF_relax.md`](doc/Topics/FTIR_Nanocrystals/ChemAtlas_MMFF_relax.md).
 
 ## Browse nanocrystal NPZ + vibration spectrum (Python Vispy viewer)
 ```bash
@@ -237,7 +244,7 @@ Guide: [`doc/Topics/FTIR_Nanocrystals/Python_Vispy_MolBrowser_Plugins.md`](doc/T
 ## Run NPZ vibration pipeline (relax → Hessian → spectrum)
 ```bash
 export LSAN_OPTIONS=detect_leaks=0
-python3 -m pyBall.nanocrystal_pipeline relax --init-npz DIR/01_crystal.npz --out-npz DIR/02_relaxed.npz
+python3 -m pyBall.nanocrystal_pipeline relax --init-mol2 DIR/init.mol2 --out-npz DIR/02_relaxed.npz --out-xyz DIR/relaxed.xyz --nonbond surface
 python3 -m pyBall.nanocrystal_pipeline hessian --relaxed-npz DIR/02_relaxed.npz --topology-npz DIR/03_topology.npz --out-npz DIR/04_hessian.npz
 python3 -m pyBall.nanocrystal_pipeline spectrum --hessian-npz DIR/04_hessian.npz --out-npz DIR/05_spectrum.npz
 ```

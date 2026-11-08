@@ -8,12 +8,19 @@ const Z_R = { 1: 0.35, 6: 0.77, 7: 0.74, 8: 0.73, 14: 1.11 };
 
 const S2 = 1 / Math.sqrt(2);
 const S3 = 1 / Math.sqrt(3);
+const S6 = 1 / Math.sqrt(6);
+// 3/4 camera: yaw 35°, pitch 25° so a cube shows three faces (not a [110] chain).
+const _isoYaw = 35 * Math.PI / 180, _isoPitch = 25 * Math.PI / 180;
+const _cy = Math.cos(_isoYaw), _sy = Math.sin(_isoYaw);
+const _cp = Math.cos(_isoPitch), _sp = Math.sin(_isoPitch);
 
 export const CRYSTAL_VIEWS = {
     '001': { label: '001 (xy)', R: [1, 0, 0, 0, 1, 0, 0, 0, 1] },
     '100': { label: '100 (yz)', R: [0, 1, 0, 0, 0, 1, 1, 0, 0] },
     '010': { label: '010 (xz)', R: [1, 0, 0, 0, 0, 1, 0, 1, 0] },
-    '111': { label: '111', R: [S2, -S2, 0, 0, 0, -1, S3, S3, S3] },
+    // Screen axes: e1=(1,-1,0)/√2, e2=(1,1,-2)/√6, view along [111]. The old matrix used vy=-z ([110] vs z), which draws diamond as atom rows.
+    '111': { label: '111', R: [S2, -S2, 0, S6, S6, -2 * S6, S3, S3, S3] },
+    'iso': { label: 'iso', R: [_cy, 0, _sy, _sp * _sy, _cp, -_sp * _cy, -_cp * _sy, _sp, _cp * _cy] },
 };
 
 export function viewMatrixNamed(name = '111') {
@@ -192,13 +199,22 @@ export function atlasTableRow({ id, label, genParams, svgRel, natoms }) {
 }
 
 export function atlasIndexHtml(rows, title = 'Nanocrystal shape atlas') {
-    const body = rows.map(atlasTableRow).join('\n');
+    const groups = [];
+    for (const r of rows) {
+        const t = r.tier || '';
+        if (!groups.length || groups[groups.length - 1].tier !== t) groups.push({ tier: t, rows: [] });
+        groups[groups.length - 1].rows.push(r);
+    }
+    const sections = groups.map(g => {
+        const h = g.tier ? `<h2>${escapeXml(g.tier)}</h2>` : '';
+        const body = g.rows.map(atlasTableRow).join('\n');
+        return `${h}<table><tr><th>Shape</th><th>Preview [001]</th><th>Atoms</th><th>gen_params</th></tr>\n${body}</table>`;
+    }).join('\n');
     return `<!DOCTYPE html><html><head><meta charset="utf-8"/><title>${escapeXml(title)}</title>
 <style>body{font-family:sans-serif;margin:20px}table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:8px;vertical-align:top}th{background:#eee}</style></head>
 <body><h1>${escapeXml(title)}</h1>
 <p><a href="viewer.html"><b>Interactive 3D viewer</b></a> (init vs relaxed, drag to rotate)</p>
-<table><tr><th>Shape</th><th>Preview [111]</th><th>Atoms</th><th>gen_params</th></tr>
-${body}</table></body></html>`;
+${sections}</body></html>`;
 }
 
 // ============================================================================
@@ -211,6 +227,15 @@ export function writeCrystalCompareSvgs(plotDir, { posInit, Zinit, bondsInit, po
     for (const [view, svg] of Object.entries(svgs)) {
         const suffix = views.length === 1 ? '' : `_${view}`;
         fs.writeFileSync(path.join(plotDir, `compare${suffix}.svg`), svg);
+    }
+}
+
+export function writeCrystalRingSvgs(plotDir, { pos, Z, bonds_ij, rings, ringOfBond, title, views }) {
+    if (!ringOfBond || !rings) throw new Error('writeCrystalRingSvgs: rings and ringOfBond required');
+    fs.mkdirSync(plotDir, { recursive: true });
+    for (const view of views) {
+        const svg = exportCrystalSvg({ pos, Z, bonds_ij, view, title, ringOfBond, rings });
+        fs.writeFileSync(path.join(plotDir, `rings_${view}.svg`), svg);
     }
 }
 

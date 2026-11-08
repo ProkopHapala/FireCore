@@ -12,6 +12,7 @@ import * as CrystalUtils from './CrystalUtils.js';
 import { installMoleculeIOMethods } from './MoleculeIO.js';
 import { selectBridgeCandidates } from './MoleculeSelection.js';
 import { collapseBridgeAt, collapseAllBridges, insertBridge, fuseSiH2ClashPairs, atomDist, atomAngleDeg, neighborIndices, bondedPairSet } from './MoleculeUtils.js';
+import { runRingsOnMol } from '../common_js/Graph.js';
 
 installMoleculeIOMethods(EditableMolecule);
 
@@ -32,6 +33,8 @@ export function defaultArgs(resourceDir, overrides = {}) {
         planeC0: 0.0,
         planeCScale: 0.55,
         planeCJitter: 0.10,
+        wulffShape: 'octahedron',
+        wulffNLat: 1.0,
         bonds: true,
         elementTypes: path.join(resourceDir, 'ElementTypes.dat'),
         atomTypes: path.join(resourceDir, 'AtomTypes.dat'),
@@ -48,6 +51,7 @@ export function defaultArgs(resourceDir, overrides = {}) {
         requireH2: true,
         collapseProb: 0.0,
         insertProb: 0.0,
+        defectKind: null, // '5ring' = collapse one XH₂; '7ring' = insert one XH₂. Null = pristine.
         fuseProb: 0.0,
         fuseHClashMax: 2.0,
         fuseSiMax: 4.5,
@@ -149,6 +153,69 @@ export function atomNeighborsCounts(mol, ia, heavyZ = 14) {
         }
     }
     return { nH, nHeavy, nHeavySame, nSi: nHeavySame };
+}
+
+function _fracKeyZyx(pos, a) {
+    return [Math.round(pos.z / a * 1e6) / 1e6, Math.round(pos.y / a * 1e6) / 1e6, Math.round(pos.x / a * 1e6) / 1e6];
+}
+function _cmpKeyDesc(ka, kb) {
+    for (let i = 0; i < 3; i++) if (ka[i] !== kb[i]) return kb[i] - ka[i];
+    return 0;
+}
+
+/// One surface XH₂ collapse (5-ring) or one XH₂ insert (7-ring). Canonical site = max (z,y,x)/a so C and Si pick the same lattice site type. Breaks Td.
+export function applyWulffRingDefect(mol, kind, heavyZ, a) {
+    if (kind !== '5ring' && kind !== '7ring') throw new Error(`applyWulffRingDefect: unknown kind '${kind}' (use 5ring or 7ring)`);
+    if (!(a > 0)) throw new Error(`applyWulffRingDefect: lattice a must be >0, got ${a}`);
+    const hz = heavyZ | 0;
+    let nCollapsed = 0, nInserted = 0;
+    if (kind === '5ring') {
+        const cands = [];
+        for (let ia = 0; ia < mol.atoms.length; ia++) {
+            const at = mol.atoms[ia];
+            if (!at || (at.Z | 0) !== hz) continue;
+            const c = atomNeighborsCounts(mol, ia, hz);
+            if (c.nHeavySame !== 2 || c.nH < 2) continue;
+            cands.push({ id: at.id, key: _fracKeyZyx(at.pos, a) });
+        }
+        if (cands.length === 0) throw new Error('applyWulffRingDefect: 5ring needs an XH₂ (2 heavy + ≥2 H); none found');
+        cands.sort((u, v) => _cmpKeyDesc(u.key, v.key) || (u.id - v.id));
+        collapseBridgeAt(mol, cands[0].id);
+        nCollapsed = 1;
+    } else {
+        const cands = [];
+        for (const b of mol.bonds) {
+            if (!b) continue;
+            b.ensureIndices(mol);
+            const A = mol.atoms[b.a], B = mol.atoms[b.b];
+            if (!A || !B) continue;
+            if ((A.Z | 0) !== hz || (B.Z | 0) !== hz) continue;
+            const cA = atomNeighborsCounts(mol, b.a, hz), cB = atomNeighborsCounts(mol, b.b, hz);
+            if (cA.nHeavySame >= 4 || cB.nHeavySame >= 4) continue;
+            const mid = { x: 0.5 * (A.pos.x + B.pos.x), y: 0.5 * (A.pos.y + B.pos.y), z: 0.5 * (A.pos.z + B.pos.z) };
+            const id0 = Math.min(A.id, B.id), id1 = Math.max(A.id, B.id);
+            cands.push({ aId: A.id, bId: B.id, key: _fracKeyZyx(mid, a), id0, id1 });
+        }
+        if (cands.length === 0) throw new Error('applyWulffRingDefect: 7ring needs a surface X–X bond; none found');
+        cands.sort((u, v) => _cmpKeyDesc(u.key, v.key) || (u.id0 - v.id0) || (u.id1 - v.id1));
+        const rXH = hz === 14 ? 1.48 : 1.09;
+        const cid = insertBridge(mol, cands[0].aId, cands[0].bId, {
+            addHydrogens: true,
+            hDist: rXH * 0.8165, // sin(54.75°); |X–H| = rXH with hUpOffset
+            hUpOffsetFactor: rXH * 0.5774, // cos(54.75°); name is absolute Å in insertBridge
+            upOffsetFactor: 0.35,
+        });
+        const ic = mol.getAtomIndex(cid);
+        if (ic < 0) throw new Error('applyWulffRingDefect: inserted atom missing');
+        mol.atoms[ic].Z = hz;
+        nInserted = 1;
+    }
+    const lMax = hz === 14 ? 4.0 : 2.5;
+    const rings = runRingsOnMol(mol, { lMax, kMin: 3, kMax: 8 });
+    const need = kind === '5ring' ? 5 : 7;
+    const nNeed = rings.cls.hist[need] || 0;
+    if (nNeed < 1) throw new Error(`applyWulffRingDefect: ${kind} produced 0 ${need}-rings (${rings.cls.summary})`);
+    return { nCollapsed, nInserted, rings: rings.cls };
 }
 
 export function pruneUndercoordinatedHeavyIter(mol, heavyZ, minHeavyDegree, maxIter) {
@@ -287,43 +354,54 @@ export function mulberry32(seed) {
 
 /// Generate a single nanocrystal from args + cell. Returns { mol, nCollapsed, nInserted, nCaps, nPruned, nHHBonds, cnt, enr, name }.
 export function generateNanocrystal(args, cell, mm, heavyZ, iout) {
-    const nx = (args.cutMode === 'sphere') ? 0 : randInt(args.nx[0], args.nx[1]);
-    const ny = (args.cutMode === 'sphere') ? 0 : randInt(args.ny[0], args.ny[1]);
-    const nz = (args.cutMode === 'sphere') ? 0 : randInt(args.nz[0], args.nz[1]);
-
-    const naEff = args.centered ? (2 * nx + 1) : nx;
-    const nbEff = args.centered ? (2 * ny + 1) : ny;
-    const ncEff = args.centered ? (2 * nz + 1) : nz;
-    const La = cell.lvec[0].norm() * (naEff || 1);
-    const Lb = cell.lvec[1].norm() * (nbEff || 1);
-    const Lc = cell.lvec[2].norm() * (ncEff || 1);
-    const Lavg = (La + Lb + Lc) / 3.0;
-
-    const cBase = args.planeC0 + args.planeCScale * Lavg;
-    const dj = args.planeCJitter * cBase;
-    const jitter = (args.cutMode === 'sphere') ? 0 : dj * (2.0 * Math.random() - 1.0);
-    const cmin = -cBase + jitter;
-    const cmax = +cBase + jitter;
-
-    const { plsFinal, planeMode } = (args.cutMode === 'planes')
-        ? buildPlanesFromTemplates(cell.lvec, args.planeTemplates, args.planeSymC, args.planeMode, cmin, cmax)
-        : { plsFinal: null, planeMode: args.planeMode };
-
-    const mol = (args.cutMode === 'sphere')
-        ? buildSphereCutMol(cell, args.sphereNrep, args.sphereR, true, args.dedupTol)
-        : CrystalUtils.genReplicatedCellCutPlanes({
-            lvec: cell.lvec,
-            basisPos: cell.basisPos,
-            basisTypes: cell.basisTypes,
-            basisCharges: cell.basisCharges,
-            nRep: [nx, ny, nz],
-            origin: new Vec3(0, 0, 0),
-            planes: plsFinal,
-            planeMode,
-            centered: args.centered,
-            dedup: true,
-            dedupTol: args.dedupTol,
+    let nx, ny, nz, plsFinal, planeMode, mol;
+    if (args.cutMode === 'sphere') {
+        nx = ny = nz = 0;
+        planeMode = args.planeMode;
+        mol = buildSphereCutMol(cell, args.sphereNrep, args.sphereR, true, args.dedupTol);
+    } else if (args.cutMode === 'wulff') {
+        const a = CrystalUtils.cubicLatticeConstant(cell.lvec);
+        const nLat = +args.wulffNLat;
+        if (!(nLat > 0)) throw new Error(`generateNanocrystal: wulffNLat must be >0, got ${args.wulffNLat}`);
+        nx = ny = nz = CrystalUtils.wulffNRep(args.wulffShape, nLat);
+        planeMode = 'ang';
+        const cell0 = CrystalUtils.cellWithAtomAtOrigin(cell); // one lattice atom at 0; Wulff planes are Td about that site
+        plsFinal = CrystalUtils.buildWulffPlanes(args.wulffShape, nLat * a + 1e-6 * a);
+        mol = CrystalUtils.genReplicatedCellCutPlanes({
+            lvec: cell0.lvec, basisPos: cell0.basisPos, basisTypes: cell0.basisTypes, basisCharges: cell0.basisCharges,
+            nRep: [nx, ny, nz], origin: new Vec3(0, 0, 0), planes: plsFinal, planeMode,
+            centered: true, dedup: true, dedupTol: args.dedupTol,
         });
+        if (mol.atoms.length === 0) throw new Error(`generateNanocrystal: Wulff ${args.wulffShape} nLat=${nLat} produced 0 atoms`);
+        mol.lvec = null; // finite cluster; the replication supercell is not a unit cell (MolecularBrowser would treat @lvs as PBC)
+        CrystalUtils.assertTdHeaviesAboutOrigin(mol);
+        CrystalUtils.assertClusterIs3D(mol, { minSpan: nLat * a * 1.2 });
+    } else if (args.cutMode === 'planes') {
+        nx = randInt(args.nx[0], args.nx[1]);
+        ny = randInt(args.ny[0], args.ny[1]);
+        nz = randInt(args.nz[0], args.nz[1]);
+        const naEff = args.centered ? (2 * nx + 1) : nx;
+        const nbEff = args.centered ? (2 * ny + 1) : ny;
+        const ncEff = args.centered ? (2 * nz + 1) : nz;
+        const La = cell.lvec[0].norm() * (naEff || 1);
+        const Lb = cell.lvec[1].norm() * (nbEff || 1);
+        const Lc = cell.lvec[2].norm() * (ncEff || 1);
+        const Lavg = (La + Lb + Lc) / 3.0;
+        const cBase = args.planeC0 + args.planeCScale * Lavg;
+        const dj = args.planeCJitter * cBase;
+        const jitter = dj * (2.0 * Math.random() - 1.0);
+        const cmin = -cBase + jitter;
+        const cmax = +cBase + jitter;
+        planeMode = args.planeMode;
+        plsFinal = buildPlanesFromTemplates(cell.lvec, args.planeTemplates, args.planeSymC, args.planeMode, cmin, cmax).plsFinal;
+        mol = CrystalUtils.genReplicatedCellCutPlanes({
+            lvec: cell.lvec, basisPos: cell.basisPos, basisTypes: cell.basisTypes, basisCharges: cell.basisCharges,
+            nRep: [nx, ny, nz], origin: new Vec3(0, 0, 0), planes: plsFinal, planeMode,
+            centered: args.centered, dedup: true, dedupTol: args.dedupTol,
+        });
+    } else {
+        throw new Error(`generateNanocrystal: unknown cutMode '${args.cutMode}'`);
+    }
 
     if (!mm) throw new Error('generateNanocrystal: mmParams missing');
 
@@ -343,6 +421,11 @@ export function generateNanocrystal(args, cell, mm, heavyZ, iout) {
 
     const pr2 = pruneUndercoordinatedHeavyIter(mol, heavyZ, args.minHeavyDegree, args.pruneMaxIter);
     if (pr2.totalRemoved > 0) mol.recalculateBonds(mm, { defaultRcut: args.defaultRcut, bondFactor: args.bondFactor });
+    if (args.cutMode === 'wulff') {
+        CrystalUtils.assertTdHeaviesAboutOrigin(mol);
+        const aW = CrystalUtils.cubicLatticeConstant(cell.lvec);
+        CrystalUtils.assertClusterIs3D(mol, { minSpan: (+args.wulffNLat) * aW * 1.2 });
+    }
 
     let nCollapsed = 0;
     let nInserted = 0;
@@ -351,7 +434,14 @@ export function generateNanocrystal(args, cell, mm, heavyZ, iout) {
         const c = atomNeighborsCounts(m, ia, heavyZ);
         return c.nHeavySame < 4;
     };
-    if (args.collapseAll) {
+    if (args.defectKind) {
+        if (args.collapseAll) throw new Error('generateNanocrystal: defectKind cannot combine with collapseAll');
+        if (args.insertProb > 0 || args.collapseProb > 0) throw new Error('generateNanocrystal: defectKind is deterministic; set insertProb=collapseProb=0');
+        const aDef = CrystalUtils.cubicLatticeConstant(cell.lvec);
+        const d = applyWulffRingDefect(mol, args.defectKind, heavyZ, aDef);
+        nCollapsed = d.nCollapsed;
+        nInserted = d.nInserted;
+    } else if (args.collapseAll) {
         nCollapsed = collapseAllBridges(mol);
     } else {
         if (args.insertProb > 0) {
@@ -406,7 +496,9 @@ export function generateNanocrystal(args, cell, mm, heavyZ, iout) {
 
     const cutTag = (args.cutMode === 'sphere')
         ? `sphereR${args.sphereR.toFixed(1)}_nrep${args.sphereNrep}`
-        : `nx${nx}_ny${ny}_nz${nz}_c${cBase.toFixed(3)}_tpl${args.planeTemplates.join('-')}`;
+        : (args.cutMode === 'wulff')
+            ? `wulff_${args.wulffShape}_nLat${(+args.wulffNLat).toFixed(3)}_nrep${nx}`
+            : `nx${nx}_ny${ny}_nz${nz}_tpl${args.planeTemplates.join('-')}`;
     const name = `${args.prefix}_i${String(iout).padStart(4, '0')}_${cutTag}_pr${nPruned}_cap${nCaps}_col${nCollapsed}_ins${nInserted}_fus${nFused}`;
 
     return { mol, nCollapsed, nInserted, nFused, nCaps, nPruned, nHHBonds, cnt, enr, name, nx, ny, nz };
@@ -600,6 +692,7 @@ export function genArgsFromConfig(config, resourceDir, overrides = {}) {
         outwardBias: pass.outwardBias ?? 0,
         insertProb: def.insertProb ?? 0,
         collapseProb: def.collapseProb ?? 0,
+        defectKind: def.kind || null,
         bondFactor: 1.30,
         defaultRcut: 1.60,
         minHeavyDegree: 2,
@@ -624,17 +717,60 @@ export function genArgsFromConfig(config, resourceDir, overrides = {}) {
         o.planeC0 = cut.planeC0 ?? 0;
         o.planeCScale = cut.planeCScale ?? 0.45;
         o.planeCJitter = cut.planeCJitter ?? 0;
+    } else if (cut.cutMode === 'wulff') {
+        o.wulffShape = cut.wulffShape;
+        o.wulffNLat = cut.wulffNLat;
+        o.centered = 1;
+        o.planeCJitter = 0;
+        o.planeMode = 'ang';
     }
     return defaultArgs(resourceDir, { ...o, ...overrides });
 }
 
 export function genParamsFromAtlasEntry(atlasBase, entry) {
     return {
-        cif: atlasBase.cif,
-        applySymmetry: atlasBase.applySymmetry ?? 0,
+        cif: entry.cif || atlasBase.cif,
+        applySymmetry: entry.applySymmetry ?? atlasBase.applySymmetry ?? 0,
         cut: entry.cut,
-        replication: entry.replication || { nx: 2, ny: 2, nz: 2 },
-        passivation: atlasBase.passivation,
-        defects: atlasBase.defects || { insertProb: 0, collapseProb: 0 },
+        replication: entry.replication || atlasBase.replication || { nx: 2, ny: 2, nz: 2 },
+        passivation: entry.passivation || atlasBase.passivation,
+        defects: entry.defects || atlasBase.defects || { insertProb: 0, collapseProb: 0 },
     };
+}
+
+export function expandAtlasEntries(atlas) {
+    const out = [...(atlas.entries || [])];
+    const g = atlas.wulff_grid;
+    if (!g) return out;
+    if (!Array.isArray(g.materials) || !Array.isArray(g.shapes) || !Array.isArray(g.sizes)) throw new Error('expandAtlasEntries: wulff_grid needs materials[], shapes[], sizes[]');
+    for (const sz of g.sizes) {
+        const shapes = sz.shapes || g.shapes;
+        const ringDefects = sz.ring_defects || [];
+        for (const kind of ringDefects) {
+            if (kind !== '5ring' && kind !== '7ring') throw new Error(`expandAtlasEntries: unknown ring_defects '${kind}' (use 5ring, 7ring)`);
+        }
+        for (const shape of shapes) {
+            if (!CrystalUtils.WULFF_SHAPES[shape]) throw new Error(`expandAtlasEntries: unknown Wulff shape '${shape}'`);
+            for (const mat of g.materials) {
+                const kinds = [null, ...ringDefects];
+                for (const kind of kinds) {
+                    const id = kind ? `${shape}_${kind}/${mat.id}` : `${shape}/${mat.id}`;
+                    const label = kind
+                        ? `${mat.id} ${shape} ${kind} nLat=${sz.nLat} (${sz.tier}; ${kind === '5ring' ? 'remove XH₂' : 'insert XH₂'})`
+                        : `${mat.id} ${shape} nLat=${sz.nLat}  (${sz.tier}; Wulff)`;
+                    out.push({
+                        tier: sz.tier,
+                        id,
+                        label,
+                        seed: 1,
+                        cif: mat.cif,
+                        applySymmetry: mat.applySymmetry ?? 1,
+                        cut: { cutMode: 'wulff', wulffShape: shape, wulffNLat: sz.nLat },
+                        defects: kind ? { kind, insertProb: 0, collapseProb: 0 } : (atlas.defects || { insertProb: 0, collapseProb: 0 }),
+                    });
+                }
+            }
+        }
+    }
+    return out;
 }

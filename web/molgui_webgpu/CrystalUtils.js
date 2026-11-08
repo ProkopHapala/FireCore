@@ -8,6 +8,198 @@ const PLANE_TEMPLATES = {
     'a111': [[1, 1, 1], [1, 1, -1], [1, -1, 1], [-1, 1, 1]]
 };
 
+/// Convex Wulff nanocrystals in a cubic lab frame (conventional cubic cell, xyz ∥ ⟨100⟩).
+/// Distance to each *normalized* Miller normal is h = ratio * nLat * a_conv.
+///   cube                  {100} only → cube; diamond faces are XH₂ (SiH₂/CH₂)
+///   octahedron            {111} only → octahedron; diamond faces are XH (SiH/CH); 6 vertices still XH₂
+///   rhombic_dodecahedron  {110} only → 12 rhombi (cube-edge family)
+///   truncated_octahedron  {111}+{100} Archimedean (h100/h111 = 2/√3)
+///   cuboctahedron         {111}+{100} more cube-like (h100/h111 = √3/2)
+/// Diamond sites are discrete. At nLat ≲ 1.25 the extra {100}/{110} planes often cut zero atoms, so
+/// truncated_octahedron ≡ cube and rhombic_dodecahedron ≡ octahedron. Distinct only for nLat ≥ 1.35 (N ≳ 160).
+export const WULFF_SHAPES = {
+    cube: { a100: 1 },
+    octahedron: { a111: 1 },
+    rhombic_dodecahedron: { a110: 1 },
+    truncated_octahedron: { a111: 1, a100: 2 / Math.sqrt(3) },
+    cuboctahedron: { a111: 1, a100: Math.sqrt(3) / 2 },
+};
+
+export function cubicLatticeConstant(lvec) {
+    const a = lvec[0].norm(), b = lvec[1].norm(), c = lvec[2].norm();
+    if (!(a > 0)) throw new Error('cubicLatticeConstant: zero lattice vector');
+    const rtol = 1e-3;
+    if (Math.abs(a - b) > rtol * a || Math.abs(a - c) > rtol * a) throw new Error(`cubicLatticeConstant: not cubic lengths a=${a} b=${b} c=${c} (use conventional Fd-3m cell, not primitive)`);
+    const d01 = lvec[0].dot(lvec[1]) / (a * b);
+    const d02 = lvec[0].dot(lvec[2]) / (a * c);
+    const d12 = lvec[1].dot(lvec[2]) / (b * c);
+    if (Math.abs(d01) > 1e-2 || Math.abs(d02) > 1e-2 || Math.abs(d12) > 1e-2) throw new Error(`cubicLatticeConstant: not orthogonal (got cos=${d01},${d02},${d12}); Wulff {100}/{111}/{110} need a conventional cubic cell`);
+    return a;
+}
+
+export function buildWulffPlanes(shape, hPrimary) {
+    if (!(hPrimary > 0)) throw new Error(`buildWulffPlanes: hPrimary must be >0, got ${hPrimary}`);
+    const spec = WULFF_SHAPES[shape];
+    if (!spec) throw new Error(`buildWulffPlanes: unknown shape '${shape}'. Known: ${Object.keys(WULFF_SHAPES).join(', ')}`);
+    const planes = [];
+    for (const tmpl of Object.keys(spec)) {
+        const h = spec[tmpl] * hPrimary;
+        const hkls = PLANE_TEMPLATES[tmpl];
+        if (!hkls) throw new Error(`buildWulffPlanes: missing template '${tmpl}'`);
+        for (const v of hkls) {
+            const n = new Vec3(v[0], v[1], v[2]);
+            const ln = n.normalize();
+            if (!(ln > 0)) throw new Error('buildWulffPlanes: zero plane normal');
+            planes.push({ n, cmin: -h, cmax: h });
+        }
+    }
+    return planes;
+}
+
+/// Centered cubic nRep so the AABB of the polyhedron fits in ±(nRep+0.5) a.
+export function wulffNRep(shape, nLat) {
+    const n = +nLat;
+    if (!(n > 0)) throw new Error(`wulffNRep: nLat must be >0, got ${nLat}`);
+    const aabb = {
+        cube: n,
+        octahedron: n * Math.sqrt(3),
+        truncated_octahedron: n * (2 / Math.sqrt(3)),
+        cuboctahedron: n,
+        rhombic_dodecahedron: n * Math.sqrt(2),
+    };
+    const half = aabb[shape];
+    if (!(half > 0)) throw new Error(`wulffNRep: unknown shape '${shape}'`);
+    return Math.max(2, Math.ceil(half + 1.25));
+}
+
+/// Translate mol so COG is at origin, then keep atoms inside all planes (n unit, cmin/cmax Å).
+export function cutMolByPlanesCentered(mol, planes) {
+    if (!mol || mol.atoms.length === 0) throw new Error('cutMolByPlanesCentered: empty molecule');
+    if (!Array.isArray(planes) || planes.length === 0) throw new Error('cutMolByPlanesCentered: planes required');
+    const cog = new Vec3(0, 0, 0);
+    for (let ia = 0; ia < mol.atoms.length; ia++) cog.add(mol.atoms[ia].pos);
+    cog.mulScalar(1.0 / mol.atoms.length);
+    for (let ia = 0; ia < mol.atoms.length; ia++) mol.atoms[ia].pos.sub(cog);
+    const removeIds = [];
+    for (let ia = 0; ia < mol.atoms.length; ia++) {
+        const p = mol.atoms[ia].pos;
+        let ok = true;
+        for (const pl of planes) {
+            const cc = p.x * pl.n.x + p.y * pl.n.y + p.z * pl.n.z;
+            if (cc < pl.cmin || cc > pl.cmax) { ok = false; break; }
+        }
+        if (!ok) removeIds.push(mol.atoms[ia].id);
+    }
+    for (let i = 0; i < removeIds.length; i++) mol.removeAtomById(removeIds[i]);
+    if (mol.atoms.length === 0) throw new Error('cutMolByPlanesCentered: no atoms left inside polyhedron');
+}
+
+/// Shift so one basis atom sits at (0,0,0). Diamond Wulff planes are then Td about a real site
+/// (not the centroid of one conventional cell, which is not a crystal symmetry point).
+export function cellWithAtomAtOrigin(cell) {
+    const a = cubicLatticeConstant(cell.lvec);
+    const n = cell.basisTypes.length | 0;
+    if (n <= 0) throw new Error('cellWithAtomAtOrigin: empty basis');
+    const bp = cell.basisPos;
+    const wrap = (x) => { let u = x / a; u -= Math.round(u); return u * a; };
+    let iBest = 0, r2Best = Infinity, sBest = Infinity;
+    for (let i = 0; i < n; i++) {
+        const x = wrap(bp[i * 3]), y = wrap(bp[i * 3 + 1]), z = wrap(bp[i * 3 + 2]);
+        const r2 = x * x + y * y + z * z;
+        const s = x + y + z;
+        if (r2 < r2Best - 1e-18 || (Math.abs(r2 - r2Best) < 1e-18 && s < sBest)) {
+            r2Best = r2; sBest = s; iBest = i;
+        }
+    }
+    const ox = bp[iBest * 3], oy = bp[iBest * 3 + 1], oz = bp[iBest * 3 + 2];
+    const basisPos = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) {
+        basisPos[i * 3] = wrap(bp[i * 3] - ox);
+        basisPos[i * 3 + 1] = wrap(bp[i * 3 + 1] - oy);
+        basisPos[i * 3 + 2] = wrap(bp[i * 3 + 2] - oz);
+    }
+    let at0 = false;
+    for (let i = 0; i < n; i++) {
+        if (Math.hypot(basisPos[i * 3], basisPos[i * 3 + 1], basisPos[i * 3 + 2]) < 1e-6) { at0 = true; break; }
+    }
+    if (!at0) throw new Error('cellWithAtomAtOrigin: no basis atom at 0 after wrap');
+    return { lvec: cell.lvec, basisPos, basisTypes: cell.basisTypes, basisCharges: cell.basisCharges };
+}
+
+export function assertTdHeaviesAboutOrigin(mol, tol = 0.12) {
+    if (!mol || mol.atoms.length === 0) throw new Error('assertTdHeaviesAboutOrigin: empty molecule');
+    const H = [];
+    for (let i = 0; i < mol.atoms.length; i++) {
+        const a = mol.atoms[i];
+        if ((a.Z | 0) === 1) continue;
+        H.push(a.pos);
+    }
+    if (H.length === 0) throw new Error('assertTdHeaviesAboutOrigin: no heavy atoms');
+    let r0min = Infinity;
+    for (const p of H) { const r = Math.hypot(p.x, p.y, p.z); if (r < r0min) r0min = r; }
+    if (r0min > tol) throw new Error(`assertTdHeaviesAboutOrigin: no heavy atom at origin (min|r|=${r0min.toFixed(4)} Å). Wulff origin must be a lattice site.`);
+    const t2 = tol * tol;
+    const has = (x, y, z) => {
+        for (let i = 0; i < H.length; i++) {
+            const p = H[i];
+            const dx = p.x - x, dy = p.y - y, dz = p.z - z;
+            if (dx * dx + dy * dy + dz * dz < t2) return true;
+        }
+        return false;
+    };
+    const ops = [
+        ['C2z', (x, y, z) => [-x, -y, z]],
+        ['C2x', (x, y, z) => [x, -y, -z]],
+        ['C2y', (x, y, z) => [-x, y, -z]],
+        ['C3', (x, y, z) => [y, z, x]],
+        ['S4z', (x, y, z) => [-y, x, -z]],
+        ['sigma_d', (x, y, z) => [y, x, z]],
+    ];
+    for (const [name, fn] of ops) {
+        for (const p of H) {
+            const q = fn(p.x, p.y, p.z);
+            if (!has(q[0], q[1], q[2])) {
+                throw new Error(`assertTdHeaviesAboutOrigin: missing ${name} image of (${p.x.toFixed(4)},${p.y.toFixed(4)},${p.z.toFixed(4)}) — cut is not Td about 0`);
+            }
+        }
+    }
+}
+
+/// Fail if heavies are a rod/slab/point. Wulff cube/octa/dodeca must fill a roughly cubic AABB.
+export function assertClusterIs3D(mol, { minSpan = 4.0, maxAnisotropy = 1.25 } = {}) {
+    if (!mol || mol.atoms.length === 0) throw new Error('assertClusterIs3D: empty molecule');
+    let xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity, zmin = Infinity, zmax = -Infinity, nH = 0;
+    for (let i = 0; i < mol.atoms.length; i++) {
+        const a = mol.atoms[i];
+        if ((a.Z | 0) === 1) continue;
+        nH++;
+        const p = a.pos;
+        if (p.x < xmin) xmin = p.x; if (p.x > xmax) xmax = p.x;
+        if (p.y < ymin) ymin = p.y; if (p.y > ymax) ymax = p.y;
+        if (p.z < zmin) zmin = p.z; if (p.z > zmax) zmax = p.z;
+    }
+    if (nH < 8) throw new Error(`assertClusterIs3D: only ${nH} heavy atoms — not a 3D nanocrystal`);
+    const sx = xmax - xmin, sy = ymax - ymin, sz = zmax - zmin;
+    const smin = Math.min(sx, sy, sz), smax = Math.max(sx, sy, sz);
+    if (!(smin > minSpan)) throw new Error(`assertClusterIs3D: heavy bbox span (${sx.toFixed(3)},${sy.toFixed(3)},${sz.toFixed(3)}) Å has min ${smin.toFixed(3)} < ${minSpan} — rod/slab/molecule, not a polyhedron`);
+    const ani = smax / smin;
+    if (ani > maxAnisotropy) throw new Error(`assertClusterIs3D: heavy bbox anisotropy ${ani.toFixed(3)} > ${maxAnisotropy} spans (${sx.toFixed(3)},${sy.toFixed(3)},${sz.toFixed(3)}) Å — not a cubic Wulff shape`);
+}
+
+/// Sorted rounded heavy Cartesian coords. Same string ⇒ same occupied sites (used to catch Wulff aliases).
+export function heavyPosFingerprint(mol, digits = 2) {
+    if (!mol || !mol.atoms) throw new Error('heavyPosFingerprint: molecule missing');
+    const s = 10 ** (digits | 0);
+    const pts = [];
+    for (let i = 0; i < mol.atoms.length; i++) {
+        const a = mol.atoms[i];
+        if (!a || (a.Z | 0) === 1) continue;
+        pts.push([Math.round(a.pos.x * s) / s, Math.round(a.pos.y * s) / s, Math.round(a.pos.z * s) / s]);
+    }
+    pts.sort((p, q) => p[0] - q[0] || p[1] - q[1] || p[2] - q[2]);
+    return `${pts.length}:` + pts.map((p) => p.join(',')).join(';');
+}
+
 export function expandPlaneTemplates(templates, cSym) {
     const c = +cSym;
     if (!(c > 0)) throw new Error('expandPlaneTemplates: cSym must be >0');

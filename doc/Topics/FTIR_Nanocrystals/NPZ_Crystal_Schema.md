@@ -43,16 +43,16 @@
 | `pos` | float64 | (N, 3) | yes | Cartesian coordinates (Å) |
 | `Z` | int32 | (N,) | yes | Atomic numbers |
 | `natoms` | int32 | scalar | recommended | N (= `len(Z)`) |
-| `bonds_ij` | int32 | (Nb, 2) | no | Covalent bond pairs, **0-based** atom indices |
+| `bonds_ij` | int32 | (Nb, 2) | **yes** | Covalent bond pairs, **0-based** atom indices (not distance-inferred) |
 | `gen_params` | uint8 | (L,) | no | UTF-8 JSON generation metadata |
 | `timing_ms` | float64 | scalar | no | Stage wall time (ms) |
 | `fmax` | float64 | scalar | no | Post-relax max \|force\| (eV/Å), `02` only |
 | `converged` | bool (`\|b1`) | scalar | no | Relax converged flag, `02` only |
 | `n_steps` | int64 (`<i8`) | scalar | no | MMFF relax step count, `02` only |
 
-**Bonds:** if `bonds_ij` absent, viewers may infer from distances (slow) or require `03_topology.npz` (`neigh_idx` + `stick_class==1`).
+**Bonds:** required. Writers (`writeCrystalNpz`, `relax --init-mol2/--init-xyz/--init-npz`) fail loud if topology is missing. Distance inference drops 5-ring closers (~2.5 Å C–C, longer Si–Si). Atlas also writes `01_init.npz` (same schema; alias of `01_crystal.npz`).
 
-**Relax contract:** when relaxing from `01_crystal.npz`, output `02_relaxed.npz` must preserve `Z` and `bonds_ij` from init; only `pos` (and relax metadata) change.
+**Relax contract:** `02_relaxed.npz` must preserve `Z` and `bonds_ij` from init mol2/xyz/npz; only `pos` (and relax metadata) change.
 
 ---
 

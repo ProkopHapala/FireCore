@@ -88,8 +88,9 @@ class MMFFsp3_loc : public NBFF { public:
     bool bEachAngle = false; // if true we compute angle energy for each angle separately, otherwise we use common parameters for all angles
     bool bTorsion   = false; // if true we compute torsion energy
     
-    //                           c0     Kss    Ksp    c0_e
-    Quat4d default_NeighParams{ -1.0,   1.0,   10.0,   -1.0 }; // default parameters for neighbors, c0 is cosine of equilibrium angle, Kss is bond stiffness, Ksp is pi-sigma stiffness, c0_e is cos of equilibrium angle for pi-electron interaction
+    // apars layout (MMFFsp3_loc, live eval): x,y = (cos(θ0/2), sin(θ0/2)) for evalAngleCosHalf; z = Kss; w = piC0.
+    // Stale comment used to say (c0, Kss, Ksp, c0_e) — that layout is NOT what eval_atom uses.
+    Quat4d default_NeighParams{ -1.0,   1.0,   10.0,   -1.0 };
 
     // Dynamical Varaibles;
     //Vec3d *   apos=0;   // [natom]
@@ -295,7 +296,7 @@ double eval_atom(const int ia){
     // double  piC0 = apars[ia].z;
     // //bool    bPi  = ings[3]<0;   we distinguish this by Ksp, otherwise it would be difficult for electron pairs e.g. (-O-C=)
 
-    const Quat4d& apar  = apars[ia]; // [c0, Kss, Ksp, c0_e] c0 is cos of equilibrium angle, Kss is bond stiffness, Ksp is pi-sigma stiffness, c0_e is cos of equilibrium angle for pi-electron interaction
+    const Quat4d& apar  = apars[ia]; // (cos(θ0/2), sin(θ0/2), Kss, piC0)
     const double  piC0 = apar.w;     // cos of equilibrium angle for pi-electron interaction
 
     //printf( "ang0 %g cs0(%g,%g)\n", atan2(cs0_ss.y,cs0_ss.x)*180/M_PI, cs0_ss.x,cs0_ss.x );
@@ -610,7 +611,7 @@ __attribute__((hot))   double eval_atom_t(const int ia){
     Vec3d* fps  = fneighpi +ia*4;             // forces on pi vectors
     const bool bColDampB   = colDamp.bBond && vapos; // if true we use collision damping
     const bool bColDampAng = colDamp.bAng  && vapos; // if true we use collision damping for non-bonded interactions
-    const Quat4d& apar  = apars[ia]; // [c0, Kss, Ksp, c0_e] c0 is cos of equilibrium angle, Kss is bond stiffness, Ksp is pi-sigma stiffness, c0_e is cos of equilibrium angle for pi-electron interaction
+    const Quat4d& apar  = apars[ia]; // (cos(θ0/2), sin(θ0/2), Kss, piC0)
     const double  piC0 = apar.w;     // cos of equilibrium angle for pi-electron interaction
     //--- Aux Variables 
     Quat4d  hs[4]; // bond vectors (normalized in .xyz ) and their inverse length in .w

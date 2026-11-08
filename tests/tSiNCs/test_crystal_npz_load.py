@@ -84,6 +84,22 @@ def test_build_hessian_from_linear_topology_2atom():
     assert w.min() > -1e-10
 
 
+def test_load_bonds_ij_from_mol2_and_xyz(tmp_path):
+    from pyBall.io.crystal_npz import load_bonds_ij_from_mol2, load_bonds_ij_from_xyz, rewrite_crystal_npz_bonds, load_crystal_npz
+    mol2 = os.path.join(_ROOT, 'cpp/common_resources/mol/adamantane.mol2')
+    bonds = load_bonds_ij_from_mol2(mol2)
+    assert bonds.ndim == 2 and bonds.shape[1] == 2 and bonds.shape[0] > 0
+    xyz = tmp_path / 'with_bonds.xyz'
+    xyz.write_text('2 1\ntest\nC 0 0 0\nC 1.5 0 0\n1 2\n')
+    bxyz = load_bonds_ij_from_xyz(xyz)
+    assert bxyz.shape == (1, 2) and list(bxyz[0]) == [0, 1]
+    npz = tmp_path / 'n.npz'
+    np.savez(npz, pos=np.zeros((2, 3)), Z=np.array([6, 6], dtype=np.int32), natoms=2)
+    rewrite_crystal_npz_bonds(npz, bxyz)
+    d = load_crystal_npz(npz, mmap=False)
+    assert d['bonds_ij'].shape == (1, 2)
+
+
 def test_missing_pos_raises():
     import tempfile
     with tempfile.NamedTemporaryFile(suffix='.npz', delete=False) as f:

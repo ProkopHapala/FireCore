@@ -1,37 +1,25 @@
-# Latest model guide
+# Latest model fallback
 
-This file is a curated helper. Every recommendation here must be verified against current OpenAI docs before it is repeated to a user.
+This is a compact, non-authoritative fallback, not a source for current availability, prices, aliases, or defaults. First search for and fetch current official model guidance at `https://developers.openai.com/api/docs/guides/latest-model` and the relevant official model page. The fetched official documentation wins if this snapshot has drifted. Disclose any use of this fallback.
 
-## Current model map
+## GPT-5.6 family
 
-| Model ID | Use for |
+| Model ID | Documented workload to verify against the current model page |
 | --- | --- |
-| `gpt-5.5` | Latest/default text and reasoning model for most new apps, including coding and tool-heavy workflows |
-| `gpt-5.5-pro` | Maximum reasoning or quality when latency and cost matter less |
-| `gpt-5.4` | Previous default text and reasoning model; use for existing GPT-5.4 integrations |
-| `gpt-5.4-mini` | Lower-cost testing and lighter production workflows |
-| `gpt-5.4-nano` | High-throughput simple tasks and classification |
-| `gpt-5.5` | Explicit no-reasoning text path via `reasoning.effort: none` |
-| `gpt-4.1-mini` | Cheaper no-reasoning text |
-| `gpt-4.1-nano` | Fastest and cheapest no-reasoning text |
-| `gpt-5.3-codex` | Agentic coding, code editing, and tool-heavy coding workflows |
-| `gpt-5.1-codex-mini` | Cheaper coding workflows |
-| `gpt-image-2` | Best image generation and edit quality |
-| `gpt-image-1.5` | Less expensive image generation and edit quality |
-| `gpt-image-1-mini` | Cost-optimized image generation |
-| `gpt-4o-mini-tts` | Text-to-speech |
-| `gpt-4o-mini-transcribe` | Speech-to-text, fast and cost-efficient |
-| `gpt-realtime-1.5` | Realtime voice and multimodal sessions |
-| `gpt-realtime-mini` | Cheaper realtime sessions |
-| `gpt-audio` | Chat Completions audio input and output |
-| `gpt-audio-mini` | Cheaper Chat Completions audio workflows |
-| `sora-2` | Faster iteration and draft video generation |
-| `sora-2-pro` | Higher-quality production video |
-| `omni-moderation-latest` | Text and image moderation |
-| `text-embedding-3-large` | Higher-quality retrieval embeddings; default in this skill because no best-specific row exists |
-| `text-embedding-3-small` | Lower-cost embeddings |
+| `gpt-5.6` | GPT-5.6 family alias; verify its currently documented routing and availability. |
+| `gpt-5.6-sol` | Quality-first flagship, reasoning, and difficult coding work. |
+| `gpt-5.6-terra` | Balanced quality, latency, and cost. |
+| `gpt-5.6-luna` | High-throughput, lower-latency work. |
 
-## Maintenance notes
+Use `https://developers.openai.com/api/docs/guides/upgrading-to-gpt-5p6-sol` for an actual GPT-5.6 migration and `https://developers.openai.com/api/docs/guides/prompt-guidance-gpt-5p6` for requested GPT-5.6 prompting. Open and read the relevant page before recommending a request shape, reasoning setting, endpoint, tool behavior, or migration.
 
-- This file will drift unless it is periodically re-verified against current OpenAI docs.
-- If this file conflicts with current docs, the docs win.
+## Explicitly requested existing models
+
+| Model ID | Boundary |
+| --- | --- |
+| `gpt-4.1` | Preserve only when the user explicitly requests this model or existing migration target; search and fetch its own current official guide. |
+| `gpt-5.4` | Preserve only when the user explicitly requests this model or existing migration target; search and fetch its own current official guide. |
+
+Do not promote a legacy model as the current default, substitute it into an unrelated task, or replace an explicitly requested legacy target with GPT-5.6. Recommend a specialized image, audio, realtime, coding, moderation, or embedding model only after verifying the requested modality against current official documentation.
+
+Verify GPT-5.6 Pro against current official Responses and model documentation before describing model IDs, reasoning modes, request parameters, or account availability; do not invent a separate `gpt-5.6-pro` model slug.
