@@ -272,7 +272,7 @@ constexpr static const double aMasses[9] = {  1.0, 4.0, 7.0, 9.0,  11.0,  12.0, 
 
     double eConst = 1;
     std::vector<double> paramsSi = {1.0, 0.5, 0.3};
-    Vec3d KRSrho = { 0.9, 0.6, -0.2}; ///< eFF universal parameters
+    Vec3d KRSrho = {  1.125, 0.9, -0.2 }; ///< eFF universal parameters
     // 0.8, 0.5, -0.2 
     //0.9, 0.6, -0.2 large simulation works
     //constexpr static const Vec3d KRSrho = { 1.125, 0.9, -0.3 }; ///< eFF universal parameters // If it is sufficiently strong electron pairs are formed
@@ -673,8 +673,8 @@ double evalAE(){
                 //if(qqi<-1.00001) EaePaul += addDensOverlapGauss_S( dR,sj, abwi.z, abwi.a, f, fsj, fs_junk );     // correct
                 //double dEaePaul = addPauliGauss      ( dR, sj, abwi.z, f, fsj, fs_junk, false, KRSrho );     // correct
                 //double dEaePaul = addDensOverlapGauss_S( dR, sj, aPar.z, aPar.w, f, fsj, fs_junk );     // correct
-                if(bEvalAEPauli){ dEaePaul = addPauliGauss_New( dR, aPar.y, sj, f, fsj, fs_junk, 0, KRSrho, qj*aPar.z*0.5 ); } // spin=0 means both -1 and +1  
-                if(bCoreCoul   ){ dEee     = addCoulombGauss  ( dR, aPar.y, sj, f, fsj, fs_junk,            qj*aPar.z  ); }
+                if(bEvalAEPauli){ dEaePaul = addPauliGauss_New( dR, aPar.y, sj, f, fs_junk, fsj, 0, KRSrho, qj*aPar.z*0.5 ); } // spin=0 means both -1 and +1  
+                if(bCoreCoul   ){ dEee     = addCoulombGauss  ( dR, aPar.y, sj, f, fs_junk, fsj,           qj*aPar.z  ); }
                 //printf( "Eeaneg qij(%g) \n", qj*aPar.z );
                 //printf( "EaePaul[%i,%i] E %g r %g s %g abw(%g,%g) \n", i, j, dEaePaul, dR.norm(), sj, abwi.z, abwi.a );
             }
@@ -873,6 +873,7 @@ double evalAA(){
             double qq;
             if(bCoreCoul){
                 qq = aPari.x*aParj.x;
+                
                 if(aPari.z>1e-8   ){ dEaa     += addCoulombGauss  ( dR, 0, aPari.y, f, fs_junk, fs_junk, -aParj.x*aPari.z  );}//printf("evalAAipos[%i,%i] qCore %g \n", i, j, -aParj.x*aPari.z); }
                 if(aParj.z>1e-8   ){ dEaa     += addCoulombGauss  ( dR, 0, aParj.y, f, fs_junk, fs_junk, -aPari.x*aParj.z  );}//printf("evalAAjpos[%i,%i] qCore %g \n", i, j, -aPari.x*aParj.z); }
                 if(aParj.z>1e-8 && aPari.z>1e-8  ){ dEaa += addCoulombGauss  ( dR, aPari.y, aParj.y, f, fs_junk, fs_junk, aPari.z*aParj.z  );}//printf("evalAAijneg[%i,%i] qCore %g \n", i, j, aPari.z*aParj.z); }
@@ -1094,6 +1095,16 @@ void printElectrons(){
         //printf( "e[%i] xyzs(%g,%g,%g,%g) fxyzs(%g,%g,%g,%g) \n", i, ff.epos[i].x, ff.epos[i].y, ff.epos[i].z, ff.esize[i], ff.eforce[i].x, ff.eforce[i].y, ff.eforce[i].z, ff.fsize[i] );
     }
 }
+void printForces(){
+    printf( "EFF::printForces()\n" );
+    for(int i=0; i<na; i++){
+    printf( "a[%3i ] Fp(%16.8f ,%16.8f ,%16.8f ) \n", i, aforce[i].x, aforce[i].y, aforce[i].z);
+    }
+    for(int i=0; i<ne; i++){
+        printf( "e[%3i ] Fp(%16.8f ,%16.8f ,%16.8f ) Fsz (%16.8f) \n", i, eforce[i].x, eforce[i].y, eforce[i].z, fsize[i]);
+    }
+
+}
 
 void printSwitches(){
     printf( "EFF::printSwitches()\n" );
@@ -1104,9 +1115,11 @@ void printSwitches(){
 
 void info(){
     printf( "EFF::info()\n" );
+    
     printSwitches();
     printAtoms();
     printElectrons();
+    printForces();
 }
 
 int Eterms2str(char* str){

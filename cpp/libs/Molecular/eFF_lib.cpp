@@ -215,7 +215,7 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
     for(itr=0; itr<nstepMax; itr++ ){
         ff.clearForce();
         Etot = ff.eval();
-        
+
         if( ff.bNegativeSizes & (verbosity>0) ){ printf( "negative electron sizes in step #%i => perhaps decrease relaxation time step dt=%g[fs]? \n", itr, opt.dt ); }
         if(ff.nfix>0){ if(ialg>0){ ff.clear_fixed_dynamics(); }else{ ff.clear_fixed_force(); } }
         switch(ialg){
@@ -768,7 +768,7 @@ int processXYZ_e( const char* fname, double* outEs=0, double* apos_=0, double* f
                 //opt.bindOrAlloc(ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses);
                 //if (optAlg == -1)initOpt( dt, 0.0, 100.0, true );
                 //else initOpt(dt, 0.1, 100, false);
-                initOpt(dt, 0, 100.0, false);
+                initOpt(dt, 0.1, 100.0, false);
             }
         }else{
             // printf( "particle_line[%i]: %s ", il, line );

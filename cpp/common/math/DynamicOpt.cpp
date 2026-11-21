@@ -287,13 +287,17 @@ void DynamicOpt::FIRE_update_params(){
 }
 
 double DynamicOpt::move_FIRE(){
+    const double* fe = force;
+
+    
     eval_cos_vf();
+    
 	double cv;
     double cf  = renorm_vf * damp_func_FIRE( cos_vf, cv );
-    for(int i=0; i<n; i++){ 
+    for(int i=0; i<n; i++){
         //printf( "DynamicOpt::move_FIRE() [%i] fix %i \n", i, fixmask[i] );
         if(bfixmask){ if(fixmask[i])continue; }
-        vel[i]  = vel[i]*cv  + force[i]*invMasses[i]*cf;  
+        vel[i]  = vel[i]*cv  + fe[i]*invMasses[i]*cf;
     }
 	if( cos_vf < 0.0 ){
         dt       = fmax( dt * fdec, dt_min );
@@ -311,8 +315,19 @@ double DynamicOpt::move_FIRE(){
         double f = sqrt(ff);
         dt_*=sqrt( f_limit/f );
     };
+
+    {
+        double drmax=0;
+        for(int i=0;i<n;i++){ if(bfixmask && fixmask[i])continue; double dr=(vel[i]+fe[i]*invMasses[i]*dt_)*dt_; drmax=fmax(drmax,fabs(dr)); }
+        if( drmax > dr_limit ){
+            double s = dr_limit/drmax;
+            for(int i=0;i<n;i++){ if(bfixmask && fixmask[i])continue; vel[i] = s*(vel[i]+fe[i]*invMasses[i]*dt_) - fe[i]*invMasses[i]*dt_; }
+        }
+    }
+
+
     if(verbosity>1) printf( "dt %7.5f damp %7.5f n+ %4i | cfv %7.5f |f| %12.5e |v| %12.5e \n", dt,damping, lastNeg, vf/sqrt(vv*ff), sqrt(ff), sqrt(vv) );
-    move_LeapFrog( dt_ );
+    move_LeapFrog( dt_);
 	return ff;
 }
 

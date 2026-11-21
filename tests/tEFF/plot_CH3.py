@@ -44,7 +44,7 @@ if __name__ == "__main__":
         eff.setAtomParams( atomParams , mode=2)
         if (i == iterations): 
             eff.setTrjName(fileToSaveProcess, savePerNsteps=1)
-        eff.processMol2(evalfile, nstepMax=170000, dt=0.00002, Fconv=1e-7, ialg=2, aforce=aforce, apos=apos)
+        eff.processMol2(evalfile, nstepMax=10000, dt=0.05, Fconv=1e-7, ialg=2, aforce=aforce, apos=apos)
         fsum = np.sum(np.abs(aforce))
         outf = np.append(outf, fsum)
         dif  =  apos[0] - apos[4]  

@@ -13,8 +13,8 @@ from pyBall import eFF as eff
 #elementPathMol2 = "EMolecules/H2O/.mol2"
 #elementPathMol2 = "EMolecules/H2O/tripleHbond.mol2"
 #elementPathMol2 = "EMolecules/H2O/triplePlanar.mol2"
-elementPathMol2 = "EMolecules/H2O/15.mol2"
-elementPath_e = "EMolecules/H2O/Progress().xyz"
+#elementPathMol2 = "EMolecules/H2O/15.mol2"
+#elementPath_e = "EMolecules/H2O/Progress().xyz"
 
 #elementPathMol2 = "EMolecules/Reactions/FxH2O.mol2"                 #reactions
 #elementPath_e = "EMolecules/Reactions/FxH2O.xyz"
@@ -23,7 +23,8 @@ elementPath_e = "EMolecules/H2O/Progress().xyz"
 #elementPath_e = "EMolecules/CO/e.xyz"                              #for CO Does not work because of triple bond
 #elementPath_e = "EMolecules/CO/ee2.xyz"
 
-#elementPath_e = "EMolecules/CO2/e_relaxed.xyz"                     #for CO2 does not work because of double bond
+
+# #elementPath_e = "EMolecules/CO2/ee2_relaxed.xyz"                     #for CO2 does not work because of double bond
 #elementPath_e = "EMolecules/CO2/ee2.xyz"
 
 #elementPath_e = "export/scan_data/single_H2O_ee.xyz" #something older
@@ -37,7 +38,7 @@ elementPath_e = "EMolecules/H2O/Progress().xyz"
 
 #elementPath = "EMolecules/Experiment.xyz"             #CH3CH3
 #elementPath_e = "EMolecules/CH3CH3/E_ee2_relaxed.xyz"
-#elementPath_e = "EMolecules/NH3/_e.xyz"
+elementPath_e = "EMolecules/NH3/_e.xyz"
 
 # elementPath_e = "export/scan_data/angdistscan_CH4_forces_fixed.xyz"
 # elementPath_e = "export/scan_data/CH4_10rnd_be.xyz" #be stands for better electrons. They are positioned at hydrogen atoms
@@ -57,18 +58,19 @@ if __name__ == "__main__":
     
     
 
-    eff.setTrjName(fileToSaveProcess, savePerNsteps=10000)
+    eff.setTrjName(fileToSaveProcess, savePerNsteps=1)
+
     if os.path.exists(fileToSaveProcess):
         os.remove(fileToSaveProcess) # deleting useless information
 
-    eff.setVerbosity(3,2)
+    
     #eff.processXYZ( elementPath, nstepMax=100000,ialg=2, dt=0.0001, Fconv=1e-7, bCoreElectrons=True) 
-    #eff.processMol2( elementPathMol2, nstepMax=10000000, dt=0.1,ialg=2, Fconv=1e-7, xyz_out=fileToSaveProcess)
-    apos_ = np.zeros((8,3))
-    eff.processXYZ_e( elementPath_e, nstepMax=10000000, dt=0.1, optAlg = 2, Fconv=1e-7, apos=apos_, xyz_out=fileToSaveProcess) #, KRSrho=KRSrho 
-    print(apos_)
-    eff.info()
-    dif = (apos_[0]-apos_[1])
-    distance = np.sqrt(dif.dot(dif))
-    print(distance)
+    #eff.processMol2( elementPathMol2, nstepMax=10000, dt=8, ialg=2, Fconv=1e-7, xyz_out=fileToSaveProcess)
+    
+    eff.processXYZ_e( elementPath_e, nstepMax=1000, dt=5, optAlg = 2, Fconv=1e-7, xyz_out=fileToSaveProcess) #, KRSrho=KRSrho 
+    #postprocess:
+    #eff.setVerbosity(3,2)
+    #eff.setTrjName(fileToSaveProcess, savePerNsteps=1000)
+    #eff.processXYZ_e( fileToSaveProcess, nstepMax=10000, dt=0.1, optAlg = 2, Fconv=1e-7,  xyz_out=fileToSaveProcess) #, KRSrho=KRSrho 
+    
     #exec(open("xyz_view_new-----.py").read())

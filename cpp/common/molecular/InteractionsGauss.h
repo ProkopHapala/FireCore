@@ -647,13 +647,14 @@ inline double addPauliGauss_New( const Vec3d& dR, double si, double sj, Vec3d& f
     double E=0, dE_dDT=0, dE_dS22=0;    
     if(spin<=0){
         //double invS22m1 = 1/(S22);
-        ////double invS22m1 = 1/( S22+1 );  // original formula from the paper
-        //E       += + rho2*S22 ;
-        ////printf( "DEBUG S22*DT %g invS22m1 %g (-rho*S22+rho-2) %g \n", S22*DT, invS22m1, (-rho*S22+rho-2) );
-        //dE_dS22 += rho2;  // minus sign in the original
-
-        double invS22m1 = 1/(S22-1);
+        
         //double invS22m1 = 1/( S22+1 );  // original formula from the paper
+        //E       += - rho2*DT*S22*invS22m1;
+        //dE_dDT  += -(rho2*   S22 )*invS22m1;
+        //dE_dS22 += -(rho2*DT      )*invS22m1*invS22m1;
+
+        // Experimental version
+        double invS22m1 = 1/(S22-1);
         E       += - rho2*DT*S22*invS22m1*si2sj2;
         //printf( "DEBUG S22*DT %g invS22m1 %g (-rho*S22+rho-2) %g \n", S22*DT, invS22m1, (-rho*S22+rho-2) );
         dE_dDT  += -(rho2*   S22 )*invS22m1*si2sj2;
