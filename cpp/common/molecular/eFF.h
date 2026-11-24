@@ -305,7 +305,7 @@ constexpr static const double aMasses[9] = {  1.0, 4.0, 7.0, 9.0,  11.0,  12.0, 
 
     //double * espin  =0;
     int    * espin   =0; ///< electron spins
-    double * echarge =0; ///< electron charge (QE for individual, 2*QE for pair)
+    double * echarge =0; ///< electron occupancy magnitude (1.0 per electron, 2.0 for paired e2 orbital); electron charge is -echarge
     Vec3d  * epos    =0; ///< electron positions
     Vec3d  * eforce  =0; ///< electron forces
     Vec3d  * evel    =0; ///< electron velocities
@@ -346,7 +346,7 @@ void realloc(int na_, int ne_, bool bVel=false){
     _realloc( aPars2, na);
     _realloc( espin, ne);
     _realloc( eE, ne );
-    _realloc0( echarge, ne, QE );
+    _realloc0( echarge, ne, 1.0 );   // FIX: echarge is a POSITIVE occupancy magnitude (1 per electron, 2 for e2); was QE=-1 => negative Ek/Coulomb for unset paths
 
     _realloc0( fixmask, nDOFs, false );
 
@@ -634,6 +634,16 @@ double evalEE(){
             //    Draw3D::drawVecInPos( f   , pi      );
             //}
         }
+        // Internal Coulomb self-repulsion of a paired/multi-occupied orbital: the j<i loop only visits distinct
+        // orbitals, so the qi*(qi-1)/2 constituent electron pairs inside one orbital are missed (~32.5 eV for e2,s=0.5).
+        // Internal Pauli is identically 0 (opposite spins, coincident same-size Gaussians). Passing fsi twice
+        // accumulates dE/dsi + dE/dsj into the single shared size DOF (correct full derivative since si=sj).
+        if( bEvalCoulomb && (qi>1.0) ){
+            Vec3d fjunk = Vec3dZero;
+            double dEii = addCoulombGauss( Vec3dZero, si, si, fjunk, fsi, fsi, qi*(qi-1.0)*0.5 );
+            Eee   += dEii;
+            eE[i] += dEii;
+        }
     }
     //printf( "Eee %g EeePaul %g \n", Eee, EeePaul );
     //if( i_DEBUG>0 )  for(int j=0; j<ne; j++){  printf( "evalEE: esize[%i] %g f %g \n", j, esize[j], fsize[j] ); }
@@ -673,7 +683,7 @@ double evalAE(){
                 //if(qqi<-1.00001) EaePaul += addDensOverlapGauss_S( dR,sj, abwi.z, abwi.a, f, fsj, fs_junk );     // correct
                 //double dEaePaul = addPauliGauss      ( dR, sj, abwi.z, f, fsj, fs_junk, false, KRSrho );     // correct
                 //double dEaePaul = addDensOverlapGauss_S( dR, sj, aPar.z, aPar.w, f, fsj, fs_junk );     // correct
-                if(bEvalAEPauli){ dEaePaul = addPauliGauss_New( dR, aPar.y, sj, f, fs_junk, fsj, 0, KRSrho, qj*aPar.z*0.5 ); } // spin=0 means both -1 and +1  
+                if(bEvalAEPauli && (aPar.y>1e-8)){ dEaePaul = addPauliGauss_New( dR, aPar.y, sj, f, fs_junk, fsj, 0, KRSrho, qj*aPar.z*0.5 ); } // spin=0 means both -1 and +1 ; FIX: zero-width core (sQ=0, e.g. FGO point nucleus) => addPauliGauss_New gives 0/0 NaN
                 if(bCoreCoul   ){ dEee     = addCoulombGauss  ( dR, aPar.y, sj, f, fs_junk, fsj,           qj*aPar.z  ); }
                 //printf( "Eeaneg qij(%g) \n", qj*aPar.z );
                 //printf( "EaePaul[%i,%i] E %g r %g s %g abw(%g,%g) \n", i, j, dEaePaul, dR.norm(), sj, abwi.z, abwi.a );
@@ -741,7 +751,7 @@ double evalAE_MultiGauss(){
                     // dEaePaul = addPauliGauss_New( dR, aPar.y, sj, f, fsj, fs_junk, 0, KRSrho, qj*aPar.z*0.5 );
                     dEaePaul = addPauliMultiGauss( dR, paramsSi, sj, eConst, f, fs_junk, fsj); // spin=0 means both -1 and +1  
                 }
-                if(bCoreCoul   ){ dEee     = addCoulombGauss  ( dR, aPar.y, sj, f, fsj, fs_junk,            qj*aPar.z     ); 
+                if(bCoreCoul   ){ dEee     = addCoulombGauss  ( dR, aPar.y, sj, f, fs_junk, fsj,            qj*aPar.z     );  // FIX: electron's fsize must get d/d(sj), atom's d/d(aPar.y) is junk (was swapped)
                     // printf("dEee %g \n \n", dEee);
                 }
             }
@@ -762,20 +772,22 @@ double evalECP( Vec3d dR, Quat4d aPar, Quat4d BCDE, double sj, Vec3d& f, double&
     double dEae = 0;
     if(bEvalAECoulomb){
         double fs_junk;
-        dEae += addCoulombGauss(dR, aPar.z, sj, f, fs_junk, fs, (aPar.x - aPar.z) );   // ( Z - Zeff )
+        // FIX: same as evalAE_ECP - width is R_eff=aPar.y, charge is -1*(Z-Zeff) (electron occupancy 1 here)
+        dEae += addCoulombGauss(dR, aPar.y, sj, f, fs_junk, fs, -(aPar.x - aPar.z) );   // ( Z - Zeff )
     }
     // Pauli: pseudo-atom (i) - electron (j)
     if(bEvalAEPauli){
         const double rc = dR.norm();
         double fe_ = 0.0;
         double dE_ = 0.0;
-        double fr_ = 0; 
+        double fr_ = 0;
         double fs_ = 0;
-        if (BCDE.w>0){ LAMMPS_NS::PauliCoreElec (rc, sj, &dE_, &fr_, &fe_, aPar.w, BCDE.x, BCDE.y); } 
+        if (BCDE.w>0){ LAMMPS_NS::PauliCoreElec (rc, sj, &dE_, &fr_, &fe_, aPar.w, BCDE.x, BCDE.y); }
         else         { LAMMPS_NS::PauliCorePElec(rc, sj, &dE_, &fr_, &fe_, aPar.w, BCDE.x, BCDE.y, BCDE.z, BCDE.w);  }
         dEae += dE_ * Hartree_to_eV;
-        fs   -= fe_ * Hartree_to_eV;
-        f.add_mul(dR, (fr_ * Hartree_to_eV) / rc);
+        // FIX: sign conventions as in evalAE_ECP (fe_=-dE/ds is force => += ; f is force on atom => -fr_)
+        fs   += fe_ * Hartree_to_eV;
+        f.add_mul(dR, -(fr_ * Hartree_to_eV) / rc);
     }
     return dEae;
 }
@@ -800,7 +812,9 @@ double evalAE_ECP(){
             double dEae=0,dEaePaul=0,dEee=0;
 
             if(bEvalAECoulomb){
-                dEae  = addCoulombGauss(dR, aPar.z, sj, f, fs_junk, fsj, (aPar.x - aPar.z) );   // ( Z - Zeff )
+                // FIX (was: aPar.z width, +(Z-Zeff) charge -> repulsive & charge-as-width): electron sees screened
+                // nucleus +(Z-Zcore) with electron charge -qj => qq=-qj*(Z-Zeff); core smearing width is R_eff=aPar.y
+                dEae  = addCoulombGauss(dR, aPar.y, sj, f, fs_junk, fsj, -qj*(aPar.x - aPar.z) );   // ( Z - Zeff )
             }
             if(bEvalAEPauli){
                 if(is_eCP){
@@ -826,9 +840,11 @@ double evalAE_ECP(){
                             break;
                     }
                     dEaePaul    += dE_*qj * Hartree_to_eV;
-                    fsj         -= fe_*qj * Hartree_to_eV;
-                    f.add_mul(dR, (fr_*qj * Hartree_to_eV) / rc);
-                }else{
+                    // FIX (both signs were reversed vs FD): fe_=-dE/ds is the size FORCE => += ; fr_=-dE/drc is the
+                    // electron's radial force, f accumulates force on the ATOM = -fr_*dR/rc => negative prefactor
+                    fsj         += fe_*qj * Hartree_to_eV;
+                    f.add_mul(dR, -(fr_*qj * Hartree_to_eV) / rc);
+                }else if( aPar.z > 0.0 ){ // atoms with core electrons: Gaussian core Pauli (skip for bare nuclei e.g. H, else 0/0 NaN)
                     dEaePaul   = addPauliGauss_New( dR, sj, aPar.y, f, fsj, fs_junk, 0, KRSrho, qj ); // spin=0 means both -1 and +1  
                     //dEaePaul   = addPauliGauss_New( dR, sj, aPar.z, f, fsj, fs_junk, 0, KRSrho, aPar.z*0.5 ); // spin=0 means both -1 and +1 
                 }
@@ -1370,7 +1386,8 @@ int readSingleFGO(FILE* pFile, bool bVel=true, double fUnits=1., bool bRealloc=t
         int nw = sscanf (buff, "%lf %lf %lf %lf %lf %i %lf %lf %lf %lf", &x, &y, &z, &s, &c, &spin, &vx, &vy, &vz, &vs );
         epos [i]=Vec3d{x*fUnits,y*fUnits,z*fUnits};
         esize[i]=s*fUnits;
-        if(bVel){ 
+        echarge[i]=fabs(c); // FIX: occupancy magnitude was never assigned (left at init default) => negative/wrong Ek
+        if(bVel){
             if(nw>=9 )evel [i] = Vec3d{vx*fUnits,vy*fUnits,vz*fUnits};
             if(nw>=10)vsize[i] = vs*fUnits;
         }
@@ -1381,6 +1398,7 @@ int readSingleFGO(FILE* pFile, bool bVel=true, double fUnits=1., bool bRealloc=t
             int j = i+nBasRead;
             epos [j]=epos[i];
             esize[j]=esize[i];
+            echarge[j]=echarge[i];
             espin[j]=-1;
         }
     }

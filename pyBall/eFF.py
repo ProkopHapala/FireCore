@@ -56,8 +56,9 @@ header_strings = [
 #LIB_PATH_CPP  = os.path.normpath(LIB_PATH+'../../../'+'/cpp/Build/libs/'+cpp_name )
 #lib = ctypes.CDLL( LIB_PATH_CPP+("/lib%s.so" %cpp_name) )
 
-cpp_utils.BUILD_PATH = os.path.normpath( cpp_utils.PACKAGE_PATH + '../../cpp/Build/libs/Molecular' ) 
-lib = cpp_utils.loadLib('eFF_lib', recompile=False)
+cpp_utils.BUILD_PATH = os.path.normpath( cpp_utils.PACKAGE_PATH + '../../cpp/Build/libs/Molecular' )
+_lib_name = os.environ.get('EFF_LIB', 'eFF_lib')   # EFF_LIB=eFF_lib_origZ loads the frozen original library for A/B comparison
+lib = cpp_utils.loadLib(_lib_name, recompile=False)
 array1ui = np.ctypeslib.ndpointer(dtype=np.uint32, ndim=1, flags='CONTIGUOUS')
 array1i  = np.ctypeslib.ndpointer(dtype=np.int32,  ndim=1, flags='CONTIGUOUS')
 array2i  = np.ctypeslib.ndpointer(dtype=np.int32,  ndim=2, flags='CONTIGUOUS')
@@ -284,14 +285,83 @@ def initOpt(dt=0.1, damping=0.1, f_limit=1000.0, bMass=False ):
     dt_glob = dt
     return lib.initOpt(dt, damping, f_limit, bMass)
 
-#  int  run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0 ){
-lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double_p, c_double_p] 
+# ===== ported optimizer API (absent in libeFF_lib_origZ => guard so the backup lib still imports) =====
+_bNewOpt = hasattr(lib, 'setAutoMass')
+def _needNewOpt(fname):
+    if not _bNewOpt: raise RuntimeError(f"{fname}() requires the ported library (EFF_LIB=eFF_lib); loaded lib '{_lib_name}' does not have it")
+
+# void setAutoMass( int mode, double kref ){   // opt-in trajectory-secant diagonal preconditioner
+if _bNewOpt:
+    lib.setAutoMass.argtypes  = [c_int, c_double]
+    lib.setAutoMass.restype   =  None
+    lib.setMassMetric.argtypes  = [c_int]
+    lib.setMassMetric.restype   =  None
+    lib.setOptParam.argtypes = [c_char_p, c_double]
+    lib.setOptParam.restype  = c_double
+    lib.run_GH.argtypes  = [c_int, c_double, c_int, c_int, c_double, c_double, c_int, c_double, c_double_p, c_double_p]
+    lib.run_GH.restype   =  c_int
+def setAutoMass( mode=0, kref=100.0 ):
+    _needNewOpt('setAutoMass'); return lib.setAutoMass( mode, kref )
+def setMassMetric( m=0 ):                                        # opt-in mass-consistent FIRE metric (P=v.f power test)
+    _needNewOpt('setMassMetric'); return lib.setMassMetric( m )
+def setOptParam(name, val):                                      # generic DynamicOpt scalar setter for sweeps
+    _needNewOpt('setOptParam'); return lib.setOptParam(name.encode(), val)
+def run_GH(nstepMax=1000, Fconv=1e-4, iMethod=1, mHist=5, eta=0.001, a_init=0.001, adapt=0, amax=8.0, outE=None, outF=None):   # iMethod 1=BB1, 2=Anderson, 3=Anderson+diagPrecond
+    _needNewOpt('run_GH')
+    if outE is None: outE=np.full(nstepMax+1, np.nan)
+    if outF is None: outF=np.full(nstepMax+1, np.nan)
+    n = lib.run_GH(nstepMax, Fconv, iMethod, mHist, eta, a_init, adapt, amax, _np_as(outE,c_double_p), _np_as(outF,c_double_p) )
+    return n, outE, outF
+
+def relax_auto( nstepMax=400000, dt0=0.1, dtmin=2e-4, FconvA=1e-3, chunk=2000, bAutoMass=1, kref=100.0, damping=None, bVerbose=True ):
+    """Plug&play FIRE relaxation for the CURRENT loaded system (no dt hand-tuning).
+
+    Strategy (validated on H2O dimer/15mer, H2O_spins):
+      - autoMass diagonal preconditioner normalizes per-block stiffness (electrons vs atoms)
+      - dt is self-probed: shrink x0.3 when atom forces explode, x0.5 when |Fa| stalls
+        (|Fa| tracking, not E - energy keeps creeping while atoms sit on a jitter plateau)
+      - convergence tested on |Fa| (atoms only): electron-pair DOFs keep a |F|~0.1-0.5
+        jitter floor on this Hamiltonian, so a total-|F| criterion is unreachable.
+      - when |Fa| first < FconvA, one polish pass at dt*0.3 must re-confirm convergence.
+      - damping: optional initOpt(dt,damping) re-init; damping~0.3 settles the electron
+        jitter ~2x faster than the default 0.1 (measured on 15-mer).
+    Returns (niter_total, Etot, |Fa|, dt_final, E_hist, F_hist).
+    """
+    if damping is not None: initOpt( dt=dt0, damping=damping, f_limit=100.0 )
+    if _bNewOpt and bAutoMass: setAutoMass( bAutoMass, kref )
+    getBuffs()
+    dt = dt0; ntot = 0; npolish = 0; Fa_best = np.inf
+    _E=[]; _F=[]
+    while ntot < nstepMax:
+        outE = np.full(chunk, np.nan); outF = np.full(chunk, np.nan)
+        run( chunk, dt=dt, Fconv=1e-12, ialg=2, outE=outE, outF=outF )
+        nok = int(np.isfinite(outE).sum()); ntot += nok
+        _E.append(outE[:nok]); _F.append(outF[:nok])
+        getBuffs()
+        Fa = float(np.linalg.norm( fDOFs[:3*na] )); E = float(Es[0])
+        if bVerbose: print( f"relax_auto: it={ntot:7d} dt={dt:.4g} E={E:12.4f} |Fa|={Fa:.4g}" )
+        if not np.isfinite(E) or not np.isfinite(Fa):      # divergence guard (shouldn't happen)
+            dt *= 0.3; Fa_best = np.inf; continue
+        if Fa <= FconvA:
+            if npolish >= 1: break                          # confirmed at refined dt -> done
+            npolish += 1; dt = max( dt*0.3, dtmin ); Fa_best = np.inf; continue   # polish pass
+        if Fa > 10.0*np.sqrt(na):                           # atom forces exploding -> cut dt
+            dt = max( dt*0.3, dtmin ); Fa_best = np.inf
+        elif Fa > 0.7*Fa_best:                              # |Fa| not improving fast enough -> refine dt
+            dt = max( dt*0.5, dtmin )
+        Fa_best = min( Fa_best, Fa )
+        if dt <= dtmin and Fa <= 10.0*FconvA: break         # refined to floor and close enough
+    return ntot, E, Fa, dt, np.concatenate(_E), np.concatenate(_F)
+
+#  int  run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0, double* outE, double* outF, bool* bConv=0 ){
+lib. run.argtypes  = [c_int, c_double, c_double, c_int, c_double_p, c_double_p, c_void_p]
 lib. run.restype   =  c_int
 def  run(nstepMax=1000, dt=None, Fconv=1e-6, ialg=0, outE=None, outF=None, bOutE=True, bOutF=True):
     if dt is None: dt=dt_glob
     if (outE is None) and bOutE: outE=np.full(nstepMax, np.nan)
     if (outF is None) and bOutF: outF=np.full(nstepMax, np.nan)
-    lib.run(nstepMax, dt, Fconv, ialg, _np_as(outE,c_double_p), _np_as(outF,c_double_p) )
+    bConv = ctypes.c_bool(False)   # C++ run() has a 7th bool* bConv out-param; passing only 6 args is UB (garbage pointer)
+    lib.run(nstepMax, dt, Fconv, ialg, _np_as(outE,c_double_p), _np_as(outF,c_double_p), ctypes.byref(bConv) )
     return  outE, outF
 
 
@@ -807,8 +877,16 @@ def processMol2( fname, outEs=None, apos=None, aforce=None, epos=None, nstepMax=
     Returns:
         (outEs, apos, aforce, epos)
     """
-    # Size output arrays from the input .mol2 file
-    na_, ne_ = _mol2_sizes(fname, bCoreElectrons)
+    # Exact (na,ne) from a dry-run build: _mol2_sizes() cannot replicate addEpairsByPi() lone-pair
+    # counting (e.g. O_3 gets nepair=2 => +4 e/O) and under-allocating epos caused heap corruption
+    # (free(): invalid next size). NULL outputs are guarded in C++, so the dry run writes nothing.
+    if bOutputs[1] or bOutputs[2] or bOutputs[3] or (apos is not None) or (aforce is not None) or (epos is not None):
+        rc = lib.processMol2( cstr(fname), None,None,None,None, 0, dt, Fconv, ialg, bCoreElectrons, bChangeCore, bChangeEsize, None, None, None )
+        if rc == 0: raise RuntimeError(f"processMol2 dry-run failed on '{fname}'")
+        init_buffers()
+        nd_ = getIBuff( "ndims", (3,) ); ne_, na_ = int(nd_[0]), int(nd_[1])
+        for arr_, need_, name_ in [(apos,na_*3,'apos'),(aforce,na_*3,'aforce'),(epos,ne_*4,'epos')]:
+            if arr_ is not None and arr_.size < need_: raise ValueError(f"processMol2: {name_} buffer too small ({arr_.size} < {need_})")
     if bOutputs[0] and outEs is None: outEs = np.zeros(8, dtype=np.float64)
     if bOutputs[1] and apos  is None: apos  = np.zeros( (na_, 3) )
     if bOutputs[2] and aforce is None: aforce = np.zeros( (na_, 3) )

@@ -7,6 +7,14 @@ add_library(ReactiveFF  SHARED ReactiveFF.cpp )
 
 add_library(CLCFGO_lib   SHARED CLCFGO_lib.cpp )
 add_library(eFF_lib      SHARED eFF_lib.cpp      $<TARGET_OBJECTS:DynamicOpt> )
+
+# ---- Tomas's original (pre-port) eFF build; pristine sources kept in origZ/ for A/B testing (see PORT_eFF_optimization.md) ----
+# origZ dirs MUST precede the global common/ includes so the original fastmath.h / DynamicOpt.h / eFF.h shadow the ported ones
+set(ORIGZ ${CMAKE_CURRENT_SOURCE_DIR}/origZ)
+add_library( DynamicOpt_origZ OBJECT ${ORIGZ}/math/DynamicOpt.cpp )
+target_include_directories( DynamicOpt_origZ BEFORE PRIVATE ${ORIGZ}/math ${ORIGZ}/molecular )
+add_library( eFF_lib_origZ SHARED ${ORIGZ}/eFF_lib.cpp $<TARGET_OBJECTS:DynamicOpt_origZ> )
+target_include_directories( eFF_lib_origZ BEFORE PRIVATE ${ORIGZ}/math ${ORIGZ}/molecular )
 add_library(MMFF_lib     SHARED MMFF_lib.cpp     $<TARGET_OBJECTS:DynamicOpt> $<TARGET_OBJECTS:ProjectiveDynamics_d> )
 target_link_libraries(MMFF_lib ${FFTW_LIBRARIES})
 

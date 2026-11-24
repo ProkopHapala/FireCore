@@ -3,6 +3,7 @@
 #include <string.h>
 #include <vector>
 #include <math.h>
+#include <cmath>
 
 #include <vector>
 #include <unordered_map>
@@ -122,27 +123,28 @@ void evalNumDerivs( double* Fnum, double d ){
 
 void init_buffers(){
     // atoms (ions)
-    buffers.insert( { "pDOFs",           ff.pDOFs  } );
-    buffers.insert( { "fDOFs",           ff.fDOFs  } );
-    buffers.insert( { "apos",   (double*)ff.apos   } );
-    buffers.insert( { "aforce", (double*)ff.aforce } );
-    buffers.insert( { "epos",   (double*)ff.epos   } );
-    buffers.insert( { "eforce", (double*)ff.eforce } );
-    buffers.insert( { "esize",  (double*)ff.esize  } );
-    buffers.insert( { "fsize",  (double*)ff.fsize  } );
-    buffers.insert ( { "aPars", (double*)ff.aPars  } );
-    buffers.insert ( { "Es",            &ff.Etot   } );
-    ibuffers.insert( { "espin",          ff.espin  } );
-    ibuffers.insert( { "ndims",         &ff.ne     } );
+    // NOTE: use operator[] (not insert) so re-registration updates stale pointers after ff.realloc()
+    buffers["pDOFs"]  =            ff.pDOFs;
+    buffers["fDOFs"]  =            ff.fDOFs;
+    buffers["apos"]   = (double*)ff.apos;
+    buffers["aforce"] = (double*)ff.aforce;
+    buffers["epos"]   = (double*)ff.epos;
+    buffers["eforce"] = (double*)ff.eforce;
+    buffers["esize"]  = (double*)ff.esize;
+    buffers["fsize"]  = (double*)ff.fsize;
+    buffers["aPars"]  = (double*)ff.aPars;
+    buffers["Es"]     =           &ff.Etot;
+    ibuffers["espin"] =            ff.espin;
+    ibuffers["ndims"] =           &ff.ne;
     if(ff.vDOFs){
-        buffers.insert( { "vDOFs",              ff.vDOFs  } );
-        buffers.insert( { "avel",      (double*)ff.avel   } );
-        buffers.insert( { "evel",      (double*)ff.evel   } );
-        buffers.insert( { "vsize",              ff.vsize  } );
-        buffers.insert( { "invMasses",          ff.invMasses           } );
-        buffers.insert( { "invAmass",           ff.invMasses           } );
-        buffers.insert( { "invEmass",          (ff.invMasses+ff.na*3)         } );
-        buffers.insert( { "invSmass",          (ff.invMasses+(ff.na+ff.ne)*3) } );
+        buffers["vDOFs"]     =           ff.vDOFs;
+        buffers["avel"]      = (double*)ff.avel;
+        buffers["evel"]      = (double*)ff.evel;
+        buffers["vsize"]     =           ff.vsize;
+        buffers["invMasses"] =           ff.invMasses;
+        buffers["invAmass"]  =           ff.invMasses;
+        buffers["invEmass"]  =          (ff.invMasses+ff.na*3);
+        buffers["invSmass"]  =          (ff.invMasses+(ff.na+ff.ne)*3);
     }
 }
 
@@ -193,48 +195,150 @@ void initOpt( double dt, double damping, double f_limit, bool bMass ){
     opt.f_limit = f_limit;
     opt_initialized=true;
     opt.fixmask = ff.fixmask;
-    opt.bfixmask=true;
+    opt.bfixmask = (ff.fixmask!=0);
 };
 
-//int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0, double* outE, double* outF ){ 
-int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF, bool* bConv=0 ){ 
+// Opt-in trajectory-secant preconditioner (fictitious relaxation masses; see eFF_optimizer_speedup.md §7.2)
+// mode: 0=off, 1=block-norm secant; kref: stiffness scale invM=kref/(kref+k). Block layout is set in run()
+// from the current na/ne (atoms + electron positions as 3D blocks; electron sizes as separate scalar DOFs).
+void setAutoMass( int mode, double kref ){
+    if(mode>0) opt.saveMassesOnce(); else opt.restoreMasses();   // §11.2B: mode-0 candidates must not inherit adaptive invMasses
+    opt.autoMass = mode; opt.am_kref = kref; opt.am_init = false;
+    if(mode>0){ opt.am_nBlocks = ff.na + ff.ne; opt.am_nScalars = ff.ne; }   // same [apos|epos|esize] layout as run()/run_GH() — needed when autoMass is enabled outside run()
+    if(mode>0 && opt.n>0){  // eager-alloc so optStateSize() is stable from the start (updateAutoMasses still seeds on am_init)
+        int nb=opt.am_nBlocks+opt.am_nScalars; _realloc(opt.am_k,nb); _realloc(opt.am_xold,opt.n); _realloc(opt.am_fold,opt.n);
+        for(int i=0;i<nb;i++)opt.am_k[i]=0;
+    }
+    printf("setAutoMass(mode=%i, kref=%g) nBlocks=%i nScalars=%i\n", mode, kref, opt.am_nBlocks, opt.am_nScalars );
+}
+// Opt-in mass-consistent FIRE metric (see §7.3). 0=legacy v.(invM.f); 1=P=v.f power test + sqrt(V2/G2) mixing.
+void setMassMetric( int m ){ opt.massMetric = m; printf("setMassMetric(%i)\n", m ); }
+
+// generic scalar optimizer-parameter setter for sweeps/meta-optimization; returns previous value, exits loudly on unknown name
+double setOptParam( const char* name, double val ){
+    double old;
+    if     (!strcmp(name,"dt"))       { old=opt.dt;        opt.dt=val;        }
+    else if(!strcmp(name,"damping"))  { old=opt.damping;   opt.damping=val;   }
+    else if(!strcmp(name,"lastNeg"))  { old=opt.lastNeg;   opt.lastNeg=(int)val; }
+    else if(!strcmp(name,"dt_min"))   { old=opt.dt_min;    opt.dt_min=val;    }
+    else if(!strcmp(name,"damp_max")) { old=opt.damp_max;  opt.damp_max=val;  }
+    else if(!strcmp(name,"f_limit"))  { old=opt.f_limit;   opt.f_limit=val;   }
+    else if(!strcmp(name,"gate_cos")) { old=opt.gate_cos;  opt.gate_cos=val;  }
+    else if(!strcmp(name,"gate_g"))   { old=opt.gate_g;    opt.gate_g=val;    }
+    else if(!strcmp(name,"vs_ema"))   { old=opt.vs_ema;    opt.vs_ema=val;    }
+    else if(!strcmp(name,"lsMomBeta")){ old=opt.lsMomBeta; opt.lsMomBeta=val; }
+    else if(!strcmp(name,"lsMomGain")){ old=opt.lsMomGain; opt.lsMomGain=val; }
+    else if(!strcmp(name,"lsTurnCos")){ old=opt.lsTurnCos; opt.lsTurnCos=val; }
+    else if(!strcmp(name,"lsEmaCoef")){ old=opt.lsEmaCoef; opt.lsEmaCoef=val; }
+    else if(!strcmp(name,"modeSupp")) { old=opt.modeSupp;  opt.modeSupp=(int)val; }
+    else if(!strcmp(name,"msMu"))     { old=opt.msMu;      opt.msMu=val;      }
+    else if(!strcmp(name,"msEma"))    { old=opt.msEma;     opt.msEma=val;     }
+    else if(!strcmp(name,"msInit"))   { old=opt.msInit;    opt.msInit=(int)val; }
+    else if(!strcmp(name,"massMetric")){ old=opt.massMetric;opt.massMetric=(int)val; }
+    else if(!strcmp(name,"finc"))     { old=opt.finc;      opt.finc=val;      }
+    else if(!strcmp(name,"fdec"))     { old=opt.fdec;      opt.fdec=val;      }
+    else if(!strcmp(name,"falpha"))   { old=opt.falpha;    opt.falpha=val;    }
+    else if(!strcmp(name,"dt_max"))   { old=opt.dt_max;    opt.dt_max=val;    }
+    else if(!strcmp(name,"cvf_min"))  { old=opt.cvf_min;   opt.cvf_min=val;   }
+    else if(!strcmp(name,"cvf_max"))  { old=opt.cvf_max;   opt.cvf_max=val;   }
+    else if(!strcmp(name,"minLastNeg")){ old=opt.minLastNeg;opt.minLastNeg=(int)val; }
+    else if(!strcmp(name,"lsEtaLo"))  { old=opt.lsEtaLo;   opt.lsEtaLo=val;   }
+    else if(!strcmp(name,"lsEtaHi"))  { old=opt.lsEtaHi;   opt.lsEtaHi=val;   }
+    else if(!strcmp(name,"lsAmax"))   { old=opt.lsAmax;    opt.lsAmax=val;    }
+    else if(!strcmp(name,"lsDescEps")){ old=opt.lsDescEps; opt.lsDescEps=val; }
+    else { printf("ERROR setOptParam: unknown param '%s'\n", name); exit(1); }
+    return old;
+}
+
+// ================= Branch-lab step API (§13.4): stepwise FIRE driving + fat optimizer-state checkpoint =================
+// Segmented stepping is trajectory-identical to run(): all FIRE state lives in opt fields; optEval replicates the
+// per-iteration eval path (clearForce + eval + fixed-DOF cleanup via _eff_eval_E). initOpt must be called first.
+static double _eff_eval_E( int n, double* xs, double* dfs );   // fwd decl (defined below with run_GH)
+void optBind(){
+    if( !opt_initialized || (opt.pos!=ff.pDOFs) || (opt.force!=ff.fDOFs) || (opt.n!=ff.nDOFs) ){
+        printf("WARNING optBind(): optimizer not bound to current ff buffers => call initOpt() first\n"); exit(1);
+    }
+    opt.getForce = _eff_eval_E;
+    opt.xmin = 0;
+}
+void   optInitOpt( double dt, double damping ){ opt.initOpt(dt,damping); opt.damping=opt.damp_max; opt.lastNeg=0; }  // same fresh-start semantics as run()
+double optEval(){ if(!opt.getForce)optBind(); return opt.getForce( opt.n, opt.pos, opt.force ); }
+double optMoveFIRE(){ return opt.move_FIRE(); }
+int    optNDOFs(){ return opt.n; }
+double* optBuffer( int which ){   // 0=pos 1=vel 2=force 3=invMasses — direct numpy views for branch actions
+    switch(which){ case 0:return opt.pos; case 1:return opt.vel; case 2:return opt.force; case 3:return opt.invMasses; }
+    printf("ERROR optBuffer(%i) out of range\n",which); exit(1);
+}
+int  optStateSize(){ return opt.stateSize(); }
+int  optSaveState( double* buf ){ return opt.saveState(buf); }
+void optRestoreState( const double* buf ){ opt.restoreState(buf); }
+
+
+//int run( int nstepMax, double dt, double Fconv=1e-6, int ialg=0, double* outE, double* outF ){
+int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* outF, bool* bConv=0 ){
     double F2conv=Fconv*Fconv;
     double F2 = 1.0;
     double Etot;
     int itr=0;
-    if( (ialg!=0)&(!opt_initialized) ){ printf("ERROR ialg(%i)>0 but optimizer not initialized => call initOpt() first !"); exit(0); };
+    bool bConv_loc = false; if(bConv==0) bConv=&bConv_loc;   // NULL-safe: ctypes callers may not pass the flag
+    if( (ialg!=0)&(!opt_initialized) ){ printf("ERROR ialg(%i)>0 but optimizer not initialized => call initOpt() first !"); exit(1); };
+    if( (ialg!=0) && ( (opt.pos!=ff.pDOFs) || (opt.force!=ff.fDOFs) || (opt.vel!=ff.vDOFs) || (opt.invMasses!=ff.invMasses) || (opt.fixmask!=ff.fixmask) || (opt.n!=ff.nDOFs) ) ){
+        printf("WARNING run(): optimizer bound to stale DOF buffers (ff.realloc after initOpt) => re-binding opt\n");
+        opt.bindOrAlloc( ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses );
+        opt.fixmask  = ff.fixmask;
+        opt.bfixmask = (ff.fixmask!=0);
+        opt.am_init  = false;   // secant history holds stale pointers/sizes => re-init
+    }
     opt.setTimeSteps(dt);
+    if(opt.autoMass){ opt.am_nBlocks = ff.na + ff.ne; opt.am_nScalars = ff.ne; }   // [apos|epos] 3D blocks + [esize] scalars
     //printf( "verbosity %i nstepMax %i Fconv %g dt %g \n", verbosity, nstepMax, Fconv, dt );
     //printf( "trj_fname %s \n", trj_fname );
     if(ialg>0){
-        //printf("run() opt.vel %p\n", opt.vel); 
-        opt.cleanVel( ); 
+        //printf("run() opt.vel %p\n", opt.vel);
+        opt.cleanVel( );
+        // fresh restart semantics: reset the whole FIRE history (velocities, adaptive mixing, positive-power streak)
+        // so a run() result cannot depend on hidden state carried over from a previous run()/scan point
+        opt.damping = opt.damp_max;
+        opt.lastNeg = 0;
+        opt.am_init = false;    // fresh start => no secant history (estimates rebuild from the first two evals)
     }
     if(ff.nfix>0){ ff.apply_hard_fix(); }
-    
+
     for(itr=0; itr<nstepMax; itr++ ){
         ff.clearForce();
         Etot = ff.eval();
-
+        if( !std::isfinite(Etot) ){ printf("ERROR in run(): non-finite Etot=%g at itr=%i => abort\n", Etot, itr ); exit(1); }
         if( ff.bNegativeSizes & (verbosity>0) ){ printf( "negative electron sizes in step #%i => perhaps decrease relaxation time step dt=%g[fs]? \n", itr, opt.dt ); }
         if(ff.nfix>0){ if(ialg>0){ ff.clear_fixed_dynamics(); }else{ ff.clear_fixed_force(); } }
-        switch(ialg){
-            case  0: F2 = ff .move_GD      (dt);      break;
-            case -1: F2 = opt.move_LeapFrog(dt);      break;
-            case  1: F2 = opt.move_MD (dt,opt.damping); break;
-            case  2: F2 = opt.move_FIRE();       break;
-        }
-        if(ff.nfix>0){ ff.apply_hard_fix(); }
+        // Convergence on RAW force norm of FREE DOFs, computed on the CURRENT (pre-move) state so that
+        // the returned positions/energy/forces are always consistent. move_FIRE()/move_MD() return mass-weighted
+        // ff=sum((f*invM)^2) which falsely reports convergence/divergence when invMasses != 1 (e.g. makeMasses).
+        // nfix/fixed_inds constraint forces are already zeroed by clear_fixed_*; fixmask DOFs are excluded here.
+        F2 = 0; for(int i=0;i<ff.nDOFs;i++){ if(ff.fixmask && ff.fixmask[i])continue; double f=ff.fDOFs[i]; F2+=f*f; }
+        if( !std::isfinite(F2) ){ printf("ERROR in run(): non-finite force at itr=%i => abort\n", itr ); exit(1); }
         if(outE){ outE[itr]=Etot;     }
         if(outF){ outF[itr]=sqrt(F2); }
         if( (verbosity>2 )&&( itr%savePerNsteps == 0)){ printf("itr: %6i Etot[eV] %16.8f |F|[eV/A] %16.8f \n", itr, Etot, sqrt(F2) ); };
         if(F2<F2conv){
             if(verbosity>0){ printf("eFF_lib.cpp::run() Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
-            //if(verbosity>0){ printf("Converged in %i iteration Etot %g[eV] |F| %g[eV/A] <(Fconv=%g) \n", itr, Etot, sqrt(F2), Fconv ); };
             *bConv=true;
-            // printf("bConv %d", *bConv);
-            break;
+            break;   // test BEFORE moving => returned state matches reported force
         }
+        switch(ialg){
+            case  0: ff .move_GD      (dt);      break;
+            case -1: opt.move_LeapFrog(dt);      break;
+            case  1: opt.move_MD (dt,opt.damping); break;
+            case  2: opt.move_FIRE();       break;
+            case  3: opt.move_MD_dbg(dt,opt.damping); break;
+        }
+
+        // Match GPU localMD behavior: keep electron sizes > 0
+        if(ff.esize){
+            for(int ie=0; ie<ff.ne; ie++){
+                if(ff.esize[ie] < ff.min_esize) ff.esize[ie] = ff.min_esize;   // FIX: same floor constant as evalKinetic (was literal 1e-3 vs ff.min_esize)
+            }
+        }
+        if(ff.nfix>0){ ff.apply_hard_fix(); }
         if( (trj_fname) && (itr%savePerNsteps==0) )  ff.save_xyz( trj_fname, "a" );
 
     }
@@ -242,6 +346,37 @@ int run( int nstepMax, double dt, double Fconv, int ialg, double* outE, double* 
     //printShortestBondLengths();
     return itr;
 }
+
+// ================= Gradient-history optimizers (audit §8), opt-in alternatives to FIRE =================
+// Thin eFF wrapper over reusable DynamicOpt::run_GH. iMethod: 1 = BB1 spectral GD, 2 = Anderson (memory mHist<=8).
+// Bridges ff.eval() to opt.getForce (with constraint-force zeroing), and maps the esize floor to opt.xmin bounds.
+static double _eff_eval_E( int n, double* xs, double* dfs ){
+    ff.clearForce(); double E = ff.eval();
+    if( ff.nfix>0 ){ ff.clear_fixed_dynamics(); }
+    if(dfs!=ff.fDOFs) memcpy( dfs, ff.fDOFs, n*sizeof(double) );
+    return E;
+}
+int run_GH( int nstepMax, double Fconv, int iMethod, int mHist, double eta, double a_init, int adapt, double amax, double* outE, double* outF ){
+    if( (opt.pos!=ff.pDOFs) || (opt.force!=ff.fDOFs) || (opt.vel!=ff.vDOFs) || (opt.invMasses!=ff.invMasses) || (opt.fixmask!=ff.fixmask) || (opt.n!=ff.nDOFs) ){
+        printf("WARNING run_GH(): optimizer bound to stale DOF buffers => re-binding opt\n");
+        opt.bindOrAlloc( ff.nDOFs, ff.pDOFs, ff.vDOFs, ff.fDOFs, ff.invMasses );
+        opt.fixmask  = ff.fixmask;
+        opt.bfixmask = (ff.fixmask!=0);
+    }
+    opt.lsMethod=iMethod; opt.mHist=mHist; opt.lsEta=eta; opt.lsAinit=a_init;
+    opt.lsAdapt=adapt;  opt.lsAmax=amax;
+    if(opt.autoMass){ opt.am_nBlocks = ff.na + ff.ne; opt.am_nScalars = ff.ne; }   // [apos|epos] 3D blocks + [esize] scalars (same layout as run())
+    opt.getForce = _eff_eval_E;
+    // lower bounds: -inf everywhere except esize DOFs -> min_esize (electron-size floor)
+    static double* lsxmin=0; static int lsxmin_n=0;
+    if( lsxmin_n != ff.nDOFs ){ _realloc(lsxmin, ff.nDOFs); lsxmin_n=ff.nDOFs; }
+    int iSz0=(ff.na+ff.ne)*3;
+    for(int i=0;i<ff.nDOFs;i++)lsxmin[i]=-1e300;
+    for(int ie=0;ie<ff.ne;ie++)lsxmin[iSz0+ie]=ff.min_esize;
+    opt.xmin = lsxmin;
+    return opt.run_GH( nstepMax, Fconv, outE, outF );
+}
+
 
 void set_constrains( int nfix, Quat4d* fixed_poss, Vec2i* fixed_inds, bool bRealloc=true  ){
     // Set following variables of eFF object
@@ -660,7 +795,7 @@ int processXYZ( const char* fname, double Rfac=-0.5, double* outEs=0, double* ap
     char coreMode = bCoreElectrons ? 'a' : 'f';
     ff.setCoreMode(coreMode);
 
-    while( fgets(line, nline, fin) ){
+    while( fgets(line, nline, fin) || ( atoms && (il==atoms->natoms+2) ) ){   // NOTE: also process last conf at EOF (no trailing line needed)
         if ( il==0 ){               // --- Read number of atoms
             int na=-1;
             sscanf( line, "%i", &na );

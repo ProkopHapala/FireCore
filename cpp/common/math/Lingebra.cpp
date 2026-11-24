@@ -350,6 +350,8 @@ void leastSquareFit_Gauss( int n, int m, double ** A, double * b, double * x ){
 	delete index;
 }
 
+// leastSquareFit_QR moved to Lingebra.h as an inline flat-array routine (no link dependency, cf. Cholesky.h).
+
 
 
 // ===============================================

@@ -66,15 +66,16 @@ class OpenCLBase:
         self.kernelheaders = {}
         self.prg = None
     
-    def load_program(self, kernel_path=None, rel_path=None, base_path=None, bPrint=False):
+    def load_program(self, kernel_path=None, rel_path=None, base_path=None, bPrint=False, build_options=None):
         """
         Load and compile an OpenCL program.
-        
+
         Args:
             kernel_path (str): Absolute path to the kernel file
             rel_path (str): Relative path to the kernel file from base_path
             base_path (str): Base directory path (defaults to this file's directory)
-            
+            build_options (list|str|None): extra options forwarded to cl.Program.build()
+
         Returns:
             bool: True if successful, False otherwise
         """
@@ -82,14 +83,17 @@ class OpenCLBase:
             if base_path is None:
                 base_path = os.path.dirname(os.path.abspath(__file__))
             kernel_path = os.path.abspath(os.path.join(base_path, rel_path))
-        
+
         if not os.path.exists(kernel_path):
             print(f"OpenCLBase::load_program() ERROR: Kernel file not found at: {kernel_path}")
             return False
-            
+
         with open(kernel_path, 'r') as f:
             kernel_source = f.read()
-            self.prg = cl.Program(self.ctx, kernel_source).build()
+            if build_options is None:
+                self.prg = cl.Program(self.ctx, kernel_source).build()
+            else:
+                self.prg = cl.Program(self.ctx, kernel_source).build(options=build_options)
             # Extract kernel headers automatically
             self.kernelheaders = self.extract_kernel_headers(kernel_source)
 
